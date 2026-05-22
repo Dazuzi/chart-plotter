@@ -4,8 +4,8 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Stroke;
+import java.awt.geom.Path2D;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.Perspective;
@@ -19,7 +19,6 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.ColorUtil;
-@Slf4j
 public class ChartPlotterOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int TURN = 128;
@@ -27,7 +26,6 @@ public class ChartPlotterOverlay extends Overlay {
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
-	private int debugTick = -1;
 	@Inject
 	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config) {
 		this.client = client;
@@ -51,23 +49,26 @@ public class ChartPlotterOverlay extends Overlay {
 		float[] ry = rectY(wc);
 		int from = ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int course = plugin.course(ship);
-		int mouse = mouseHeading(client, top, center);
+		int mouse = hoverHeading(top, center);
 		Path cur = path(top, anchor, from, course);
 		Path pot = mouse >= 0 ? path(top, anchor, from, mouse) : null;
 		int skip = pot != null ? match(cur, pot) : 0;
-		if (config.debugProjection()) debug(ship, anchor, center, from, course, mouse, cur, pot, skip);
 		Stroke prev = g.getStroke();
-		g.setStroke(new BasicStroke(config.lineWidth()));
-		draw(g, top, cur, rx, ry, config.lineColor(), skip, true);
-		if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0, false);
+		g.setStroke(new BasicStroke(config.lineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		draw(g, top, cur, rx, ry, config.lineColor(), skip);
+		if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
 		g.setStroke(prev);
 		return null;
 	}
 	private Path path(WorldView wv, LocalPoint anchor, int from, int target) {
 		Tile[][][] tiles = wv.getScene().getExtendedTiles();
 		int cap = limit(anchor);
-		Path p = new Path(cap);
+		Path p = new Path(cap + 1);
 		p.start = from;
+		p.x[p.n] = anchor.getX();
+		p.y[p.n] = anchor.getY();
+		p.o[p.n] = from;
+		p.n++;
 		int posX = 0;
 		int posY = 0;
 		int o = from;
@@ -97,13 +98,14 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return p;
 	}
-	private void draw(Graphics2D g, WorldView wv, Path p, float[] rx, float[] ry, Color color, int skip, boolean firstBox) {
+	private void draw(Graphics2D g, WorldView wv, Path p, float[] rx, float[] ry, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) return;
 		float[] z = new float[]{0, 0, 0, 0};
 		int[] cx = new int[4];
 		int[] cy = new int[4];
 		int[] px = new int[4];
 		int[] py = new int[4];
+		Path2D.Double s = new Path2D.Double();
 		boolean have = false;
 		int sA = color.getAlpha();
 		for (int i = 0; i < p.n; i++) {
@@ -120,8 +122,17 @@ public class ChartPlotterOverlay extends Overlay {
 			int a = (int) (sA * (1 - f));
 			if (a > 0) {
 				g.setColor(ColorUtil.colorWithAlpha(color, a));
-				if (have && p.o[i] == prev(p, i)) rails(g, px, py, cx, cy);
-				if (box(p, i) || firstBox && i == skip) g.drawPolygon(cx, cy, 4);
+				s.reset();
+				boolean d = false;
+				if (have && p.o[i] == prev(p, i)) {
+					rails(s, px, py, cx, cy);
+					d = true;
+				}
+				if (box(p, i) || i == 0) {
+					box(s, cx, cy, open(p, i));
+					d = true;
+				}
+				if (d) g.draw(s);
 			}
 			copy(cx, cy, px, py);
 			have = true;
@@ -131,11 +142,21 @@ public class ChartPlotterOverlay extends Overlay {
 		Perspective.modelToCanvas(client, wv, 4, p.x[i], p.y[i], 0, p.o[i], rx, ry, z, cx, cy);
 		return cx[0] != Integer.MIN_VALUE && cx[1] != Integer.MIN_VALUE && cx[2] != Integer.MIN_VALUE && cx[3] != Integer.MIN_VALUE;
 	}
-	private static void rails(Graphics2D g, int[] px, int[] py, int[] cx, int[] cy) {
-		g.drawLine((px[0] + px[1]) / 2, (py[0] + py[1]) / 2, (cx[0] + cx[1]) / 2, (cy[0] + cy[1]) / 2);
-		g.drawLine((px[2] + px[3]) / 2, (py[2] + py[3]) / 2, (cx[2] + cx[3]) / 2, (cy[2] + cy[3]) / 2);
+	private static void rails(Path2D p, int[] px, int[] py, int[] cx, int[] cy) {
+		p.moveTo(px[0], py[0]);
+		p.lineTo(cx[0], cy[0]);
+		p.moveTo(px[3], py[3]);
+		p.lineTo(cx[3], cy[3]);
+	}
+	private static void box(Path2D p, int[] x, int[] y, boolean open) {
+		p.moveTo(x[0], y[0]);
+		p.lineTo(x[1], y[1]);
+		p.lineTo(x[2], y[2]);
+		p.lineTo(x[3], y[3]);
+		if (!open) p.lineTo(x[0], y[0]);
 	}
 	private static boolean box(Path p, int i) {return p.o[i] != prev(p, i);}
+	private static boolean open(Path p, int i) {return i + 1 < p.n && p.o[i + 1] == p.o[i];}
 	private static int prev(Path p, int i) {return i > 0 ? p.o[i - 1] : p.start;}
 	private static void copy(int[] sx, int[] sy, int[] dx, int[] dy) {
 		for (int i = 0; i < 4; i++) {
@@ -149,6 +170,15 @@ public class ChartPlotterOverlay extends Overlay {
 			if (a.x[i] != b.x[i] || a.y[i] != b.y[i] || a.o[i] != b.o[i]) return i;
 		}
 		return n;
+	}
+	private int hoverHeading(WorldView wv, LocalPoint anchor) {
+		Point m = client.getMouseCanvasPosition();
+		if (m == null || client.isMenuOpen()) return -1;
+		int x = client.getViewportXOffset();
+		int y = client.getViewportYOffset();
+		if (m.getX() < x || m.getY() < y || m.getX() >= x + client.getViewportWidth() || m.getY() >= y + client.getViewportHeight()) return -1;
+		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return -1;
+		return mouseHeading(client, wv, anchor);
 	}
 	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor) {
 		Point center = Perspective.localToCanvas(client, anchor, 0);
@@ -202,18 +232,6 @@ public class ChartPlotterOverlay extends Overlay {
 		return new Point(ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dx)), ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dy)));
 	}
 	private static int side(int x1, int y1, int x2, int y2, int x, int y) {return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);}
-	private void debug(WorldEntity ship, LocalPoint anchor, LocalPoint center, int from, int course, int mouse, Path cur, Path pot, int skip) {
-		int tick = client.getTickCount();
-		if (debugTick == tick) return;
-		debugTick = tick;
-		log.info("chartplotter tick={} actual={},{} target={},{} orient={} targetOrient={} from={} course={} mouse={} speed={} accel={} reverse={} turn={} curN={} potN={} match={} cur0={} pot0={} curM={} potM={} curNxt={} potNxt={}", tick, x(center), y(center), x(anchor), y(anchor), ship.getOrientation(), ship.getTargetOrientation(), from, course, mouse, plugin.speed(), plugin.accel(), plugin.reversing(), plugin.turnDir(), cur.n, pot != null ? pot.n : -1, skip, step(cur, 0), step(pot, 0), step(cur, skip), step(pot, skip), step(cur, skip + 1), step(pot, skip + 1));
-	}
-	private static String step(Path p, int i) {
-		if (p == null || i < 0 || i >= p.n) return "-";
-		return p.x[i] + "," + p.y[i] + "," + p.o[i];
-	}
-	private static int x(LocalPoint p) {return p != null ? p.getX() : -1;}
-	private static int y(LocalPoint p) {return p != null ? p.getY() : -1;}
 	private static final class Path {
 		private final int[] x;
 		private final int[] y;

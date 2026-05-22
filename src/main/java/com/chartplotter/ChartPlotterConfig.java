@@ -17,6 +17,4 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", position = 20)
 	@Range(min = 1, max = 10)
 	default int lineWidth() {return 2;}
-	@ConfigItem(keyName = "debugProjection", name = "Debug projection", description = "Log sailing projection state once per game tick.", position = 30)
-	default boolean debugProjection() {return false;}
 }
