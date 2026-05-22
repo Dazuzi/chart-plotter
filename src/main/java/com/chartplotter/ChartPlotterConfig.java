@@ -22,6 +22,13 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 2;}
+	@ConfigItem(keyName = "stopAtCollision", name = "Stop at collision", description = "Stop projected paths at collision flags.", section = worldSection, position = 4)
+	default boolean stopAtCollision() {return false;}
+	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points in the world.", section = worldSection, position = 5)
+	default boolean collisionDebug() {return false;}
+	@ConfigItem(keyName = "collisionRange", name = "Collision range", description = "Tiles ahead to trust collision clipping.", section = worldSection, position = 6)
+	@Range(min = 8, max = 104)
+	default int collisionRange() {return 24;}
 	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 1)
 	String minimapSection = "minimapSection";
 	@ConfigItem(keyName = "minimapEnabled", name = "Enabled", description = "Draw course lines on the minimap.", section = minimapSection, position = 0)
