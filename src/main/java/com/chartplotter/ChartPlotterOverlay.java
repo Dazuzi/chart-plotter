@@ -8,6 +8,8 @@ import java.awt.geom.Path2D;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
+import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.Tile;
@@ -36,7 +38,7 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	@Override
 	public Dimension render(Graphics2D g) {
-		if (!plugin.isSailing()) return null;
+		if (!plugin.isSailing() || !config.worldEnabled()) return null;
 		WorldView top = client.getTopLevelWorldView();
 		WorldEntity ship = plugin.getShip();
 		if (ship == null || top == null) return null;
@@ -54,13 +56,13 @@ public class ChartPlotterOverlay extends Overlay {
 		Path pot = mouse >= 0 ? path(top, anchor, from, mouse) : null;
 		int skip = pot != null ? match(cur, pot) : 0;
 		Stroke prev = g.getStroke();
-		g.setStroke(new BasicStroke(config.lineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
-		draw(g, top, cur, rx, ry, config.lineColor(), skip);
-		if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
+		g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		draw(g, top, cur, rx, ry, config.worldLineColor(), skip);
+		if (pot != null) draw(g, top, pot, rx, ry, config.worldPotentialColor(), 0);
 		g.setStroke(prev);
 		return null;
 	}
-	private Path path(WorldView wv, LocalPoint anchor, int from, int target) {
+	Path path(WorldView wv, LocalPoint anchor, int from, int target) {
 		Tile[][][] tiles = wv.getScene().getExtendedTiles();
 		int cap = limit(anchor);
 		Path p = new Path(cap + 1);
@@ -164,7 +166,7 @@ public class ChartPlotterOverlay extends Overlay {
 			dy[i] = sy[i];
 		}
 	}
-	private static int match(Path a, Path b) {
+	static int match(Path a, Path b) {
 		int n = Math.min(a.n, b.n);
 		for (int i = 0; i < n; i++) {
 			if (a.x[i] != b.x[i] || a.y[i] != b.y[i] || a.o[i] != b.o[i]) return i;
@@ -173,16 +175,30 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor) {
 		Point m = client.getMouseCanvasPosition();
-		if (m == null || client.isMenuOpen()) return -1;
-		int x = client.getViewportXOffset();
-		int y = client.getViewportYOffset();
-		if (m.getX() < x || m.getY() < y || m.getX() >= x + client.getViewportWidth() || m.getY() >= y + client.getViewportHeight()) return -1;
-		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return -1;
+		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
+		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, m);
+		if (mini >= 0) return mini;
+		if (!viewport(m) || !activeHeading(wv)) return -1;
 		return mouseHeading(client, wv, anchor);
 	}
+	private boolean activeHeading(WorldView wv) {
+		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return false;
+		MenuEntry[] es = client.getMenu().getMenuEntries();
+		return es.length > 0 && es[es.length - 1].getType() == MenuAction.SET_HEADING;
+	}
+	private boolean viewport(Point m) {
+		int x = client.getViewportXOffset();
+		int y = client.getViewportYOffset();
+		return m.getX() >= x && m.getY() >= y && m.getX() < x + client.getViewportWidth() && m.getY() < y + client.getViewportHeight();
+	}
 	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor) {
-		Point center = Perspective.localToCanvas(client, anchor, 0);
 		Point mouse = client.getMouseCanvasPosition();
+		return mouseHeading(client, wv, anchor, mouse);
+	}
+	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
+		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, mouse);
+		if (mini >= 0) return mini;
+		Point center = Perspective.localToCanvas(client, anchor, 0);
 		if (center == null || mouse == null) return -1;
 		int n = 16;
 		int[] lx = new int[n];
@@ -232,12 +248,12 @@ public class ChartPlotterOverlay extends Overlay {
 		return new Point(ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dx)), ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dy)));
 	}
 	private static int side(int x1, int y1, int x2, int y2, int x, int y) {return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);}
-	private static final class Path {
-		private final int[] x;
-		private final int[] y;
-		private final int[] o;
-		private int start;
-		private int n;
+	static final class Path {
+		final int[] x;
+		final int[] y;
+		final int[] o;
+		int start;
+		int n;
 		private Path(int cap) {
 			x = new int[cap];
 			y = new int[cap];
