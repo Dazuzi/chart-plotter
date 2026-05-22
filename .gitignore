@@ -1,9 +1,8 @@
-.gradle
-build
+.claude/
+.gradle/
 .idea/
-.project
-.settings/
-.classpath
-nbactions.xml
-nb-configuration.xml
-nbproject/
+.run/
+build/
+*.jfr
+AGENTS.md
+CLAUDE.md
