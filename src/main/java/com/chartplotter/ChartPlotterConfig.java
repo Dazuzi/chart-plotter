@@ -35,4 +35,17 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 2;}
+	@ConfigSection(name = "World Map", description = "World map overlay settings.", position = 2)
+	String worldMapSection = "worldMapSection";
+	@ConfigItem(keyName = "worldMapEnabled", name = "Enabled", description = "Draw course lines on the world map.", section = worldMapSection, position = 0)
+	default boolean worldMapEnabled() {return true;}
+	@Alpha
+	@ConfigItem(keyName = "worldMapLineColor", name = "Course color", description = "Color of the set-course world map line.", section = worldMapSection, position = 1)
+	default Color worldMapLineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 185);}
+	@Alpha
+	@ConfigItem(keyName = "worldMapPotentialColor", name = "Projected color", description = "Color of the projected world map line.", section = worldMapSection, position = 2)
+	default Color worldMapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
+	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 3)
+	@Range(min = 1, max = 10)
+	default int worldMapLineWidth() {return 2;}
 }

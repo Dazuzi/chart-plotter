@@ -35,6 +35,7 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private OverlayManager overlayManager;
 	@Inject private ChartPlotterOverlay overlay;
 	@Inject private ChartPlotterMinimapOverlay minimapOverlay;
+	@Inject private ChartPlotterWorldMapOverlay worldMapOverlay;
 	@Inject private MouseManager mouseManager;
 	private boolean boarded;
 	private double baseSpeed;
@@ -59,6 +60,7 @@ public class ChartPlotterPlugin extends Plugin {
 	protected void startUp() {
 		overlayManager.add(overlay);
 		overlayManager.add(minimapOverlay);
+		overlayManager.add(worldMapOverlay);
 		mouseManager.registerMouseListener(mouse);
 		clientThread.invoke(this::sync);
 	}
@@ -66,6 +68,7 @@ public class ChartPlotterPlugin extends Plugin {
 	protected void shutDown() {
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
+		overlayManager.remove(worldMapOverlay);
 		mouseManager.unregisterMouseListener(mouse);
 		reset();
 	}
