@@ -12,7 +12,8 @@ repositories {
 	mavenCentral()
 }
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.chartplotter.ChartPlotterPluginTest'
+def pluginMainClass = 'com.chartplotter.ChartPlotterPlugin'
+def runMainClass = 'com.chartplotter.ChartPlotterPluginTest'
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
 	compileOnly 'org.projectlombok:lombok:1.18.30'
@@ -28,14 +29,14 @@ tasks.withType(JavaCompile).configureEach {
 }
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass = pluginMainClass
+	mainClass = runMainClass
 	jvmArgs "-ea"
 	args "--developer-mode", "--debug"
 }
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {
-		attributes('Main-Class': pluginMainClass, 'Multi-Release': true)
+		attributes('Main-Class': runMainClass, 'Multi-Release': true)
 	}
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	from sourceSets.main.output

@@ -18,6 +18,7 @@ import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
@@ -37,6 +38,8 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private ChartPlotterMinimapOverlay minimapOverlay;
 	@Inject private ChartPlotterWorldMapOverlay worldMapOverlay;
 	@Inject private MouseManager mouseManager;
+	@Inject private ChartPlotterConfig config;
+	@Inject private ChartPlotterCollisionCache collisionCache;
 	private boolean boarded;
 	private double baseSpeed;
 	private double accel;
@@ -48,6 +51,8 @@ public class ChartPlotterPlugin extends Plugin {
 	private int lastAngle;
 	private int course = -1;
 	private LocalPoint lastLoc;
+	private boolean collisionActive;
+	private boolean mouseRegistered;
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
@@ -58,10 +63,7 @@ public class ChartPlotterPlugin extends Plugin {
 	};
 	@Override
 	protected void startUp() {
-		overlayManager.add(overlay);
-		overlayManager.add(minimapOverlay);
-		overlayManager.add(worldMapOverlay);
-		mouseManager.registerMouseListener(mouse);
+		apply();
 		clientThread.invoke(this::sync);
 	}
 	@Override
@@ -69,8 +71,34 @@ public class ChartPlotterPlugin extends Plugin {
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
-		mouseManager.unregisterMouseListener(mouse);
+		if (mouseRegistered) {
+			mouseManager.unregisterMouseListener(mouse);
+			mouseRegistered = false;
+		}
+		collisionActive = false;
+		collisionCache.stop();
 		reset();
+	}
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onConfigChanged(ConfigChanged e) {
+		if ("chartplotter".equals(e.getGroup())) apply();
+	}
+	private void apply() {
+		if (config.worldEnabled()) overlayManager.add(overlay);
+		else overlayManager.remove(overlay);
+		if (config.minimapEnabled()) overlayManager.add(minimapOverlay);
+		else overlayManager.remove(minimapOverlay);
+		if (config.worldMapEnabled()) overlayManager.add(worldMapOverlay);
+		else overlayManager.remove(worldMapOverlay);
+		boolean wantMouse = config.minimapEnabled();
+		if (wantMouse && !mouseRegistered) {
+			mouseManager.registerMouseListener(mouse);
+			mouseRegistered = true;
+		} else if (!wantMouse && mouseRegistered) {
+			mouseManager.unregisterMouseListener(mouse);
+			mouseRegistered = false;
+		}
 	}
 	@SuppressWarnings("unused")
 	@Subscribe
@@ -109,12 +137,20 @@ public class ChartPlotterPlugin extends Plugin {
 	public void onGameTick(GameTick e) {
 		WorldEntity ship = getShip();
 		if (ship == null) {
+			collision(false);
 			resetMotion();
 			return;
 		}
 		LocalPoint loc = ship.getTargetLocation();
 		if (loc == null) loc = ship.getLocalLocation();
-		if (loc == null) return;
+		if (loc == null) {
+			collision(false);
+			return;
+		}
+		WorldView top = client.getTopLevelWorldView();
+		boolean active = (config.cacheCollision() || config.cacheOverlay()) && boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
+		collision(active);
+		if (active && config.cacheCollision()) collisionCache.capture(top);
 		if (lastLoc != null) {
 			int vx = loc.getX() - lastLoc.getX();
 			int vy = loc.getY() - lastLoc.getY();
@@ -181,6 +217,7 @@ public class ChartPlotterPlugin extends Plugin {
 		moveMode = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE);
 	}
 	private void reset() {
+		collisionActive = false;
 		boarded = false;
 		course = -1;
 		baseSpeed = 0;
@@ -188,6 +225,12 @@ public class ChartPlotterPlugin extends Plugin {
 		moveMode = 0;
 		lastMoveMode = 2;
 		resetMotion();
+	}
+	private void collision(boolean active) {
+		if (active == collisionActive) return;
+		collisionActive = active;
+		if (active) collisionCache.start();
+		else collisionCache.stop();
 	}
 	private void resetMotion() {
 		speed = 0;

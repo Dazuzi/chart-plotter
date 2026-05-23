@@ -31,6 +31,7 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final int DOT = 4;
 	private static final int EDGE = 8;
 	private static final int VOID = 0xffffff;
+	private static final double FADE = 0.72;
 	private static final Color OK = ColorUtil.colorWithAlpha(Color.GREEN, 160);
 	private static final Color SAFE = ColorUtil.colorWithAlpha(Color.CYAN, 180);
 	private static final Color WARN = ColorUtil.colorWithAlpha(Color.YELLOW, 180);
@@ -39,12 +40,14 @@ public class ChartPlotterOverlay extends Overlay {
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
+	private final ChartPlotterCollisionCache collisionCache;
 	private String lastDebug;
 	@Inject
-	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config) {
+	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache) {
 		this.client = client;
 		this.plugin = plugin;
 		this.config = config;
+		this.collisionCache = collisionCache;
 		setLayer(OverlayLayer.ABOVE_SCENE);
 		setPosition(OverlayPosition.DYNAMIC);
 	}
@@ -67,21 +70,25 @@ public class ChartPlotterOverlay extends Overlay {
 		Path cur = path(top, wc, anchor, from, course);
 		Path pot = mouse >= 0 ? path(top, wc, anchor, from, mouse) : null;
 		int skip = pot != null ? match(cur, pot) : 0;
+		ChartPlotterCollisionDebug debug = config.collisionDebug();
 		Stroke prev = g.getStroke();
-		if (config.collisionDebug()) mask(g);
+		if (debug == ChartPlotterCollisionDebug.MASK) mask(g);
 		g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
 		draw(g, top, cur, rx, ry, config.worldLineColor(), skip);
 		if (pot != null) draw(g, top, pot, rx, ry, config.worldPotentialColor(), 0);
-		if (config.collisionDebug()) {
-			drawDebug(g, top, wc, center, ship.getOrientation(), cur, pot);
-			logDebug(top, wc, anchor, from, course, mouse, cur, pot);
-		}
+		if (debug != ChartPlotterCollisionDebug.OFF) drawDebug(g, top, wc, center, ship.getOrientation(), cur, pot);
+		if (config.collisionLog()) logDebug(top, wc, anchor, from, course, mouse, cur, pot);
 		g.setStroke(prev);
 		return null;
 	}
 	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target) {
+		return path(wv, wc, anchor, from, target, limit(anchor), true);
+	}
+	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap) {
+		return path(wv, wc, anchor, from, target, cap, false);
+	}
+	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, boolean checkLoaded) {
 		Tile[][][] tiles = wv.getScene().getExtendedTiles();
-		int cap = limit(anchor);
 		Path p = new Path(cap + 1);
 		p.start = from;
 		p.x[p.n] = anchor.getX();
@@ -98,6 +105,7 @@ public class ChartPlotterOverlay extends Overlay {
 			accel *= -1;
 		}
 		int dir = ChartPlotterPlugin.angleDir(from, target, plugin.turnDir());
+		ChartPlotterCollisionCache cache = config.cacheCollision() ? collisionCache : null;
 		for (int i = 0; i < cap; i++) {
 			if (o != target) o = ChartPlotterPlugin.norm(o + TURN * dir);
 			speed += accel;
@@ -109,8 +117,8 @@ public class ChartPlotterOverlay extends Overlay {
 			posY += v.getY();
 			int lx = anchor.getX() + posX;
 			int ly = anchor.getY() + posY;
-			if (!loaded(tiles, wv.getPlane(), lx, ly)) break;
-			Block b = config.stopAtCollision() && near(anchor, lx, ly, config.collisionRange()) ? block(wv, wc, anchor, config.collisionRange(), p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
+			if (checkLoaded && !loaded(tiles, wv.getPlane(), lx, ly)) break;
+			Block b = config.stopAtCollision() ? block(wv, wc, cache, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
 			if (b != null) {
 				if (b.sx != p.x[p.n - 1] || b.sy != p.y[p.n - 1] || b.so != p.o[p.n - 1]) {
 					p.x[p.n] = b.sx;
@@ -157,8 +165,7 @@ public class ChartPlotterOverlay extends Overlay {
 				have = true;
 				continue;
 			}
-			double f = (i + 1) / (double) p.n;
-			int a = (int) (sA * (1 - f));
+			int a = alpha(sA, i, p.n);
 			if (a > 0) {
 				g.setColor(ColorUtil.colorWithAlpha(color, a));
 				s.reset();
@@ -190,17 +197,18 @@ public class ChartPlotterOverlay extends Overlay {
 		int plane = wv.getPlane();
 		if (maps == null || plane < 0 || plane >= maps.length || maps[plane] == null) return;
 		int[][] flags = maps[plane].getFlags();
-		drawFootprint(g, wv, wc, loc.getX(), loc.getY(), ChartPlotterPlugin.norm(o), flags, Integer.MIN_VALUE, 0, 0, OK);
-		drawStop(g, wv, wc, cur, flags);
-		if (pot != null) drawStop(g, wv, wc, pot, flags);
+		ChartPlotterCollisionCache cache = config.cacheCollision() ? collisionCache : null;
+		drawFootprint(g, wv, wc, cache, loc.getX(), loc.getY(), ChartPlotterPlugin.norm(o), flags, Integer.MIN_VALUE, 0, 0, OK);
+		drawStop(g, wv, wc, cache, cur, flags);
+		if (pot != null) drawStop(g, wv, wc, cache, pot, flags);
 		drawDebugText(g, loc, cur, pot);
 	}
-	private void drawStop(Graphics2D g, WorldView wv, WorldEntityConfig wc, Path p, int[][] flags) {
+	private void drawStop(Graphics2D g, WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache, Path p, int[][] flags) {
 		if (!p.blocked || p.n < 1) return;
-		drawFootprint(g, wv, wc, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], flags, Integer.MIN_VALUE, 0, 0, SAFE);
-		drawFootprint(g, wv, wc, p.bx, p.by, p.bo, flags, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], WARN);
+		drawFootprint(g, wv, wc, cache, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], flags, Integer.MIN_VALUE, 0, 0, SAFE);
+		drawFootprint(g, wv, wc, cache, p.bx, p.by, p.bo, flags, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], WARN);
 	}
-	private void drawFootprint(Graphics2D g, WorldView wv, WorldEntityConfig wc, int x, int y, int o, int[][] flags, int px, int py, int po, Color ok) {
+	private void drawFootprint(Graphics2D g, WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache, int x, int y, int o, int[][] flags, int px, int py, int po, Color ok) {
 		float[] rx = rectX(wc);
 		float[] ry = rectY(wc);
 		boolean moving = px != Integer.MIN_VALUE;
@@ -213,7 +221,7 @@ public class ChartPlotterOverlay extends Overlay {
 				if (edge(ix, iy, minX, maxX, minY, maxY)) {
 					int qx = rotateX(x, o, ix, iy);
 					int qy = rotateY(y, o, ix, iy);
-					Hit hit = moving ? hitPath(flags, rotateX(px, po, ix, iy), rotateY(py, po, ix, iy), qx, qy) : hitFull(flags, qx, qy);
+					Hit hit = moving ? hitPath(cache, wv, flags, rotateX(px, po, ix, iy), rotateY(py, po, ix, iy), qx, qy) : hitFull(cache, wv, flags, qx, qy);
 					Point q = Perspective.localToCanvas(client, new LocalPoint(qx, qy, wv), 0);
 					if (q != null) {
 						g.setColor(hit == null ? ok : hit.k == 1 ? HIT : DIR);
@@ -255,7 +263,7 @@ public class ChartPlotterOverlay extends Overlay {
 		int d = Math.max(Math.abs(p.hx - anchor.getX()), Math.abs(p.hy - anchor.getY())) / TS;
 		CollisionData[] maps = wv.getCollisionMaps();
 		int[][] flags = maps != null && wv.getPlane() >= 0 && wv.getPlane() < maps.length && maps[wv.getPlane()] != null ? maps[wv.getPlane()].getFlags() : null;
-		return "ChartPlotter collision " + name + " kind=" + kind(p.hk) + " dist=" + d + " flag=0x" + Integer.toHexString(p.hf) + " bits=" + bits(p.hf) + " scene=" + p.htx + "," + p.hty + " world=" + wx + "," + wy + " chunk=" + chunkX + "," + chunkY + " region=" + region + " plane=" + wv.getPlane() + " base=" + wv.getBaseX() + "," + wv.getBaseY() + " localHit=" + p.hx + "," + p.hy + " safe=" + p.x[p.n - 1] + "," + p.y[p.n - 1] + "," + p.o[p.n - 1] + " block=" + p.bx + "," + p.by + "," + p.bo + " anchor=" + anchor.getX() + "," + anchor.getY() + " from=" + from + " course=" + course + " mouse=" + mouse + " speed=" + plugin.speed() + " accel=" + plugin.accel() + " reverse=" + plugin.reversing() + " max=" + plugin.maxSpeed() + " range=" + config.collisionRange() + " edge=" + EDGE + " bounds=" + bounds(wc) + " regions=" + java.util.Arrays.toString(wv.getMapRegions()) + " grid=" + grid(flags, p.htx, p.hty);
+		return "ChartPlotter collision " + name + " kind=" + kind(p.hk) + " dist=" + d + " flag=0x" + Integer.toHexString(p.hf) + " bits=" + bits(p.hf) + " scene=" + p.htx + "," + p.hty + " world=" + wx + "," + wy + " chunk=" + chunkX + "," + chunkY + " region=" + region + " plane=" + wv.getPlane() + " base=" + wv.getBaseX() + "," + wv.getBaseY() + " localHit=" + p.hx + "," + p.hy + " safe=" + p.x[p.n - 1] + "," + p.y[p.n - 1] + "," + p.o[p.n - 1] + " block=" + p.bx + "," + p.by + "," + p.bo + " anchor=" + anchor.getX() + "," + anchor.getY() + " from=" + from + " course=" + course + " mouse=" + mouse + " speed=" + plugin.speed() + " accel=" + plugin.accel() + " reverse=" + plugin.reversing() + " max=" + plugin.maxSpeed() + " edge=" + EDGE + " bounds=" + bounds(wc) + " regions=" + java.util.Arrays.toString(wv.getMapRegions()) + " " + collisionCache.stats() + " grid=" + grid(flags, p.htx, p.hty);
 	}
 	private static String bounds(WorldEntityConfig wc) {
 		if (wc == null) return "null";
@@ -312,6 +320,12 @@ public class ChartPlotterOverlay extends Overlay {
 			dx[i] = sx[i];
 			dy[i] = sy[i];
 		}
+	}
+	private static int alpha(int a, int i, int n) {
+		double f = (i + 1) / (double) n;
+		if (f <= FADE) return a;
+		double t = (f - FADE) / (1 - FADE);
+		return (int) (a * (1 - t));
 	}
 	static int match(Path a, Path b) {
 		int n = Math.min(a.n, b.n);
@@ -383,8 +397,7 @@ public class ChartPlotterOverlay extends Overlay {
 		int ty = Math.floorDiv(ly, TS) + EXT;
 		return plane >= 0 && plane < tiles.length && tx >= 0 && ty >= 0 && tx < tiles[plane].length && ty < tiles[plane][tx].length && tiles[plane][tx][ty] != null;
 	}
-	private static boolean near(LocalPoint anchor, int x, int y, int range) {return Math.max(Math.abs(x - anchor.getX()), Math.abs(y - anchor.getY())) <= range * TS;}
-	private static Block block(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int range, int ax, int ay, int ao, int bx, int by, int bo) {
+	private static Block block(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache, int ax, int ay, int ao, int bx, int by, int bo) {
 		CollisionData[] maps = wv.getCollisionMaps();
 		int plane = wv.getPlane();
 		if (maps == null || plane < 0 || plane >= maps.length || maps[plane] == null) return null;
@@ -399,15 +412,15 @@ public class ChartPlotterOverlay extends Overlay {
 		for (int i = 1; i <= steps; i++) {
 			int qx = ax + dx * i / steps;
 			int qy = ay + dy * i / steps;
-			Hit h = hitFootprint(flags, wc, px, py, po, qx, qy, bo);
-			if (h != null && near(anchor, h.x, h.y, range)) return new Block(px, py, po, qx, qy, bo, h);
+			Hit h = hitFootprint(cache, wv, flags, wc, px, py, po, qx, qy, bo);
+			if (h != null) return new Block(px, py, po, qx, qy, bo, h);
 			px = qx;
 			py = qy;
 			po = bo;
 		}
 		return null;
 	}
-	private static Hit hitFootprint(int[][] flags, WorldEntityConfig wc, int ax, int ay, int ao, int bx, int by, int bo) {
+	private static Hit hitFootprint(ChartPlotterCollisionCache cache, WorldView wv, int[][] flags, WorldEntityConfig wc, int ax, int ay, int ao, int bx, int by, int bo) {
 		float[] rx = rectX(wc);
 		float[] ry = rectY(wc);
 		int minX = min(rx);
@@ -421,7 +434,7 @@ public class ChartPlotterOverlay extends Overlay {
 					int py = rotateY(ay, ao, x, y);
 					int qx = rotateX(bx, bo, x, y);
 					int qy = rotateY(by, bo, x, y);
-					Hit h = hitPath(flags, px, py, qx, qy);
+					Hit h = hitPath(cache, wv, flags, px, py, qx, qy);
 					if (h != null) return h;
 				}
 				if (y == maxY) break;
@@ -430,7 +443,7 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return null;
 	}
-	private static Hit hitPath(int[][] flags, int ax, int ay, int bx, int by) {
+	private static Hit hitPath(ChartPlotterCollisionCache cache, WorldView wv, int[][] flags, int ax, int ay, int bx, int by) {
 		int dx = bx - ax;
 		int dy = by - ay;
 		int steps = Math.max(Math.abs(dx), Math.abs(dy)) / STEP;
@@ -442,8 +455,9 @@ public class ChartPlotterOverlay extends Overlay {
 			int ly = ay + dy * i / steps;
 			int x = Math.floorDiv(lx, TS);
 			int y = Math.floorDiv(ly, TS);
-			if (!safe(flags, x, y)) return null;
-			Hit h = hitTile(flags, lx, ly, x, y, x - px, y - py);
+			int f = flag(cache, wv, flags, x, y);
+			if (f == ChartPlotterCollisionCache.UNKNOWN) return null;
+			Hit h = hitTile(f, lx, ly, x, y, x - px, y - py);
 			if (h != null) return h;
 			px = x;
 			py = y;
@@ -456,31 +470,36 @@ public class ChartPlotterOverlay extends Overlay {
 	private static int max(float[] v) {return (int) Math.ceil(Math.max(Math.max(v[0], v[1]), Math.max(v[2], v[3])));}
 	private static int next(int v, int max) {return Math.min(v + STEP, max);}
 	private static boolean edge(int x, int y, int minX, int maxX, int minY, int maxY) {return x == minX || x == maxX || y == minY || y == maxY;}
-	private static Hit hitFull(int[][] flags, int lx, int ly) {
+	private static Hit hitFull(ChartPlotterCollisionCache cache, WorldView wv, int[][] flags, int lx, int ly) {
 		int x = Math.floorDiv(lx, TS);
 		int y = Math.floorDiv(ly, TS);
-		if (!safe(flags, x, y)) return null;
-		int f = flags[x][y];
-		if (f == VOID) return null;
+		int f = flag(cache, wv, flags, x, y);
+		if (f == ChartPlotterCollisionCache.UNKNOWN) return null;
 		return (f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0 ? new Hit(lx, ly, x, y, f, 1) : null;
 	}
-	private static Hit hitTile(int[][] flags, int lx, int ly, int x, int y, int dx, int dy) {
-		if (!inside(flags, x, y)) return null;
-		int f = flags[x][y];
-		if (f == VOID) return null;
+	private static Hit hitTile(int f, int lx, int ly, int x, int y, int dx, int dy) {
 		if ((f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0) return new Hit(lx, ly, x, y, f, 1);
 		dx = Integer.signum(dx);
 		dy = Integer.signum(dy);
-		if (dx < 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_EAST) != 0) return new Hit(lx, ly, x, y, f, 2);
-		if (dx > 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_WEST) != 0) return new Hit(lx, ly, x, y, f, 2);
-		if (dy < 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_NORTH) != 0) return new Hit(lx, ly, x, y, f, 2);
-		if (dy > 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH) != 0) return new Hit(lx, ly, x, y, f, 2);
-		if (dx < 0 && dy < 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST) != 0) return new Hit(lx, ly, x, y, f, 2);
-		if (dx < 0 && dy > 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST) != 0) return new Hit(lx, ly, x, y, f, 2);
-		if (dx > 0 && dy < 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST) != 0) return new Hit(lx, ly, x, y, f, 2);
-		return dx > 0 && dy > 0 && (f & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST) != 0 ? new Hit(lx, ly, x, y, f, 2) : null;
+		int mask = 0;
+		if (dx < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_EAST;
+		if (dx > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_WEST;
+		if (dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH;
+		if (dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH;
+		if (dx < 0 && dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST;
+		if (dx < 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST;
+		if (dx > 0 && dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST;
+		if (dx > 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST;
+		return (f & mask) != 0 ? new Hit(lx, ly, x, y, f, 2) : null;
 	}
 	private static String kind(int k) {return k == 1 ? "full" : "dir";}
+	private static int flag(ChartPlotterCollisionCache cache, WorldView wv, int[][] flags, int x, int y) {
+		if (safe(flags, x, y)) {
+			int f = flags[x][y];
+			if (f != VOID) return f;
+		}
+		return cache == null ? ChartPlotterCollisionCache.UNKNOWN : cache.flag(wv, x, y);
+	}
 	private static boolean safe(int[][] flags, int x, int y) {return inside(flags, x, y) && x >= EDGE && y >= EDGE && x < flags.length - EDGE && y < flags[x].length - EDGE;}
 	private static boolean inside(int[][] flags, int x, int y) {return x >= 0 && y >= 0 && x < flags.length && y < flags[x].length;}
 	private static int limit(LocalPoint anchor) {

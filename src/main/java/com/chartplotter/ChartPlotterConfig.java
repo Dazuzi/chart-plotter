@@ -9,6 +9,8 @@ import net.runelite.client.config.ConfigSection;
 import net.runelite.client.util.ColorUtil;
 @ConfigGroup("chartplotter")
 public interface ChartPlotterConfig extends Config {
+	@ConfigItem(keyName = "stopAtCollision", name = "Collision clipping", description = "Clip projected paths at collision flags.", position = 0)
+	default boolean stopAtCollision() {return false;}
 	@ConfigSection(name = "World", description = "World overlay settings.", position = 0)
 	String worldSection = "worldSection";
 	@ConfigItem(keyName = "worldEnabled", name = "Enabled", description = "Draw course lines in the world.", section = worldSection, position = 0)
@@ -22,13 +24,6 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 2;}
-	@ConfigItem(keyName = "stopAtCollision", name = "Stop at collision", description = "Stop projected paths at collision flags.", section = worldSection, position = 4)
-	default boolean stopAtCollision() {return false;}
-	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points in the world.", section = worldSection, position = 5)
-	default boolean collisionDebug() {return false;}
-	@ConfigItem(keyName = "collisionRange", name = "Collision range", description = "Tiles ahead to trust collision clipping.", section = worldSection, position = 6)
-	@Range(min = 8, max = 104)
-	default int collisionRange() {return 24;}
 	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 1)
 	String minimapSection = "minimapSection";
 	@ConfigItem(keyName = "minimapEnabled", name = "Enabled", description = "Draw course lines on the minimap.", section = minimapSection, position = 0)
@@ -55,4 +50,14 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 2;}
+	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 3)
+	String tweaksSection = "tweaksSection";
+	@ConfigItem(keyName = "cacheCollision", name = "Remember collision", description = "Save reliable collision tiles to disk.", section = tweaksSection, position = 0)
+	default boolean cacheCollision() {return false;}
+	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)
+	default ChartPlotterCollisionDebug collisionDebug() {return ChartPlotterCollisionDebug.OFF;}
+	@ConfigItem(keyName = "collisionLog", name = "Collision log", description = "Print collision debug lines to the console.", section = tweaksSection, position = 2)
+	default boolean collisionLog() {return false;}
+	@ConfigItem(keyName = "cacheOverlay", name = "Cache overlay", description = "Draw remembered collision coverage on the world map.", section = tweaksSection, position = 3)
+	default boolean cacheOverlay() {return false;}
 }
