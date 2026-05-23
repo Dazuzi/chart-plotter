@@ -14,7 +14,8 @@ final class ChartPlotterRoute {
 	final int[] y;
 	final int n;
 	final int turnBias;
-	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias) {
+	final boolean fast;
+	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {
 		this.status = status;
 		this.sx = sx;
 		this.sy = sy;
@@ -24,12 +25,13 @@ final class ChartPlotterRoute {
 		this.y = y;
 		this.n = n;
 		this.turnBias = turnBias;
+		this.fast = fast;
 	}
-	static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias) {return new ChartPlotterRoute(PENDING, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias);}
-	static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias) {return new ChartPlotterRoute(UNCHARTED, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias);}
-	static ChartPlotterRoute none(int sx, int sy, int tx, int ty, int turnBias) {return new ChartPlotterRoute(NO_ROUTE, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias);}
-	static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias) {return new ChartPlotterRoute(COMPLEX, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias);}
-	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, turnBias);}
+	static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(PENDING, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast);}
+	static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(UNCHARTED, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast);}
+	static ChartPlotterRoute none(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(NO_ROUTE, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast);}
+	static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(COMPLEX, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast);}
+	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, turnBias, fast);}
 	boolean target(int x, int y) {return tx == x && ty == y;}
 	boolean start(int x, int y) {return sx == x && sy == y;}
 	ChartPlotterRoute advance(int sx, int sy) {
@@ -56,7 +58,7 @@ final class ChartPlotterRoute {
 			ox[i] = x[skip + i - 1];
 			oy[i] = y[skip + i - 1];
 		}
-		return ok(sx, sy, tx, ty, ox, oy, nn, turnBias);
+		return ok(sx, sy, tx, ty, ox, oy, nn, turnBias, fast);
 	}
 	String text() {
 		if (status == PENDING) return "Charting course";

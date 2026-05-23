@@ -66,6 +66,8 @@ public interface ChartPlotterConfig extends Config {
 	default int chartTurnBias() {return 5;}
 	@ConfigItem(keyName = "chartBidirectional", name = "Bidirectional search", description = "Search from both ends when charting long routes.", section = chartingSection, position = 1)
 	default boolean chartBidirectional() {return false;}
+	@ConfigItem(keyName = "chartFastRoute", name = "Fast route", description = "Use a faster weighted search that may choose a less optimal route.", section = chartingSection, position = 2)
+	default boolean chartFastRoute() {return false;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 4)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheCollision", name = "Remember collision", description = "Save reliable collision tiles to disk.", section = tweaksSection, position = 0)

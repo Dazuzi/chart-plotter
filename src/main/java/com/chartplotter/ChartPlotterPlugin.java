@@ -290,7 +290,8 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		if (routeBusy || r.status == ChartPlotterRoute.PENDING) return;
 		int turnBias = config.chartTurnBias();
-		if (r.turnBias != turnBias) {
+		boolean fast = config.chartFastRoute();
+		if (r.turnBias != turnBias || r.fast != fast) {
 			routeTo(top, ship, loc, r.tx, r.ty, false);
 			return;
 		}
@@ -317,15 +318,16 @@ public class ChartPlotterPlugin extends Plugin {
 		WorldEntityConfig wc = ship.getConfig();
 		int turnBias = config.chartTurnBias();
 		boolean bidirectional = config.chartBidirectional();
+		boolean fast = config.chartFastRoute();
 		boolean reverse = reversing();
 		int start = ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int seq = routeSeq.incrementAndGet();
 		Map<Long, int[]> data = collisionCache.snapshot(top);
 		routeBusy = true;
-		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias);
+		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
 		startRouteExec();
 		routeExec.execute(() -> {
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse);
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast);
 			if (seq == routeSeq.get()) {
 				routeBusy = false;
 				route = r;

@@ -14,33 +14,37 @@ final class ChartPlotterRouteFinder {
 	private static final int[] OR = {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 0, 128, 256, 384, 512, 640, 768, 896};
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
-	static ChartPlotterRoute find(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse) {
-		return find(new Grid(data), wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse);
+	static ChartPlotterRoute find(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast) {
+		return find(new Grid(data), wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast);
 	}
 	static boolean clear(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, boolean reverse) {
 		int d = dir(tx - sx, ty - sy);
 		return d >= 0 && clear(new Grid(data), wc == null ? null : new Footprint(wc), start, sx, sy, tx, ty, orient(d, d), reverse);
 	}
-	private static ChartPlotterRoute find(Grid data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse) {
+	private static ChartPlotterRoute find(Grid data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast) {
 		turnBias = Math.max(0, Math.min(10, turnBias));
 		Footprint fp = wc == null ? null : new Footprint(wc);
-		if (data.flag(sx, sy) == ChartPlotterCollisionCache.UNKNOWN || data.flag(tx, ty) == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias);
-		if (blocked(data, sx, sy) || blocked(data, tx, ty)) return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias);
+		if (data.flag(sx, sy) == ChartPlotterCollisionCache.UNKNOWN || data.flag(tx, ty) == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
+		if (blocked(data, sx, sy) || blocked(data, tx, ty)) return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
 		int end = open(data, fp, tx, ty);
-		if (end < 0) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias);
-		if (end == 0) return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias);
-		ChartPlotterRoute direct = direct(data, fp, start, sx, sy, tx, ty, turnBias, reverse);
+		if (end < 0) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
+		if (end == 0) return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		ChartPlotterRoute direct = direct(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast);
 		if (direct != null) return direct;
-		direct = direct2(data, fp, start, sx, sy, tx, ty, turnBias, reverse);
+		direct = direct2(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast);
 		if (direct != null) return direct;
-		int cap = cap(sx, sy, tx, ty, turnBias);
-		return (bidirectional ? searchBi(data, fp, start, sx, sy, tx, ty, turnBias, cap, reverse) : search(data, fp, start, sx, sy, tx, ty, turnBias, cap, reverse)).route;
+		int max = maxMargin(sx, sy, tx, ty, fp);
+		for (int m = firstMargin(sx, sy, tx, ty, fp);; m = Math.min(max, m * 2)) {
+			Bounds b = bounds(sx, sy, tx, ty, m);
+			int cap = cap(sx, sy, tx, ty, turnBias, m);
+			Search s = bidirectional ? searchBi(data, fp, start, sx, sy, tx, ty, turnBias, b, cap, reverse, fast) : search(data, fp, start, sx, sy, tx, ty, turnBias, b, cap, reverse, fast);
+			if (s.route.status == ChartPlotterRoute.OK || s.route.status == ChartPlotterRoute.UNCHARTED || m == max) return s.route;
+		}
 	}
-	private static Search search(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, int cap, boolean reverse) {
-		Bounds b = bounds(sx, sy, tx, ty, fp);
+	private static Search search(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast) {
 		Work w = WORK.get();
 		w.clearA();
-		addStarts(w.aq, w.ag, w.a, sx, sy, tx, ty, turnBias, start);
+		addStarts(w.aq, w.ag, w.a, sx, sy, tx, ty, turnBias, start, fast);
 		boolean unknown = false;
 		boolean capped = false;
 		int seen = 0;
@@ -48,7 +52,7 @@ final class ChartPlotterRouteFinder {
 			int a = w.aq.poll();
 			int bg = w.ag.get(state(w.a.x[a], w.a.y[a], w.a.dir[a]));
 			if (bg == LongIntMap.MISS || w.a.g[a] != bg) continue;
-			if (w.a.x[a] == tx && w.a.y[a] == ty) return new Search(route(data, fp, start, w.a, a, sx, sy, tx, ty, turnBias, reverse), w.a.d[a]);
+			if (w.a.x[a] == tx && w.a.y[a] == ty) return new Search(route(data, fp, start, w.a, a, sx, sy, tx, ty, turnBias, reverse, fast), w.a.d[a]);
 			if (++seen > MAX) {
 				capped = true;
 				break;
@@ -69,17 +73,16 @@ final class ChartPlotterRouteFinder {
 				if (old != LongIntMap.MISS && old <= ng) continue;
 				int hh = h(nx, ny, tx, ty, i, turnBias);
 				w.ag.put(key, ng);
-				w.aq.add(w.a.add(nx, ny, i, ng, nd, ng + hh, a));
+				w.aq.add(w.a.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a));
 			}
 		}
-		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias), 0);
+		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast), 0);
 	}
-	private static Search searchBi(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, int cap, boolean reverse) {
-		Bounds b = bounds(sx, sy, tx, ty, fp);
+	private static Search searchBi(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast) {
 		Work w = WORK.get();
 		w.clearAll();
-		addFronts(w.aq, w.ag, w.an, w.a, sx, sy, tx, ty, turnBias, start);
-		addEnds(w.bq, w.bg, w.bn, w.b, tx, ty, sx, sy, turnBias, start);
+		addFronts(w.aq, w.ag, w.an, w.a, sx, sy, tx, ty, turnBias, start, fast);
+		addEnds(w.bq, w.bg, w.bn, w.b, tx, ty, sx, sy, turnBias, start, fast);
 		boolean unknown = false;
 		boolean capped = false;
 		int seen = 0;
@@ -111,7 +114,8 @@ final class ChartPlotterRouteFinder {
 					long key = state(nx, ny, i);
 					int old = w.ag.get(key);
 					if (old != LongIntMap.MISS && old <= ng) continue;
-					int n = w.a.add(nx, ny, i, ng, nd, ng + h(nx, ny, tx, ty, i, turnBias), a);
+					int hh = h(nx, ny, tx, ty, i, turnBias);
+					int n = w.a.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a);
 					w.ag.put(key, ng);
 					w.an.put(key, n);
 					w.aq.add(n);
@@ -150,7 +154,8 @@ final class ChartPlotterRouteFinder {
 					long key = state(px, py, i);
 					int old = w.bg.get(key);
 					if (old != LongIntMap.MISS && old <= ng) continue;
-					int n = w.b.add(px, py, i, ng, nd, ng + bh(px, py, sx, sy, start, turnBias), a);
+					int hh = bh(px, py, sx, sy, start, turnBias);
+					int n = w.b.add(px, py, i, ng, nd, ng + wh(hh, fast), a);
 					w.bg.put(key, ng);
 					w.bn.put(key, n);
 					w.bq.add(n);
@@ -168,10 +173,10 @@ final class ChartPlotterRouteFinder {
 				}
 			}
 		}
-		if (best != Integer.MAX_VALUE) return new Search(route(data, fp, start, w.a, mf, w.b, mb, sx, sy, tx, ty, turnBias, reverse), 0);
-		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias), 0);
+		if (best != Integer.MAX_VALUE) return new Search(route(data, fp, start, w.a, mf, w.b, mb, sx, sy, tx, ty, turnBias, reverse, fast), 0);
+		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast), 0);
 	}
-	private static ChartPlotterRoute route(Grid data, Footprint fp, int start, Nodes nodes, int end, int sx, int sy, int tx, int ty, int turnBias, boolean reverse) {
+	private static ChartPlotterRoute route(Grid data, Footprint fp, int start, Nodes nodes, int end, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast) {
 		int n = 0;
 		for (int a = end; a >= 0; a = nodes.prev[a]) n++;
 		int[] x = new int[n];
@@ -182,9 +187,9 @@ final class ChartPlotterRouteFinder {
 			x[i] = nodes.x[a];
 			y[i] = nodes.y[a];
 		}
-		return smooth(data, fp, start, sx, sy, tx, ty, x, y, n, turnBias, reverse);
+		return smooth(data, fp, start, sx, sy, tx, ty, x, y, n, turnBias, reverse, fast);
 	}
-	private static ChartPlotterRoute route(Grid data, Footprint fp, int start, Nodes fs, int front, Nodes bs, int back, int sx, int sy, int tx, int ty, int turnBias, boolean reverse) {
+	private static ChartPlotterRoute route(Grid data, Footprint fp, int start, Nodes fs, int front, Nodes bs, int back, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast) {
 		int nf = 0;
 		for (int a = front; a >= 0; a = fs.prev[a]) nf++;
 		int nb = 0;
@@ -203,10 +208,10 @@ final class ChartPlotterRouteFinder {
 			x[i] = bs.x[a];
 			y[i++] = bs.y[a];
 		}
-		return smooth(data, fp, start, sx, sy, tx, ty, x, y, n, turnBias, reverse);
+		return smooth(data, fp, start, sx, sy, tx, ty, x, y, n, turnBias, reverse, fast);
 	}
-	private static ChartPlotterRoute smooth(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean reverse) {
-		if (n < 3) return ChartPlotterRoute.ok(sx, sy, tx, ty, x, y, n, turnBias);
+	private static ChartPlotterRoute smooth(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean reverse, boolean fast) {
+		if (n < 3) return ChartPlotterRoute.ok(sx, sy, tx, ty, x, y, n, turnBias, fast);
 		int[] ox = new int[n];
 		int[] oy = new int[n];
 		int on = 0;
@@ -235,10 +240,10 @@ final class ChartPlotterRouteFinder {
 			oy[on++] = y[best];
 			i = best;
 		}
-		return corners(sx, sy, tx, ty, ox, oy, on, turnBias);
+		return corners(sx, sy, tx, ty, ox, oy, on, turnBias, fast);
 	}
-	private static ChartPlotterRoute corners(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias) {
-		if (n < 3) return ChartPlotterRoute.ok(sx, sy, tx, ty, x, y, n, turnBias);
+	private static ChartPlotterRoute corners(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {
+		if (n < 3) return ChartPlotterRoute.ok(sx, sy, tx, ty, x, y, n, turnBias, fast);
 		int[] ox = new int[n];
 		int[] oy = new int[n];
 		int on = 0;
@@ -254,7 +259,7 @@ final class ChartPlotterRouteFinder {
 		}
 		ox[on] = x[n - 1];
 		oy[on++] = y[n - 1];
-		return ChartPlotterRoute.ok(sx, sy, tx, ty, ox, oy, on, turnBias);
+		return ChartPlotterRoute.ok(sx, sy, tx, ty, ox, oy, on, turnBias, fast);
 	}
 	private static int move(Grid data, Footprint fp, int x, int y, int dir, int nx, int ny, int ndir, boolean reverse) {
 		if (fp == null) return clearPoint(data, x, y, nx, ny);
@@ -298,57 +303,60 @@ final class ChartPlotterRouteFinder {
 		if (dx > 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST;
 		return (f & mask) == 0 ? 1 : 0;
 	}
-	private static void addStarts(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start) {
+	private static void addStarts(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast) {
 		if (start >= 0) {
-			addStart(q, best, nodes, sx, sy, tx, ty, turnBias, dir(start));
+			addStart(q, best, nodes, sx, sy, tx, ty, turnBias, dir(start), fast);
 			return;
 		}
-		for (int i = 0; i < DX.length; i++) addStart(q, best, nodes, sx, sy, tx, ty, turnBias, i);
+		for (int i = 0; i < DX.length; i++) addStart(q, best, nodes, sx, sy, tx, ty, turnBias, i, fast);
 	}
-	private static void addStart(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir) {
-		int n = nodes.add(sx, sy, dir, 0, 0, h(sx, sy, tx, ty, dir, turnBias), -1);
+	private static void addStart(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast) {
+		int hh = h(sx, sy, tx, ty, dir, turnBias);
+		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
 		q.add(n);
 		best.put(state(sx, sy, dir), 0);
 	}
-	private static void addFronts(Heap q, LongIntMap best, LongIntMap map, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start) {
+	private static void addFronts(Heap q, LongIntMap best, LongIntMap map, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast) {
 		if (start >= 0) {
-			addFront(q, best, map, nodes, sx, sy, tx, ty, turnBias, dir(start));
+			addFront(q, best, map, nodes, sx, sy, tx, ty, turnBias, dir(start), fast);
 			return;
 		}
-		for (int i = 0; i < DX.length; i++) addFront(q, best, map, nodes, sx, sy, tx, ty, turnBias, i);
+		for (int i = 0; i < DX.length; i++) addFront(q, best, map, nodes, sx, sy, tx, ty, turnBias, i, fast);
 	}
-	private static void addFront(Heap q, LongIntMap best, LongIntMap map, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir) {
-		int n = nodes.add(sx, sy, dir, 0, 0, h(sx, sy, tx, ty, dir, turnBias), -1);
+	private static void addFront(Heap q, LongIntMap best, LongIntMap map, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast) {
+		int hh = h(sx, sy, tx, ty, dir, turnBias);
+		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
 		long key = state(sx, sy, dir);
 		q.add(n);
 		best.put(key, 0);
 		map.put(key, n);
 	}
-	private static void addEnds(Heap q, LongIntMap best, LongIntMap map, Nodes nodes, int tx, int ty, int sx, int sy, int turnBias, int start) {
+	private static void addEnds(Heap q, LongIntMap best, LongIntMap map, Nodes nodes, int tx, int ty, int sx, int sy, int turnBias, int start, boolean fast) {
 		for (int i = 0; i < DX.length; i++) {
-			int n = nodes.add(tx, ty, i, 0, 0, bh(tx, ty, sx, sy, start, turnBias), -1);
+			int hh = bh(tx, ty, sx, sy, start, turnBias);
+			int n = nodes.add(tx, ty, i, 0, 0, wh(hh, fast), -1);
 			long key = state(tx, ty, i);
 			q.add(n);
 			best.put(key, 0);
 			map.put(key, n);
 		}
 	}
-	private static ChartPlotterRoute direct(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse) {
+	private static ChartPlotterRoute direct(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast) {
 		int dx = tx - sx;
 		int dy = ty - sy;
 		int d = dir(dx, dy);
-		if (dx == 0 && dy == 0) return ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx}, new int[]{sy}, 1, turnBias);
+		if (dx == 0 && dy == 0) return ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx}, new int[]{sy}, 1, turnBias, fast);
 		if (d < 0) return null;
-		if (clear(data, fp, start, sx, sy, tx, ty, orient(d, d), reverse)) return ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx, tx}, new int[]{sy, ty}, 2, turnBias);
+		if (clear(data, fp, start, sx, sy, tx, ty, orient(d, d), reverse)) return ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx, tx}, new int[]{sy, ty}, 2, turnBias, fast);
 		return null;
 	}
-	private static ChartPlotterRoute direct2(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse) {
+	private static ChartPlotterRoute direct2(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast) {
 		int dx = tx - sx;
 		int dy = ty - sy;
 		int best = Integer.MAX_VALUE;
 		int bx = 0;
 		int by = 0;
-		int cap = cap(sx, sy, tx, ty, turnBias);
+		int cap = cap(sx, sy, tx, ty, turnBias, firstMargin(sx, sy, tx, ty, fp));
 		for (int i = 0; i < DX.length; i++) {
 			for (int j = 0; j < DX.length; j++) {
 				int det = DX[i] * DY[j] - DY[i] * DX[j];
@@ -372,7 +380,7 @@ final class ChartPlotterRouteFinder {
 				by = my;
 			}
 		}
-		return best == Integer.MAX_VALUE ? null : ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx, bx, tx}, new int[]{sy, by, ty}, 3, turnBias);
+		return best == Integer.MAX_VALUE ? null : ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx, bx, tx}, new int[]{sy, by, ty}, 3, turnBias, fast);
 	}
 	private static int directPoint(Grid data, int sx, int sy, int tx, int ty) {
 		int x = sx;
@@ -494,6 +502,7 @@ final class ChartPlotterRouteFinder {
 	private static int h(int x, int y, int tx, int ty, int dir, int turnBias) {
 		return h(x, y, tx, ty) + turn(turnBias) * minTurns(dir, tx - x, ty - y);
 	}
+	private static int wh(int h, boolean fast) {return fast ? h * 11 / 10 : h;}
 	private static int bh(int x, int y, int sx, int sy, int start, int turnBias) {
 		return start < 0 ? h(x, y, sx, sy) : h(sx, sy, x, y, dir(start), turnBias);
 	}
@@ -507,15 +516,21 @@ final class ChartPlotterRouteFinder {
 		int uy = DY[dir];
 		return (long) dx * uy == (long) dy * ux && dx * ux + dy * uy > 0;
 	}
-	private static int cap(int sx, int sy, int tx, int ty, int turnBias) {
+	private static int cap(int sx, int sy, int tx, int ty, int turnBias, int margin) {
 		int h = h(sx, sy, tx, ty);
-		return h * (13 + turnBias) / 10 + 160;
+		return h * (13 + turnBias) / 10 + margin * 20 + 160;
 	}
 	private static int step(int dir) {return COST[dir];}
 	private static int turn(int turnBias) {return 15 + turnBias * 14;}
-	private static Bounds bounds(int sx, int sy, int tx, int ty, Footprint fp) {
+	private static int firstMargin(int sx, int sy, int tx, int ty, Footprint fp) {
 		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
-		int m = Math.min(512, Math.max(32, d / 2 + 32 + radius(fp)));
+		return Math.min(maxMargin(sx, sy, tx, ty, fp), Math.max(32, d / 4 + 32 + radius(fp)));
+	}
+	private static int maxMargin(int sx, int sy, int tx, int ty, Footprint fp) {
+		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
+		return Math.max(512, d + 64 + radius(fp));
+	}
+	private static Bounds bounds(int sx, int sy, int tx, int ty, int m) {
 		return new Bounds(Math.min(sx, tx) - m, Math.min(sy, ty) - m, Math.max(sx, tx) + m, Math.max(sy, ty) + m);
 	}
 	private static int dir(int angle) {
