@@ -6,9 +6,9 @@ import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
 import org.junit.Test;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+
+import static org.junit.Assert.*;
+
 public class ChartPlotterRouteFinderTest {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	@Test
@@ -121,6 +121,12 @@ public class ChartPlotterRouteFinderTest {
 		assertEquals(6, a.x[0]);
 		assertEquals(10, a.x[1]);
 		assertTrue(a.fast);
+	}
+	@Test
+	public void routeTargetMatchesRadius() {
+		ChartPlotterRoute r = ChartPlotterRoute.pending(0, 0, 10, 20, 5, false);
+		assertTrue(r.target(14, 16, 4));
+		assertFalse(r.target(15, 20, 4));
 	}
 	@Test
 	public void bidirectionalFindsKnownRoute() {

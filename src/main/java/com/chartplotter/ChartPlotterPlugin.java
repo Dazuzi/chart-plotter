@@ -164,7 +164,7 @@ public class ChartPlotterPlugin extends Plugin {
 		if (loc == null) loc = ship.getLocalLocation();
 		if (loc == null) return;
 		ChartPlotterRoute old = route;
-		if (old != null && old.target(dst[0], dst[1])) {
+		if (old != null && old.target(dst[0], dst[1], config.routeClearRadius())) {
 			clearRoute();
 			return;
 		}
