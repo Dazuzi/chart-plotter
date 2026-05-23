@@ -1,14 +1,20 @@
 package com.chartplotter;
 import com.google.inject.Provides;
 import java.awt.event.MouseEvent;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
+import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.GameTick;
@@ -31,6 +37,8 @@ import net.runelite.client.ui.overlay.OverlayManager;
 	tags = {"sailing","sail","heading","navigation","chart","plotter"}
 )
 public class ChartPlotterPlugin extends Plugin {
+	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int ROUTE_DONE = 3;
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -53,11 +61,16 @@ public class ChartPlotterPlugin extends Plugin {
 	private LocalPoint lastLoc;
 	private boolean collisionActive;
 	private boolean mouseRegistered;
+	private volatile ChartPlotterRoute route;
+	private final AtomicInteger routeSeq = new AtomicInteger();
+	private volatile boolean routeBusy;
+	private ExecutorService routeExec;
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
 			Point m = new Point(e.getX(), e.getY());
-			if (e.getButton() == MouseEvent.BUTTON1 && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> setCourse(m));
+			if (e.getButton() == MouseEvent.BUTTON1 && e.isControlDown()) clientThread.invoke(() -> chartCourse(m));
+			else if (e.getButton() == MouseEvent.BUTTON1 && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> setCourse(m));
 			return e;
 		}
 	};
@@ -77,6 +90,7 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		collisionActive = false;
 		collisionCache.stop();
+		stopRouteExec();
 		reset();
 	}
 	@SuppressWarnings("unused")
@@ -91,11 +105,15 @@ public class ChartPlotterPlugin extends Plugin {
 		else overlayManager.remove(minimapOverlay);
 		if (config.worldMapEnabled()) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
-		boolean wantMouse = config.minimapEnabled();
-		if (wantMouse && !mouseRegistered) {
+		boolean any = config.worldEnabled() || config.minimapEnabled() || config.worldMapEnabled();
+		if (!any) {
+			clearRoute();
+			stopRouteExec();
+		}
+		if (any && !mouseRegistered) {
 			mouseManager.registerMouseListener(mouse);
 			mouseRegistered = true;
-		} else if (!wantMouse && mouseRegistered) {
+		} else if (!any && mouseRegistered) {
 			mouseManager.unregisterMouseListener(mouse);
 			mouseRegistered = false;
 		}
@@ -113,6 +131,7 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		if (!boarded) {
 			course = -1;
+			clearRoute();
 			resetMotion();
 		}
 	}
@@ -132,11 +151,29 @@ public class ChartPlotterPlugin extends Plugin {
 		int h = ChartPlotterOverlay.mouseHeading(client, top, loc, m);
 		if (h >= 0) course = h;
 	}
+	private void chartCourse(Point m) {
+		if (!isSailing()) return;
+		int[] dst = worldMapOverlay.tile(m);
+		if (dst == null) return;
+		WorldView top = client.getTopLevelWorldView();
+		WorldEntity ship = getShip();
+		if (top == null || ship == null) return;
+		LocalPoint loc = ship.getTargetLocation();
+		if (loc == null) loc = ship.getLocalLocation();
+		if (loc == null) return;
+		ChartPlotterRoute old = route;
+		if (old != null && old.target(dst[0], dst[1])) {
+			clearRoute();
+			return;
+		}
+		routeTo(top, ship, loc, dst[0], dst[1], true);
+	}
 	@SuppressWarnings({"unused", "UnusedParameters"})
 	@Subscribe
 	public void onGameTick(GameTick e) {
 		WorldEntity ship = getShip();
 		if (ship == null) {
+			clearRoute();
 			collision(false);
 			resetMotion();
 			return;
@@ -151,6 +188,7 @@ public class ChartPlotterPlugin extends Plugin {
 		boolean active = (config.cacheCollision() || config.cacheOverlay()) && boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
 		collision(active);
 		if (active && config.cacheCollision()) collisionCache.capture(top);
+		if (top != null) updateRoute(top, ship, loc);
 		if (lastLoc != null) {
 			int vx = loc.getX() - lastLoc.getX();
 			int vy = loc.getY() - lastLoc.getY();
@@ -174,6 +212,7 @@ public class ChartPlotterPlugin extends Plugin {
 		WorldView top = client.getTopLevelWorldView();
 		return boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING && getShip() != null;
 	}
+	ChartPlotterRoute route() {return route;}
 	int course(WorldEntity ship) {return course >= 0 ? course : norm(ship.getTargetOrientation());}
 	double speed() {return speed;}
 	double accel() {return accel;}
@@ -209,6 +248,7 @@ public class ChartPlotterPlugin extends Plugin {
 	static int round(double v) {return (int) (Math.round(Math.abs(v)) * Math.signum(v));}
 	static int snap(int v) {return round(v / 32.0) * 32;}
 	static double speed(int vx, int vy) {return Math.round(Math.sqrt(Math.pow(vx / 128.0, 2) + Math.pow(vy / 128.0, 2)) / 0.5) * 0.5;}
+	private static boolean near(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= ROUTE_DONE;}
 	private void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;
@@ -220,6 +260,7 @@ public class ChartPlotterPlugin extends Plugin {
 		collisionActive = false;
 		boarded = false;
 		course = -1;
+		clearRoute();
 		baseSpeed = 0;
 		accel = 0;
 		moveMode = 0;
@@ -237,5 +278,76 @@ public class ChartPlotterPlugin extends Plugin {
 		lastSpeed = 0;
 		turnDir = 0;
 		lastLoc = null;
+	}
+	private void updateRoute(WorldView top, WorldEntity ship, LocalPoint loc) {
+		ChartPlotterRoute r = route;
+		if (r == null) return;
+		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
+		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		if (near(sx, sy, r.tx, r.ty)) {
+			clearRoute();
+			return;
+		}
+		if (routeBusy || r.status == ChartPlotterRoute.PENDING) return;
+		int turnBias = config.chartTurnBias();
+		if (r.turnBias != turnBias) {
+			routeTo(top, ship, loc, r.tx, r.ty, false);
+			return;
+		}
+		if (r.status == ChartPlotterRoute.OK) {
+			ChartPlotterRoute nr = r.advance(sx, sy);
+			if (nr == r) return;
+			if (nr != null && routeClear(top, ship, nr)) {
+				route = nr;
+				return;
+			}
+			routeTo(top, ship, loc, r.tx, r.ty, false);
+			return;
+		}
+		if (!r.start(sx, sy)) routeTo(top, ship, loc, r.tx, r.ty, false);
+	}
+	private boolean routeClear(WorldView top, WorldEntity ship, ChartPlotterRoute r) {
+		if (r.n < 2) return true;
+		Map<Long, int[]> data = collisionCache.snapshot(top);
+		return ChartPlotterRouteFinder.clear(data, ship.getConfig(), norm(ship.getTargetOrientation()), r.sx, r.sy, r.x[1], r.y[1], reversing());
+	}
+	private void routeTo(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty, boolean pending) {
+		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
+		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		WorldEntityConfig wc = ship.getConfig();
+		int turnBias = config.chartTurnBias();
+		boolean bidirectional = config.chartBidirectional();
+		boolean reverse = reversing();
+		int start = ChartPlotterPlugin.norm(ship.getTargetOrientation());
+		int seq = routeSeq.incrementAndGet();
+		Map<Long, int[]> data = collisionCache.snapshot(top);
+		routeBusy = true;
+		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias);
+		startRouteExec();
+		routeExec.execute(() -> {
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse);
+			if (seq == routeSeq.get()) {
+				routeBusy = false;
+				route = r;
+			}
+		});
+	}
+	private void startRouteExec() {
+		if (routeExec != null) return;
+		routeExec = Executors.newSingleThreadExecutor(r -> {
+			Thread t = new Thread(r, "chart-plotter-route");
+			t.setDaemon(true);
+			return t;
+		});
+	}
+	private void stopRouteExec() {
+		if (routeExec == null) return;
+		routeExec.shutdownNow();
+		routeExec = null;
+	}
+	private void clearRoute() {
+		routeSeq.incrementAndGet();
+		route = null;
+		routeBusy = false;
 	}
 }

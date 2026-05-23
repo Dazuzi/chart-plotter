@@ -73,6 +73,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		Stroke oldStroke = g.getStroke();
 		g.setClip(c);
 		g.setStroke(new BasicStroke(config.minimapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		drawRoute(g, top, plugin.route());
 		draw(g, top, cur, config.minimapLineColor(), skip);
 		if (pot != null) draw(g, top, pot, config.minimapPotentialColor(), 0);
 		g.setStroke(oldStroke);
@@ -106,7 +107,10 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		return client.getWidget(InterfaceID.Toplevel.MINIMAP);
 	}
 	private void draw(Graphics2D g, WorldView wv, ChartPlotterOverlay.Path p, Color color, int skip) {
-		if (p.n < 2 || skip >= p.n) return;
+		if (p.n < 2 || skip >= p.n) {
+			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, color);
+			return;
+		}
 		int start = skip > 0 ? skip - 1 : 0;
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
@@ -123,6 +127,35 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 			}
 		}
 		g.setColor(color);
+		g.draw(line);
+	}
+	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterOverlay.Path p, Color color) {
+		Point q = Perspective.localToMinimap(client, new LocalPoint(p.x[0], p.y[0], wv), DIST);
+		if (q == null) return;
+		int r = 5;
+		g.setColor(color);
+		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
+		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
+	}
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r) {
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
+		Path2D.Double line = new Path2D.Double();
+		boolean have = false;
+		for (int i = 0; i < r.n; i++) {
+			int lx = (r.x[i] - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+			int ly = (r.y[i] - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+			Point q = Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
+			if (q == null) {
+				have = false;
+				continue;
+			}
+			if (have) line.lineTo(q.getX(), q.getY());
+			else {
+				line.moveTo(q.getX(), q.getY());
+				have = true;
+			}
+		}
+		g.setColor(config.minimapChartColor());
 		g.draw(line);
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor) {

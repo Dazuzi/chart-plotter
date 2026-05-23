@@ -74,6 +74,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Stroke prev = g.getStroke();
 		if (debug == ChartPlotterCollisionDebug.MASK) mask(g);
 		g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		drawRoute(g, top, plugin.route());
 		draw(g, top, cur, rx, ry, config.worldLineColor(), skip);
 		if (pot != null) draw(g, top, pot, rx, ry, config.worldPotentialColor(), 0);
 		if (debug != ChartPlotterCollisionDebug.OFF) drawDebug(g, top, wc, center, ship.getOrientation(), cur, pot);
@@ -146,7 +147,10 @@ public class ChartPlotterOverlay extends Overlay {
 		return p;
 	}
 	private void draw(Graphics2D g, WorldView wv, Path p, float[] rx, float[] ry, Color color, int skip) {
-		if (p.n < 2 || skip >= p.n) return;
+		if (p.n < 2 || skip >= p.n) {
+			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, rx, ry, color);
+			return;
+		}
 		float[] z = new float[]{0, 0, 0, 0};
 		int[] cx = new int[4];
 		int[] cy = new int[4];
@@ -156,7 +160,7 @@ public class ChartPlotterOverlay extends Overlay {
 		boolean have = false;
 		int sA = color.getAlpha();
 		for (int i = 0; i < p.n; i++) {
-			if (!project(wv, p, i, rx, ry, z, cx, cy)) {
+			if (missing(wv, p, i, rx, ry, z, cx, cy)) {
 				have = false;
 				continue;
 			}
@@ -184,9 +188,44 @@ public class ChartPlotterOverlay extends Overlay {
 			have = true;
 		}
 	}
-	private boolean project(WorldView wv, Path p, int i, float[] rx, float[] ry, float[] z, int[] cx, int[] cy) {
+	private void drawBlock(Graphics2D g, WorldView wv, Path p, float[] rx, float[] ry, Color color) {
+		float[] z = new float[]{0, 0, 0, 0};
+		int[] cx = new int[4];
+		int[] cy = new int[4];
+		if (missing(wv, p, 0, rx, ry, z, cx, cy)) return;
+		Path2D.Double s = new Path2D.Double();
+		box(s, cx, cy, false);
+		s.moveTo(cx[0], cy[0]);
+		s.lineTo(cx[2], cy[2]);
+		s.moveTo(cx[1], cy[1]);
+		s.lineTo(cx[3], cy[3]);
+		g.setColor(color);
+		g.draw(s);
+	}
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r) {
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
+		Path2D.Double line = new Path2D.Double();
+		boolean have = false;
+		for (int i = 0; i < r.n; i++) {
+			int lx = (r.x[i] - wv.getBaseX()) * TS + TS / 2;
+			int ly = (r.y[i] - wv.getBaseY()) * TS + TS / 2;
+			Point q = Perspective.localToCanvas(client, new LocalPoint(lx, ly, wv), 0);
+			if (q == null) {
+				have = false;
+				continue;
+			}
+			if (have) line.lineTo(q.getX(), q.getY());
+			else {
+				line.moveTo(q.getX(), q.getY());
+				have = true;
+			}
+		}
+		g.setColor(config.worldChartColor());
+		g.draw(line);
+	}
+	private boolean missing(WorldView wv, Path p, int i, float[] rx, float[] ry, float[] z, int[] cx, int[] cy) {
 		Perspective.modelToCanvas(client, wv, 4, p.x[i], p.y[i], 0, p.o[i], rx, ry, z, cx, cy);
-		return cx[0] != Integer.MIN_VALUE && cx[1] != Integer.MIN_VALUE && cx[2] != Integer.MIN_VALUE && cx[3] != Integer.MIN_VALUE;
+		return cx[0] == Integer.MIN_VALUE || cx[1] == Integer.MIN_VALUE || cx[2] == Integer.MIN_VALUE || cx[3] == Integer.MIN_VALUE;
 	}
 	private void mask(Graphics2D g) {
 		g.setColor(Color.BLACK);

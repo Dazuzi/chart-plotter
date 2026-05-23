@@ -28,9 +28,12 @@ final class ChartPlotterCollisionCache {
 	private static final int EDGE = 8;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, int[]> chunks = new HashMap<>();
-	private boolean dirty;
+	private Map<Long, int[]> view = new HashMap<>();
 	private boolean loaded;
 	private ScheduledExecutorService io;
+	private long rev;
+	private long savedRev;
+	private long viewRev = -1;
 	private int captures;
 	private int tiles;
 	synchronized void start() {
@@ -77,8 +80,16 @@ final class ChartPlotterCollisionCache {
 		return c == null ? UNKNOWN : c[(wx & 7) + ((wy & 7) << 3)];
 	}
 	synchronized Map<Long, int[]> snapshot() {
-		Map<Long, int[]> out = new HashMap<>();
-		for (Map.Entry<Long, int[]> e : chunks.entrySet()) out.put(e.getKey(), e.getValue().clone());
+		if (!loaded) load();
+		if (viewRev != rev) {
+			view = copy(chunks);
+			viewRev = rev;
+		}
+		return view;
+	}
+	synchronized Map<Long, int[]> snapshot(WorldView wv) {
+		Map<Long, int[]> out = copy(snapshot());
+		add(out, wv);
 		return out;
 	}
 	synchronized String stats() {return "cacheCaptures=" + captures + " cacheChunks=" + chunks.size() + " cacheTiles=" + tiles;}
@@ -91,7 +102,28 @@ final class ChartPlotterCollisionCache {
 		if (c[i] == UNKNOWN) tiles++;
 		if (c[i] == f) return;
 		c[i] = f;
-		dirty = true;
+		rev++;
+	}
+	private static void add(Map<Long, int[]> data, WorldView wv) {
+		if (wv == null || wv.isInstance() || wv.getPlane() != 0) return;
+		CollisionData[] maps = wv.getCollisionMaps();
+		if (maps == null || maps.length == 0 || maps[0] == null) return;
+		int[][] flags = maps[0].getFlags();
+		int sx1 = flags.length - EDGE;
+		int sy1 = flags[0].length - EDGE;
+		for (int sx = EDGE; sx < sx1; sx++) {
+			for (int sy = EDGE; sy < sy1; sy++) {
+				int f = flags[sx][sy];
+				if (f != VOID) put(data, wv.getBaseX() + sx, wv.getBaseY() + sy, f);
+			}
+		}
+	}
+	private static void put(Map<Long, int[]> data, int wx, int wy, int f) {
+		f = clean(f);
+		int cx = wx >> 3;
+		int cy = wy >> 3;
+		int[] c = data.computeIfAbsent(key(cx, cy), k -> empty());
+		c[(wx & 7) + ((wy & 7) << 3)] = f;
 	}
 	private void load() {
 		Map<Long, int[]> data = read();
@@ -101,6 +133,9 @@ final class ChartPlotterCollisionCache {
 			chunks.put(e.getKey(), e.getValue());
 			tiles += known(e.getValue());
 		}
+		rev = 0;
+		savedRev = 0;
+		viewRev = -1;
 		loaded = true;
 	}
 	private Map<Long, int[]> read() {
@@ -132,14 +167,15 @@ final class ChartPlotterCollisionCache {
 	}
 	private void flush() {
 		Map<Long, int[]> out;
+		long save;
 		synchronized (this) {
-			if (!dirty) return;
+			if (rev == savedRev) return;
 			out = snapshot();
-			dirty = false;
+			save = rev;
 		}
-		if (!write(out)) {
+		if (write(out)) {
 			synchronized (this) {
-				dirty = true;
+				if (savedRev < save) savedRev = save;
 			}
 		}
 	}
@@ -178,6 +214,11 @@ final class ChartPlotterCollisionCache {
 		int[] v = new int[64];
 		Arrays.fill(v, UNKNOWN);
 		return v;
+	}
+	private static Map<Long, int[]> copy(Map<Long, int[]> data) {
+		Map<Long, int[]> out = new HashMap<>();
+		for (Map.Entry<Long, int[]> e : data.entrySet()) out.put(e.getKey(), e.getValue().clone());
+		return out;
 	}
 	private File file() {return new File(dir, "collision.bin");}
 	private static int count(Map<Long, int[]> data) {

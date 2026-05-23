@@ -21,7 +21,10 @@ public interface ChartPlotterConfig extends Config {
 	@Alpha
 	@ConfigItem(keyName = "potentialColor", name = "Projected color", description = "Color of the projected course lines.", section = worldSection, position = 2)
 	default Color worldPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
-	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 3)
+	@Alpha
+	@ConfigItem(keyName = "worldChartColor", name = "Chart color", description = "Color of charted world routes.", section = worldSection, position = 3)
+	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
+	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 2;}
 	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 1)
@@ -34,7 +37,10 @@ public interface ChartPlotterConfig extends Config {
 	@Alpha
 	@ConfigItem(keyName = "minimapPotentialColor", name = "Projected color", description = "Color of the projected minimap line.", section = minimapSection, position = 2)
 	default Color minimapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
-	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 3)
+	@Alpha
+	@ConfigItem(keyName = "minimapChartColor", name = "Chart color", description = "Color of charted minimap routes.", section = minimapSection, position = 3)
+	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
+	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 2;}
 	@ConfigSection(name = "World Map", description = "World map overlay settings.", position = 2)
@@ -47,10 +53,20 @@ public interface ChartPlotterConfig extends Config {
 	@Alpha
 	@ConfigItem(keyName = "worldMapPotentialColor", name = "Projected color", description = "Color of the projected world map line.", section = worldMapSection, position = 2)
 	default Color worldMapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
-	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 3)
+	@Alpha
+	@ConfigItem(keyName = "worldMapChartColor", name = "Chart color", description = "Color of charted world map routes.", section = worldMapSection, position = 3)
+	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 210);}
+	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 2;}
-	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 3)
+	@ConfigSection(name = "Charting", description = "Charted route settings.", position = 3)
+	String chartingSection = "chartingSection";
+	@ConfigItem(keyName = "chartTurnBias", name = "Turn preference", description = "Higher values prefer fewer turns and allow larger detours.", section = chartingSection, position = 0)
+	@Range(min = 0, max = 10)
+	default int chartTurnBias() {return 5;}
+	@ConfigItem(keyName = "chartBidirectional", name = "Bidirectional search", description = "Search from both ends when charting long routes.", section = chartingSection, position = 1)
+	default boolean chartBidirectional() {return false;}
+	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 4)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheCollision", name = "Remember collision", description = "Save reliable collision tiles to disk.", section = tweaksSection, position = 0)
 	default boolean cacheCollision() {return false;}
