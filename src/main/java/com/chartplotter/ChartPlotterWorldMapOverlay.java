@@ -8,6 +8,7 @@ import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.Stroke;
 import java.awt.geom.Area;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.util.Map;
 import javax.inject.Inject;
@@ -145,8 +146,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Point t = mapPoint(map, wm, r.tx, r.ty, 0.5, 0.5);
 		if (t == null) return;
 		g.setColor(c);
-		g.fillOval(t.getX() - 4, t.getY() - 4, 8, 8);
-		g.drawOval(t.getX() - 7, t.getY() - 7, 14, 14);
+		g.fill(new Ellipse2D.Double(t.getX() - 3.5, t.getY() - 3.5, 7, 7));
+		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
 		String s = r.text();
 		if (s != null) tip(g, map.getBounds(), t, s);
 	}

@@ -101,10 +101,14 @@ public class ChartPlotterOverlay extends Overlay {
 		int o = from;
 		double speed = plugin.speed();
 		double accel = plugin.accel();
+		if (speed == 0) o = target;
 		if (plugin.reversing()) {
 			speed *= -1;
 			accel *= -1;
 		}
+		from = o;
+		p.start = from;
+		p.o[0] = from;
 		int dir = ChartPlotterPlugin.angleDir(from, target, plugin.turnDir());
 		ChartPlotterCollisionCache cache = config.cacheCollision() ? collisionCache : null;
 		for (int i = 0; i < cap; i++) {

@@ -78,4 +78,7 @@ public interface ChartPlotterConfig extends Config {
 	default boolean collisionLog() {return false;}
 	@ConfigItem(keyName = "cacheOverlay", name = "Cache overlay", description = "Draw remembered collision coverage on the world map.", section = tweaksSection, position = 3)
 	default boolean cacheOverlay() {return false;}
+	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 4)
+	@Range(min = 1, max = 20)
+	default int routeClearRadius() {return 5;}
 }

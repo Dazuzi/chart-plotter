@@ -38,7 +38,6 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class ChartPlotterPlugin extends Plugin {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
-	private static final int ROUTE_DONE = 3;
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -57,6 +56,9 @@ public class ChartPlotterPlugin extends Plugin {
 	private double lastSpeed;
 	private int turnDir;
 	private int lastAngle;
+	private int lastBaseX = Integer.MIN_VALUE;
+	private int lastBaseY = Integer.MIN_VALUE;
+	private int lastPlane = Integer.MIN_VALUE;
 	private int course = -1;
 	private LocalPoint lastLoc;
 	private boolean collisionActive;
@@ -173,6 +175,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public void onGameTick(GameTick e) {
 		WorldEntity ship = getShip();
 		if (ship == null) {
+			course = -1;
 			clearRoute();
 			collision(false);
 			resetMotion();
@@ -185,6 +188,12 @@ public class ChartPlotterPlugin extends Plugin {
 			return;
 		}
 		WorldView top = client.getTopLevelWorldView();
+		boolean jump = lastLoc != null && Math.max(Math.abs(loc.getX() - lastLoc.getX()), Math.abs(loc.getY() - lastLoc.getY())) > TS * 4;
+		boolean reset = top != null && sceneChanged(top) || jump;
+		if (reset) {
+			course = -1;
+			resetMotion();
+		}
 		boolean active = (config.cacheCollision() || config.cacheOverlay()) && boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
 		collision(active);
 		if (active && config.cacheCollision()) collisionCache.capture(top);
@@ -248,7 +257,7 @@ public class ChartPlotterPlugin extends Plugin {
 	static int round(double v) {return (int) (Math.round(Math.abs(v)) * Math.signum(v));}
 	static int snap(int v) {return round(v / 32.0) * 32;}
 	static double speed(int vx, int vy) {return Math.round(Math.sqrt(Math.pow(vx / 128.0, 2) + Math.pow(vy / 128.0, 2)) / 0.5) * 0.5;}
-	private static boolean near(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= ROUTE_DONE;}
+	private static boolean near(int ax, int ay, int bx, int by, int r) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= r;}
 	private void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;
@@ -265,6 +274,9 @@ public class ChartPlotterPlugin extends Plugin {
 		accel = 0;
 		moveMode = 0;
 		lastMoveMode = 2;
+		lastBaseX = Integer.MIN_VALUE;
+		lastBaseY = Integer.MIN_VALUE;
+		lastPlane = Integer.MIN_VALUE;
 		resetMotion();
 	}
 	private void collision(boolean active) {
@@ -279,12 +291,22 @@ public class ChartPlotterPlugin extends Plugin {
 		turnDir = 0;
 		lastLoc = null;
 	}
+	private boolean sceneChanged(WorldView top) {
+		int x = top.getBaseX();
+		int y = top.getBaseY();
+		int p = top.getPlane();
+		boolean changed = lastBaseX != Integer.MIN_VALUE && (lastBaseX != x || lastBaseY != y || lastPlane != p);
+		lastBaseX = x;
+		lastBaseY = y;
+		lastPlane = p;
+		return changed;
+	}
 	private void updateRoute(WorldView top, WorldEntity ship, LocalPoint loc) {
 		ChartPlotterRoute r = route;
 		if (r == null) return;
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
 		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
-		if (near(sx, sy, r.tx, r.ty)) {
+		if (near(sx, sy, r.tx, r.ty, config.routeClearRadius())) {
 			clearRoute();
 			return;
 		}
@@ -310,7 +332,8 @@ public class ChartPlotterPlugin extends Plugin {
 	private boolean routeClear(WorldView top, WorldEntity ship, ChartPlotterRoute r) {
 		if (r.n < 2) return true;
 		Map<Long, int[]> data = collisionCache.snapshot(top);
-		return ChartPlotterRouteFinder.clear(data, ship.getConfig(), norm(ship.getTargetOrientation()), r.sx, r.sy, r.x[1], r.y[1], reversing());
+		int start = speed == 0 ? -1 : norm(ship.getTargetOrientation());
+		return ChartPlotterRouteFinder.clear(data, ship.getConfig(), start, r.sx, r.sy, r.x[1], r.y[1], reversing());
 	}
 	private void routeTo(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty, boolean pending) {
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
@@ -320,7 +343,7 @@ public class ChartPlotterPlugin extends Plugin {
 		boolean bidirectional = config.chartBidirectional();
 		boolean fast = config.chartFastRoute();
 		boolean reverse = reversing();
-		int start = ChartPlotterPlugin.norm(ship.getTargetOrientation());
+		int start = speed == 0 ? -1 : ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int seq = routeSeq.incrementAndGet();
 		Map<Long, int[]> data = collisionCache.snapshot(top);
 		routeBusy = true;
