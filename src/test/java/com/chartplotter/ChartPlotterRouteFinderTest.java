@@ -14,7 +14,7 @@ public class ChartPlotterRouteFinderTest {
 	@Test
 	public void chartFindsKnownRoute() {
 		Map<Long, int[]> data = known(0, -1, 5, 1);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 5, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 5, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertEquals(0, r.x[0]);
 		assertEquals(5, r.x[r.n - 1]);
@@ -23,21 +23,21 @@ public class ChartPlotterRouteFinderTest {
 	@Test
 	public void unknownTargetReportsUncharted() {
 		Map<Long, int[]> data = known(0, 0, 0, 0);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 5, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 5, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.UNCHARTED, r.status);
 	}
 	@Test
 	public void blockedTargetHasNoRoute() {
 		Map<Long, int[]> data = known(0, 0, 5, 0);
 		put(data, 5, 0, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 5, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 5, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.NO_ROUTE, r.status);
 	}
 	@Test
 	public void turnBiasKeepsRouteShort() {
 		Map<Long, int[]> data = known(0, 0, 12, 4);
 		for (int x = 1; x < 12; x++) put(data, x, 0, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 12, 0, 10, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 12, 0, 10, false, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertTrue(r.n <= 5);
 	}
@@ -45,9 +45,9 @@ public class ChartPlotterRouteFinderTest {
 	public void footprintAvoidsAdjacentBlock() {
 		Map<Long, int[]> data = known(-2, -4, 7, 4);
 		put(data, 2, 1, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
-		ChartPlotterRoute point = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 5, 0, 5, false, false, false);
-		ChartPlotterRoute wide = ChartPlotterRouteFinder.find(data, rect(TS * 2, TS * 2), -1, 0, 0, 5, 0, 5, false, false, false);
-		ChartPlotterRoute bi = ChartPlotterRouteFinder.find(data, rect(TS * 2, TS * 2), -1, 0, 0, 5, 0, 5, true, false, false);
+		ChartPlotterRoute point = find(data, null, -1, 5, 0, 5, false, false);
+		ChartPlotterRoute wide = find(data, rect(TS * 2, TS * 2), -1, 5, 0, 5, false, false);
+		ChartPlotterRoute bi = find(data, rect(TS * 2, TS * 2), -1, 5, 0, 5, true, false);
 		assertEquals(ChartPlotterRoute.OK, point.status);
 		assertEquals(ChartPlotterRoute.OK, wide.status);
 		assertEquals(ChartPlotterRoute.OK, bi.status);
@@ -58,7 +58,7 @@ public class ChartPlotterRouteFinderTest {
 	@Test
 	public void footprintReportsUnchartedEdge() {
 		Map<Long, int[]> data = known(0, 0, 5, 0);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, rect(TS * 2, TS * 2), -1, 0, 0, 5, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, rect(TS * 2, TS * 2), -1, 5, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.UNCHARTED, r.status);
 	}
 	@Test
@@ -68,7 +68,7 @@ public class ChartPlotterRouteFinderTest {
 			put(data, x, -3, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
 			put(data, x, 3, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
 		}
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, rect(TS * 3, 64), 1536, 0, 0, 5, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, rect(TS * 3, 64), 1536, 5, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertEquals(2, r.n);
 	}
@@ -91,7 +91,7 @@ public class ChartPlotterRouteFinderTest {
 	public void twoLegDirectAvoidsThinBlock() {
 		Map<Long, int[]> data = known(0, -8, 12, 8);
 		put(data, 6, 0, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 12, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 12, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertEquals(3, r.n);
 		assertTrue(r.y[1] != 0);
@@ -100,14 +100,14 @@ public class ChartPlotterRouteFinderTest {
 	public void retryExpandsBounds() {
 		Map<Long, int[]> data = known(-80, -80, 100, 80);
 		for (int y = -50; y <= 50; y++) put(data, 10, y, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 20, 0, 5, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 20, 0, 5, false, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertTrue(maxAbsY(r) > 37);
 	}
 	@Test
 	public void fastRouteSetsFlag() {
 		Map<Long, int[]> data = known(0, -1, 5, 1);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 5, 0, 5, false, false, true);
+		ChartPlotterRoute r = find(data, null, -1, 5, 0, 5, false, true);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertTrue(r.fast);
 	}
@@ -132,7 +132,7 @@ public class ChartPlotterRouteFinderTest {
 	public void bidirectionalFindsKnownRoute() {
 		Map<Long, int[]> data = known(0, 0, 12, 4);
 		for (int x = 1; x < 12; x++) put(data, x, 0, CollisionDataFlag.BLOCK_MOVEMENT_FULL);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 12, 0, 10, true, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 12, 0, 10, true, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		assertEquals(0, r.x[0]);
 		assertEquals(12, r.x[r.n - 1]);
@@ -141,7 +141,7 @@ public class ChartPlotterRouteFinderTest {
 	@Test
 	public void routeUsesLegalAngles() {
 		Map<Long, int[]> data = known(0, 0, 8, 8);
-		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 6, 4, 5, false, false, false);
+		ChartPlotterRoute r = find(data, null, -1, 6, 4, 5, false, false);
 		assertEquals(ChartPlotterRoute.OK, r.status);
 		for (int i = 1; i < r.n; i++) assertTrue(legal(r.x[i] - r.x[i - 1], r.y[i] - r.y[i - 1]));
 	}
@@ -151,6 +151,9 @@ public class ChartPlotterRouteFinderTest {
 			for (int y = minY; y <= maxY; y++) put(data, x, y, 0);
 		}
 		return data;
+	}
+	private static ChartPlotterRoute find(Map<Long, int[]> data, WorldEntityConfig wc, int start, int tx, int ty, int turnBias, boolean bidirectional, boolean fast) {
+		return ChartPlotterRouteFinder.find(data, wc, start, 0, 0, tx, ty, turnBias, bidirectional, false, fast, () -> false);
 	}
 	private static void put(Map<Long, int[]> data, int x, int y, int f) {
 		int[] c = data.computeIfAbsent(key(x >> 3, y >> 3), k -> empty());

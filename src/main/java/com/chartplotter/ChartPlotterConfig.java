@@ -10,14 +10,14 @@ import net.runelite.client.util.ColorUtil;
 @ConfigGroup("chartplotter")
 public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "stopAtCollision", name = "Collision clipping", description = "Clip projected paths at collision flags.", position = 0)
-	default boolean stopAtCollision() {return false;}
+	default boolean stopAtCollision() {return true;}
 	@ConfigSection(name = "World", description = "World overlay settings.", position = 0)
 	String worldSection = "worldSection";
 	@ConfigItem(keyName = "worldEnabled", name = "Enabled", description = "Draw course lines in the world.", section = worldSection, position = 0)
 	default boolean worldEnabled() {return true;}
 	@Alpha
 	@ConfigItem(keyName = "lineColor", name = "Course color", description = "Color of the set-course lines.", section = worldSection, position = 1)
-	default Color worldLineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 90);}
+	default Color worldLineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 185);}
 	@Alpha
 	@ConfigItem(keyName = "potentialColor", name = "Projected color", description = "Color of the projected course lines.", section = worldSection, position = 2)
 	default Color worldPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
@@ -26,7 +26,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 4)
 	@Range(min = 1, max = 10)
-	default int worldLineWidth() {return 2;}
+	default int worldLineWidth() {return 1;}
 	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 1)
 	String minimapSection = "minimapSection";
 	@ConfigItem(keyName = "minimapEnabled", name = "Enabled", description = "Draw course lines on the minimap.", section = minimapSection, position = 0)
@@ -42,7 +42,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 4)
 	@Range(min = 1, max = 10)
-	default int minimapLineWidth() {return 2;}
+	default int minimapLineWidth() {return 1;}
 	@ConfigSection(name = "World Map", description = "World map overlay settings.", position = 2)
 	String worldMapSection = "worldMapSection";
 	@ConfigItem(keyName = "worldMapEnabled", name = "Enabled", description = "Draw course lines on the world map.", section = worldMapSection, position = 0)
@@ -58,11 +58,11 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 210);}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 4)
 	@Range(min = 1, max = 10)
-	default int worldMapLineWidth() {return 2;}
+	default int worldMapLineWidth() {return 1;}
 	@ConfigSection(name = "Charting", description = "Charted route settings.", position = 3)
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "chartTurnBias", name = "Turn preference", description = "Higher values prefer fewer turns and allow larger detours.", section = chartingSection, position = 0)
-	@Range(min = 0, max = 10)
+	@Range(max = 10)
 	default int chartTurnBias() {return 5;}
 	@ConfigItem(keyName = "chartBidirectional", name = "Bidirectional search", description = "Search from both ends when charting long routes.", section = chartingSection, position = 1)
 	default boolean chartBidirectional() {return false;}
@@ -71,14 +71,17 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 4)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheCollision", name = "Remember collision", description = "Save reliable collision tiles to disk.", section = tweaksSection, position = 0)
-	default boolean cacheCollision() {return false;}
+	default boolean cacheCollision() {return true;}
 	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)
 	default ChartPlotterCollisionDebug collisionDebug() {return ChartPlotterCollisionDebug.OFF;}
 	@ConfigItem(keyName = "collisionLog", name = "Collision log", description = "Print collision debug lines to the console.", section = tweaksSection, position = 2)
 	default boolean collisionLog() {return false;}
-	@ConfigItem(keyName = "cacheOverlay", name = "Cache overlay", description = "Draw remembered collision coverage on the world map.", section = tweaksSection, position = 3)
+	@ConfigItem(keyName = "sailableDebugRadius", name = "Sailable debug radius", description = "Draw non-sailable live and cached tiles around the ship. Zero disables it.", section = tweaksSection, position = 3)
+	@Range(max = 64)
+	default int sailableDebugRadius() {return 0;}
+	@ConfigItem(keyName = "cacheOverlay", name = "Cache overlay", description = "Draw remembered collision coverage on the world map.", section = tweaksSection, position = 4)
 	default boolean cacheOverlay() {return false;}
-	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 4)
+	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 5)
 	@Range(min = 1, max = 20)
 	default int routeClearRadius() {return 5;}
 }

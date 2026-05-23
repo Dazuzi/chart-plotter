@@ -350,10 +350,11 @@ public class ChartPlotterPlugin extends Plugin {
 		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
 		startRouteExec();
 		routeExec.execute(() -> {
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast);
-			if (seq == routeSeq.get()) {
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted());
+			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				routeBusy = false;
 				route = r;
+				if (r.debug != null) System.out.println(r.debug);
 			}
 		});
 	}

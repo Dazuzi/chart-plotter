@@ -1,6 +1,7 @@
 package com.chartplotter;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
@@ -11,37 +12,114 @@ final class ChartPlotterRouteFinder {
 	private static final int[] DX = {0, 1, 1, 2, 1, 2, 1, 1, 0, -1, -1, -2, -1, -2, -1, -1};
 	private static final int[] DY = {1, 2, 1, 1, 0, -1, -1, -2, -1, -2, -1, -1, 0, 1, 1, 2};
 	private static final int[] COST = {10, 22, 14, 22, 10, 22, 14, 22, 10, 22, 14, 22, 10, 22, 14, 22};
+	private static final int[] MDX = {0, 1, 1, 1, 0, -1, -1, -1};
+	private static final int[] MDY = {1, 1, 0, -1, -1, -1, 0, 1};
+	private static final int[] MCOST = {320, 448, 320, 448, 320, 448, 320, 448};
 	private static final int[] OR = {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 0, 128, 256, 384, 512, 640, 768, 896};
+	private static final int OPEN = 0;
+	private static final int MIXED = 1;
+	private static final int BLOCKED = 2;
+	private static final int UNKNOWN = 3;
+	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
-	static ChartPlotterRoute find(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast) {
-		return find(new Grid(data), wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast);
+	static ChartPlotterRoute find(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast, BooleanSupplier cancel) {
+		Debug d = new Debug(data.size(), wc != null, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast);
+		ChartPlotterRoute r = find(new Grid(data), wc, start, sx, sy, tx, ty, turnBias, bidirectional, reverse, fast, d, cancel);
+		return r.debug(d.text(r));
 	}
 	static boolean clear(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, boolean reverse) {
 		int d = dir(tx - sx, ty - sy);
 		return d >= 0 && clear(new Grid(data), wc == null ? null : new Footprint(wc), start, sx, sy, tx, ty, orient(d, d), reverse);
 	}
-	private static ChartPlotterRoute find(Grid data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast) {
+	private static ChartPlotterRoute find(Grid data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast, Debug d, BooleanSupplier cancel) {
+		long t = System.nanoTime();
 		turnBias = Math.max(0, Math.min(10, turnBias));
 		Footprint fp = wc == null ? null : new Footprint(wc);
-		if (data.flag(sx, sy) == ChartPlotterCollisionCache.UNKNOWN || data.flag(tx, ty) == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
-		if (blocked(data, sx, sy) || blocked(data, tx, ty)) return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		d.radius = radius(fp);
+		if (data.flag(sx, sy) == ChartPlotterCollisionCache.UNKNOWN || data.flag(tx, ty) == ChartPlotterCollisionCache.UNKNOWN) {
+			d.pre += since(t);
+			d.mode = "precheck";
+			return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
+		}
+		if (blocked(data, sx, sy) || blocked(data, tx, ty)) {
+			d.pre += since(t);
+			d.mode = "precheck";
+			return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		}
 		int end = open(data, fp, tx, ty);
-		if (end < 0) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
-		if (end == 0) return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		if (end < 0) {
+			d.pre += since(t);
+			d.mode = "precheck";
+			return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
+		}
+		if (end == 0) {
+			d.pre += since(t);
+			d.mode = "precheck";
+			return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		}
+		d.pre += since(t);
+		t = System.nanoTime();
 		ChartPlotterRoute direct = direct(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast);
-		if (direct != null) return direct;
+		d.direct += since(t);
+		if (direct != null) {
+			d.mode = "direct";
+			return direct;
+		}
+		t = System.nanoTime();
 		direct = direct2(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast);
-		if (direct != null) return direct;
+		d.direct2 += since(t);
+		if (direct != null) {
+			d.mode = "direct2";
+			return direct;
+		}
+		t = System.nanoTime();
+		if (cancel.getAsBoolean()) {
+			d.mode = "canceled";
+			return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
+		}
+		Corridor co = corridor(data, fp, sx, sy, tx, ty, cancel);
+		d.macro += since(t);
+		if (co != null) {
+			d.corridorCells = co.cells.n;
+			d.corridorNodes = co.nodes;
+			d.macroSeen = co.seen;
+			d.macroSummaries = co.summaries;
+			int cap = cap(sx, sy, tx, ty, turnBias, maxMargin(sx, sy, tx, ty, fp));
+			t = System.nanoTime();
+			Search s = bidirectional ? searchBi(data, fp, start, sx, sy, tx, ty, turnBias, co.bounds(), cap, co, reverse, fast, cancel) : search(data, fp, start, sx, sy, tx, ty, turnBias, co.bounds(), cap, co, reverse, fast, cancel);
+			d.corridorSearch += since(t);
+			d.add(s);
+			if (s.canceled) {
+				d.mode = "canceled";
+				return s.route;
+			}
+			if (s.route.status == ChartPlotterRoute.OK) {
+				d.mode = "corridor";
+				return s.route;
+			}
+		}
 		int max = maxMargin(sx, sy, tx, ty, fp);
 		for (int m = firstMargin(sx, sy, tx, ty, fp);; m = Math.min(max, m * 2)) {
 			Bounds b = bounds(sx, sy, tx, ty, m);
 			int cap = cap(sx, sy, tx, ty, turnBias, m);
-			Search s = bidirectional ? searchBi(data, fp, start, sx, sy, tx, ty, turnBias, b, cap, reverse, fast) : search(data, fp, start, sx, sy, tx, ty, turnBias, b, cap, reverse, fast);
-			if (s.route.status == ChartPlotterRoute.OK || s.route.status == ChartPlotterRoute.UNCHARTED || m == max) return s.route;
+			d.attempts++;
+			d.margin = m;
+			t = System.nanoTime();
+			Search s = bidirectional ? searchBi(data, fp, start, sx, sy, tx, ty, turnBias, b, cap, null, reverse, fast, cancel) : search(data, fp, start, sx, sy, tx, ty, turnBias, b, cap, null, reverse, fast, cancel);
+			d.search += since(t);
+			d.add(s);
+			if (s.canceled) {
+				d.mode = "canceled";
+				return s.route;
+			}
+			if (s.route.status == ChartPlotterRoute.OK || s.route.status == ChartPlotterRoute.UNCHARTED || m == max) {
+				d.mode = "fallback";
+				return s.route;
+			}
 		}
 	}
-	private static Search search(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast) {
+	private static Search search(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, Corridor co, boolean reverse, boolean fast, BooleanSupplier cancel) {
 		Work w = WORK.get();
 		w.clearA();
 		addStarts(w.aq, w.ag, w.a, sx, sy, tx, ty, turnBias, start, fast);
@@ -49,10 +127,11 @@ final class ChartPlotterRouteFinder {
 		boolean capped = false;
 		int seen = 0;
 		while (w.aq.hasNext()) {
+			if (cancel.getAsBoolean()) return new Search(ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast), 0, seen, unknown, capped, true);
 			int a = w.aq.poll();
 			int bg = w.ag.get(state(w.a.x[a], w.a.y[a], w.a.dir[a]));
 			if (bg == LongIntMap.MISS || w.a.g[a] != bg) continue;
-			if (w.a.x[a] == tx && w.a.y[a] == ty) return new Search(route(data, fp, start, w.a, a, sx, sy, tx, ty, turnBias, reverse, fast), w.a.d[a]);
+			if (w.a.x[a] == tx && w.a.y[a] == ty) return new Search(route(data, fp, start, w.a, a, sx, sy, tx, ty, turnBias, reverse, fast), w.a.d[a], seen, unknown, capped, false);
 			if (++seen > MAX) {
 				capped = true;
 				break;
@@ -61,6 +140,7 @@ final class ChartPlotterRouteFinder {
 				int nx = w.a.x[a] + DX[i];
 				int ny = w.a.y[a] + DY[i];
 				if (b.outside(nx, ny)) continue;
+				if (co != null && co.outside(nx, ny)) continue;
 				int p = move(data, fp, w.a.x[a], w.a.y[a], w.a.dir[a], nx, ny, i, reverse);
 				if (p < 0) unknown = true;
 				if (p != 1) continue;
@@ -76,9 +156,9 @@ final class ChartPlotterRouteFinder {
 				w.aq.add(w.a.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a));
 			}
 		}
-		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast), 0);
+		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast), 0, seen, unknown, capped, false);
 	}
-	private static Search searchBi(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast) {
+	private static Search searchBi(Grid data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, Corridor co, boolean reverse, boolean fast, BooleanSupplier cancel) {
 		Work w = WORK.get();
 		w.clearAll();
 		addFronts(w.aq, w.ag, w.an, w.a, sx, sy, tx, ty, turnBias, start, fast);
@@ -90,6 +170,7 @@ final class ChartPlotterRouteFinder {
 		int mf = -1;
 		int mb = -1;
 		while (w.aq.hasNext() && w.bq.hasNext()) {
+			if (cancel.getAsBoolean()) return new Search(ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast), 0, seen, unknown, capped, true);
 			if (best != Integer.MAX_VALUE && (w.a.f[w.aq.peek()] >= best || w.b.f[w.bq.peek()] >= best)) break;
 			if (w.a.f[w.aq.peek()] <= w.b.f[w.bq.peek()]) {
 				int a = w.aq.poll();
@@ -104,6 +185,7 @@ final class ChartPlotterRouteFinder {
 					int nx = w.a.x[a] + DX[i];
 					int ny = w.a.y[a] + DY[i];
 					if (b.outside(nx, ny)) continue;
+					if (co != null && co.outside(nx, ny)) continue;
 					int p = move(data, fp, w.a.x[a], w.a.y[a], w.a.dir[a], nx, ny, i, reverse);
 					if (p < 0) unknown = true;
 					if (p != 1) continue;
@@ -143,6 +225,7 @@ final class ChartPlotterRouteFinder {
 				int px = w.b.x[a] - DX[w.b.dir[a]];
 				int py = w.b.y[a] - DY[w.b.dir[a]];
 				if (b.outside(px, py)) continue;
+				if (co != null && co.outside(px, py)) continue;
 				for (int i = 0; i < DX.length; i++) {
 					int p = move(data, fp, px, py, i, w.b.x[a], w.b.y[a], w.b.dir[a], reverse);
 					if (p < 0) unknown = true;
@@ -173,8 +256,8 @@ final class ChartPlotterRouteFinder {
 				}
 			}
 		}
-		if (best != Integer.MAX_VALUE) return new Search(route(data, fp, start, w.a, mf, w.b, mb, sx, sy, tx, ty, turnBias, reverse, fast), 0);
-		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast), 0);
+		if (best != Integer.MAX_VALUE) return new Search(route(data, fp, start, w.a, mf, w.b, mb, sx, sy, tx, ty, turnBias, reverse, fast), best, seen, unknown, capped, false);
+		return new Search(capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast), 0, seen, unknown, capped, false);
 	}
 	private static ChartPlotterRoute route(Grid data, Footprint fp, int start, Nodes nodes, int end, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast) {
 		int n = 0;
@@ -273,7 +356,7 @@ final class ChartPlotterRouteFinder {
 		return px < 0 || py < 0 ? -1 : 0;
 	}
 	private static int pass(Grid data, Footprint fp, int x, int y, int dir, int nx, int ny, int ndir, boolean reverse) {
-		if (fp == null) return pass(data, x, y, nx, ny);
+		if (fp == null) return pass(data, nx, ny);
 		int ax = center(x);
 		int ay = center(y);
 		int bx = center(nx);
@@ -286,22 +369,10 @@ final class ChartPlotterRouteFinder {
 		int rev = hitFootprint(data, fp, ax, ay, ao, bx, by, rev(bo));
 		return rev == 1 ? 1 : fwd < 0 || rev < 0 ? -1 : 0;
 	}
-	private static int pass(Grid data, int x, int y, int nx, int ny) {
+	private static int pass(Grid data, int nx, int ny) {
 		int f = data.flag(nx, ny);
 		if (f == ChartPlotterCollisionCache.UNKNOWN) return -1;
-		if ((f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0) return 0;
-		int dx = Integer.signum(nx - x);
-		int dy = Integer.signum(ny - y);
-		int mask = 0;
-		if (dx < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_EAST;
-		if (dx > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_WEST;
-		if (dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH;
-		if (dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH;
-		if (dx < 0 && dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST;
-		if (dx < 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST;
-		if (dx > 0 && dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST;
-		if (dx > 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST;
-		return (f & mask) == 0 ? 1 : 0;
+		return blocker(f) ? 0 : 1;
 	}
 	private static void addStarts(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast) {
 		if (start >= 0) {
@@ -382,17 +453,132 @@ final class ChartPlotterRouteFinder {
 		}
 		return best == Integer.MAX_VALUE ? null : ChartPlotterRoute.ok(sx, sy, tx, ty, new int[]{sx, bx, tx}, new int[]{sy, by, ty}, 3, turnBias, fast);
 	}
+	private static Corridor corridor(Grid data, Footprint fp, int sx, int sy, int tx, int ty, BooleanSupplier cancel) {
+		int smx = sx >> 5;
+		int smy = sy >> 5;
+		int tmx = tx >> 5;
+		int tmy = ty >> 5;
+		int clear = radius(fp) + 1;
+		Work w = WORK.get();
+		w.clearAll();
+		if (blockedMacro(summary(data, w.bg, smx, smy), clear)) return null;
+		if (blockedMacro(summary(data, w.bg, tmx, tmy), clear)) return null;
+		Bounds b = bounds(sx, sy, tx, ty, maxMargin(sx, sy, tx, ty, fp));
+		int minX = b.minX >> 5;
+		int minY = b.minY >> 5;
+		int maxX = b.maxX >> 5;
+		int maxY = b.maxY >> 5;
+		int n = w.a.add(smx, smy, 0, 0, 0, mh(smx, smy, tmx, tmy), -1);
+		w.aq.add(n);
+		w.ag.put(mkey(smx, smy), 0);
+		int seen = 0;
+		while (w.aq.hasNext()) {
+			if (cancel.getAsBoolean()) return null;
+			int a = w.aq.poll();
+			long ak = mkey(w.a.x[a], w.a.y[a]);
+			int ag = w.ag.get(ak);
+			if (ag == LongIntMap.MISS || w.a.g[a] != ag) continue;
+			if (w.a.x[a] == tmx && w.a.y[a] == tmy) {
+				Corridor co = corridor(w.a, a);
+				co.seen = seen;
+				co.summaries = w.bg.n;
+				return co;
+			}
+			if (++seen > MAX) return null;
+			for (int i = 0; i < MDX.length; i++) {
+				int nx = w.a.x[a] + MDX[i];
+				int ny = w.a.y[a] + MDY[i];
+				if (nx < minX || ny < minY || nx > maxX || ny > maxY) continue;
+				if (blockedMacro(summary(data, w.bg, nx, ny), clear)) continue;
+				if (MDX[i] != 0 && MDY[i] != 0) {
+					if (blockedMacro(summary(data, w.bg, w.a.x[a] + MDX[i], w.a.y[a]), clear)) continue;
+					if (blockedMacro(summary(data, w.bg, w.a.x[a], w.a.y[a] + MDY[i]), clear)) continue;
+				}
+				int ng = w.a.g[a] + MCOST[i];
+				long key = mkey(nx, ny);
+				int old = w.ag.get(key);
+				if (old != LongIntMap.MISS && old <= ng) continue;
+				int ni = w.a.add(nx, ny, 0, ng, 0, ng + mh(nx, ny, tmx, tmy), a);
+				w.ag.put(key, ng);
+				w.aq.add(ni);
+			}
+		}
+		return null;
+	}
+	private static Corridor corridor(Nodes nodes, int end) {
+		Corridor co = new Corridor();
+		for (int a = end; a >= 0; a = nodes.prev[a]) {
+			co.add(nodes.x[a], nodes.y[a]);
+			co.nodes++;
+		}
+		return co;
+	}
+	private static boolean blockedMacro(int s, int clear) {
+		int c = s & 3;
+		return c != MIXED && (c != OPEN || ((s >>> 2) & 15) < clear);
+	}
+	private static int summary(Grid data, LongIntMap cache, int mx, int my) {
+		long key = mkey(mx, my);
+		int s = cache.get(key);
+		if (s != LongIntMap.MISS) return s;
+		int x0 = mx << 5;
+		int y0 = my << 5;
+		boolean unk = false;
+		boolean blk = false;
+		boolean full = true;
+		boolean known = false;
+		for (int x = x0; x < x0 + 32; x++) {
+			for (int y = y0; y < y0 + 32; y++) {
+				int f = data.flag(x, y);
+				if (f == ChartPlotterCollisionCache.UNKNOWN) {
+					unk = true;
+					full = false;
+					continue;
+				}
+				known = true;
+				if (blocker(f)) blk = true;
+				else full = false;
+			}
+		}
+		int c = !known ? UNKNOWN : full ? BLOCKED : blk || unk ? MIXED : OPEN;
+		int clear = c == OPEN ? clearance(data, x0, y0) : 0;
+		s = c | clear << 2;
+		cache.put(key, s);
+		return s;
+	}
+	private static int clearance(Grid data, int x0, int y0) {
+		for (int r = 1; r <= 15; r++) {
+			int minX = x0 - r;
+			int minY = y0 - r;
+			int maxX = x0 + 31 + r;
+			int maxY = y0 + 31 + r;
+			for (int x = minX; x <= maxX; x++) {
+				if (bad(data, x, minY) || bad(data, x, maxY)) return r - 1;
+			}
+			for (int y = minY + 1; y < maxY; y++) {
+				if (bad(data, minX, y) || bad(data, maxX, y)) return r - 1;
+			}
+		}
+		return 15;
+	}
+	private static boolean bad(Grid data, int x, int y) {
+		int f = data.flag(x, y);
+		return f != ChartPlotterCollisionCache.UNKNOWN && blocker(f);
+	}
+	private static boolean blocker(int f) {return (f & MOVE) != 0;}
+	private static int mh(int x, int y, int tx, int ty) {return h(x << 5, y << 5, tx << 5, ty << 5);}
+	private static long since(long t) {return System.nanoTime() - t;}
 	private static int directPoint(Grid data, int sx, int sy, int tx, int ty) {
 		int x = sx;
 		int y = sy;
 		while (x != tx || y != ty) {
 			int nx = x + Integer.signum(tx - x);
 			int ny = y + Integer.signum(ty - y);
-			int p = pass(data, x, y, nx, ny);
+			int p = pass(data, nx, ny);
 			if (p != 1) return p;
 			if (nx != x && ny != y) {
-				int px = pass(data, x, y, nx, y);
-				int py = pass(data, x, y, x, ny);
+				int px = pass(data, nx, y);
+				int py = pass(data, x, ny);
 				if (px != 1) return px;
 				if (py != 1) return py;
 			}
@@ -415,7 +601,7 @@ final class ChartPlotterRouteFinder {
 	}
 	private static boolean blocked(Grid data, int x, int y) {
 		int f = data.flag(x, y);
-		return f != ChartPlotterCollisionCache.UNKNOWN && (f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0;
+		return f != ChartPlotterCollisionCache.UNKNOWN && blocker(f);
 	}
 	private static int open(Grid data, Footprint fp, int x, int y) {
 		if (fp == null) return blocked(data, x, y) ? 0 : 1;
@@ -455,8 +641,6 @@ final class ChartPlotterRouteFinder {
 		int dy = by - ay;
 		int steps = Math.max(Math.abs(dx), Math.abs(dy)) / STEP;
 		if (steps < 1) steps = 1;
-		int px = Math.floorDiv(ax, TS);
-		int py = Math.floorDiv(ay, TS);
 		for (int i = 1; i <= steps; i++) {
 			int lx = ax + dx * i / steps;
 			int ly = ay + dy * i / steps;
@@ -464,9 +648,7 @@ final class ChartPlotterRouteFinder {
 			int y = Math.floorDiv(ly, TS);
 			int f = data.flag(x, y);
 			if (f == ChartPlotterCollisionCache.UNKNOWN) return -1;
-			if (hitTile(f, x - px, y - py)) return 0;
-			px = x;
-			py = y;
+			if (hitTile(f)) return 0;
 		}
 		return 1;
 	}
@@ -475,22 +657,10 @@ final class ChartPlotterRouteFinder {
 		int y = Math.floorDiv(ly, TS);
 		int f = data.flag(x, y);
 		if (f == ChartPlotterCollisionCache.UNKNOWN) return -1;
-		return (f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0 ? 0 : 1;
+		return blocker(f) ? 0 : 1;
 	}
-	private static boolean hitTile(int f, int dx, int dy) {
-		if ((f & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0) return true;
-		dx = Integer.signum(dx);
-		dy = Integer.signum(dy);
-		int mask = 0;
-		if (dx < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_EAST;
-		if (dx > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_WEST;
-		if (dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH;
-		if (dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH;
-		if (dx < 0 && dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST;
-		if (dx < 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST;
-		if (dx > 0 && dy < 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST;
-		if (dx > 0 && dy > 0) mask |= CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST;
-		return (f & mask) != 0;
+	private static boolean hitTile(int f) {
+		return blocker(f);
 	}
 	private static int h(int x, int y, int tx, int ty) {
 		int dx = Math.abs(tx - x);
@@ -591,6 +761,7 @@ final class ChartPlotterRouteFinder {
 		return -1;
 	}
 	private static long state(int x, int y, int d) {return ((long) x & 0xfffffL) << 44 | ((long) y & 0xfffffL) << 4 | d;}
+	private static long mkey(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private static long chunk(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private static final class Grid {
 		final Map<Long, int[]> data;
@@ -849,12 +1020,116 @@ final class ChartPlotterRouteFinder {
 			return n;
 		}
 	}
+	private static final class Corridor {
+		final LongIntMap cells = new LongIntMap(256);
+		int minX = Integer.MAX_VALUE;
+		int minY = Integer.MAX_VALUE;
+		int maxX = Integer.MIN_VALUE;
+		int maxY = Integer.MIN_VALUE;
+		int nodes;
+		int seen;
+		int summaries;
+		void add(int x, int y) {
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dy = -1; dy <= 1; dy++) addCell(x + dx, y + dy);
+			}
+		}
+		boolean outside(int x, int y) {return cells.get(mkey(x >> 5, y >> 5)) == LongIntMap.MISS;}
+		Bounds bounds() {return new Bounds(minX, minY, maxX, maxY);}
+		private void addCell(int x, int y) {
+			cells.put(mkey(x, y), 1);
+			int x0 = x << 5;
+			int y0 = y << 5;
+			minX = Math.min(minX, x0);
+			minY = Math.min(minY, y0);
+			maxX = Math.max(maxX, x0 + 31);
+			maxY = Math.max(maxY, y0 + 31);
+		}
+	}
+	private static final class Debug {
+		final long total = System.nanoTime();
+		final int chunks;
+		final boolean footprint;
+		final int start;
+		final int sx;
+		final int sy;
+		final int tx;
+		final int ty;
+		final int turnBias;
+		final boolean bidirectional;
+		final boolean reverse;
+		final boolean fast;
+		int radius;
+		int attempts;
+		int margin;
+		int corridorCells;
+		int corridorNodes;
+		int macroSeen;
+		int macroSummaries;
+		int searchSeen;
+		int dist;
+		boolean unknown;
+		boolean capped;
+		boolean canceled;
+		String mode = "none";
+		long pre;
+		long direct;
+		long direct2;
+		long macro;
+		long corridorSearch;
+		long search;
+		private Debug(int chunks, boolean footprint, int start, int sx, int sy, int tx, int ty, int turnBias, boolean bidirectional, boolean reverse, boolean fast) {
+			this.chunks = chunks;
+			this.footprint = footprint;
+			this.start = start;
+			this.sx = sx;
+			this.sy = sy;
+			this.tx = tx;
+			this.ty = ty;
+			this.turnBias = turnBias;
+			this.bidirectional = bidirectional;
+			this.reverse = reverse;
+			this.fast = fast;
+		}
+		void add(Search s) {
+			searchSeen += s.seen;
+			dist = Math.max(dist, s.dist);
+			unknown |= s.unknown;
+			capped |= s.capped;
+			canceled |= s.canceled;
+		}
+		String text(ChartPlotterRoute r) {
+			long all = System.nanoTime() - total;
+			return "ChartPlotter route status=" + status(r.status) + " mode=" + mode + " from=" + sx + "," + sy + " to=" + tx + "," + ty + " tiles=" + h(sx, sy, tx, ty) / 10 + " waypoints=" + r.n + " dist=" + dist + " chunks=" + chunks + " footprint=" + footprint + " radius=" + radius + " start=" + start + " turnBias=" + turnBias + " bidirectional=" + bidirectional + " reverse=" + reverse + " fast=" + fast + " attempts=" + attempts + " margin=" + margin + " macroCells=" + corridorCells + " macroRoute=" + corridorNodes + " macroSeen=" + macroSeen + " macroSummaries=" + macroSummaries + " searchSeen=" + searchSeen + " unknown=" + unknown + " capped=" + capped + " canceled=" + canceled + " totalMs=" + ms(all) + " preMs=" + ms(pre) + " directMs=" + ms(direct) + " direct2Ms=" + ms(direct2) + " macroMs=" + ms(macro) + " corridorSearchMs=" + ms(corridorSearch) + " fallbackSearchMs=" + ms(search);
+		}
+		private static String status(int s) {
+			if (s == ChartPlotterRoute.OK) return "OK";
+			if (s == ChartPlotterRoute.UNCHARTED) return "UNCHARTED";
+			if (s == ChartPlotterRoute.NO_ROUTE) return "NO_ROUTE";
+			if (s == ChartPlotterRoute.COMPLEX) return "COMPLEX";
+			return "PENDING";
+		}
+		private static String ms(long ns) {
+			long us = (ns + 500) / 1000;
+			long a = us / 1000;
+			long b = us % 1000;
+			return a + "." + (b < 100 ? b < 10 ? "00" : "0" : "") + b;
+		}
+	}
 	private static final class Search {
 		final ChartPlotterRoute route;
 		final int dist;
-		private Search(ChartPlotterRoute route, int dist) {
+		final int seen;
+		final boolean unknown;
+		final boolean capped;
+		final boolean canceled;
+		private Search(ChartPlotterRoute route, int dist, int seen, boolean unknown, boolean capped, boolean canceled) {
 			this.route = route;
 			this.dist = dist;
+			this.seen = seen;
+			this.unknown = unknown;
+			this.capped = capped;
+			this.canceled = canceled;
 		}
 	}
 	private static final class Bounds {

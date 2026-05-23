@@ -23,9 +23,12 @@ import net.runelite.client.RuneLite;
 @Singleton
 final class ChartPlotterCollisionCache {
 	static final int UNKNOWN = -1;
+	static final int OPEN = 0;
+	static final int BLOCKED = CollisionDataFlag.BLOCK_MOVEMENT_FULL;
 	static final int VOID = 0xffffff;
-	private static final byte VERSION = 2;
+	private static final byte VERSION = 3;
 	private static final int EDGE = 8;
+	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, int[]> chunks = new HashMap<>();
 	private Map<Long, int[]> view = new HashMap<>();
@@ -149,8 +152,9 @@ final class ChartPlotterCollisionCache {
 						int cx = in.readInt();
 						int cy = in.readInt();
 						long mask = in.readLong();
+						long blocked = in.readLong();
 						int[] v = new int[64];
-						for (int j = 0; j < v.length; j++) v[j] = (mask & 1L << j) == 0 ? UNKNOWN : unpack(in.readShort());
+						for (int j = 0; j < v.length; j++) v[j] = (mask & 1L << j) == 0 ? UNKNOWN : (blocked & 1L << j) == 0 ? OPEN : BLOCKED;
 						data.put(key(cx, cy), v);
 					}
 				}
@@ -190,9 +194,7 @@ final class ChartPlotterCollisionCache {
 				out.writeInt((int) (e.getKey() >> 32));
 				out.writeInt((int) (long) e.getKey());
 				out.writeLong(mask);
-				for (int i = 0; i < e.getValue().length; i++) {
-					if ((mask & 1L << i) != 0) out.writeShort(pack(e.getValue()[i]));
-				}
+				out.writeLong(blocked(e.getValue()));
 			}
 		} catch (Exception ignored) {
 			return false;
@@ -242,43 +244,15 @@ final class ChartPlotterCollisionCache {
 		}
 		return m;
 	}
+	private static long blocked(int[] v) {
+		long m = 0;
+		for (int i = 0; i < v.length; i++) {
+			if (v[i] == BLOCKED) m |= 1L << i;
+		}
+		return m;
+	}
 	private static int clean(int f) {
-		int v = 0;
-		for (int flag : FLAGS) v |= f & flag;
-		return v;
-	}
-	private static int unpack(short s) {
-		int v = s & 0xffff;
-		int f = 0;
-		for (int i = 0; i < FLAGS.length; i++) {
-			if ((v & 1 << i) != 0) f |= FLAGS[i];
-		}
-		return f;
-	}
-	private static short pack(int f) {
-		int v = 0;
-		for (int i = 0; i < FLAGS.length; i++) {
-			if ((f & FLAGS[i]) != 0) v |= 1 << i;
-		}
-		return (short) v;
+		return (f & MOVE) == 0 ? OPEN : BLOCKED;
 	}
 	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
-	private static final int[] FLAGS = {
-		CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST,
-		CollisionDataFlag.BLOCK_MOVEMENT_NORTH,
-		CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST,
-		CollisionDataFlag.BLOCK_MOVEMENT_EAST,
-		CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST,
-		CollisionDataFlag.BLOCK_MOVEMENT_SOUTH,
-		CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST,
-		CollisionDataFlag.BLOCK_MOVEMENT_WEST,
-		CollisionDataFlag.BLOCK_MOVEMENT_OBJECT,
-		CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION,
-		CollisionDataFlag.BLOCK_MOVEMENT_FLOOR,
-		CollisionDataFlag.BLOCK_LINE_OF_SIGHT_NORTH,
-		CollisionDataFlag.BLOCK_LINE_OF_SIGHT_EAST,
-		CollisionDataFlag.BLOCK_LINE_OF_SIGHT_SOUTH,
-		CollisionDataFlag.BLOCK_LINE_OF_SIGHT_WEST,
-		CollisionDataFlag.BLOCK_LINE_OF_SIGHT_FULL
-	};
 }
