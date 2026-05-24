@@ -29,8 +29,9 @@ final class ChartPlotterCollisionCache {
 	static final int OPEN = 0;
 	static final int BLOCKED = CollisionDataFlag.BLOCK_MOVEMENT_FULL;
 	static final int VOID = 0xffffff;
-	private static final byte VERSION = 3;
+	private static final byte VERSION = 1;
 	private static final int EDGE = 8;
+	private static final int USHORT = 0xffff;
 	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, Chunk> chunks = new HashMap<>();
@@ -199,8 +200,8 @@ final class ChartPlotterCollisionCache {
 				if (in.readByte() == VERSION) {
 					int n = in.readInt();
 					for (int i = 0; i < n; i++) {
-						int cx = in.readInt();
-						int cy = in.readInt();
+						int cx = in.readUnsignedShort();
+						int cy = in.readUnsignedShort();
 						long mask = in.readLong();
 						long blocked = in.readLong();
 						data.put(key(cx, cy), new Chunk(mask, blocked & mask));
@@ -239,8 +240,11 @@ final class ChartPlotterCollisionCache {
 			for (Map.Entry<Long, Chunk> e : data.entrySet()) {
 				Chunk c = e.getValue();
 				if (c.empty()) continue;
-				out.writeInt((int) (e.getKey() >> 32));
-				out.writeInt((int) (long) e.getKey());
+				int cx = (int) (e.getKey() >> 32);
+				int cy = (int) (long) e.getKey();
+				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) return false;
+				out.writeShort(cx);
+				out.writeShort(cy);
 				out.writeLong(c.known);
 				out.writeLong(c.blocked);
 			}
