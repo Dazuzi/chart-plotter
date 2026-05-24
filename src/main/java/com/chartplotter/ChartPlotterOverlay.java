@@ -26,7 +26,6 @@ import net.runelite.client.util.ColorUtil;
 public class ChartPlotterOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int TURN = 128;
-	private static final int EXT = (Constants.EXTENDED_SCENE_SIZE - Constants.SCENE_SIZE) / 2;
 	private static final int STEP = 32;
 	private static final int DOT = 4;
 	private static final int EDGE = 8;
@@ -36,8 +35,6 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final Color SAFE = ColorUtil.colorWithAlpha(Color.CYAN, 180);
 	private static final Color WARN = ColorUtil.colorWithAlpha(Color.YELLOW, 180);
 	private static final Color HIT = ColorUtil.colorWithAlpha(Color.RED, 220);
-	private static final Color CACHE = ColorUtil.colorWithAlpha(Color.YELLOW, 130);
-	private static final Color UNKNOWN_TILE = ColorUtil.colorWithAlpha(Color.GRAY, 110);
 	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
@@ -54,10 +51,17 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	@Override
 	public Dimension render(Graphics2D g) {
-		if (!plugin.isSailing() || !config.worldEnabled()) return null;
+		if (!plugin.isSailing()) return null;
+		boolean showWorld = config.worldEnabled();
+		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
+		if (!showWorld && !cacheOverlay.world) return null;
 		WorldView top = client.getTopLevelWorldView();
+		if (top == null) return null;
+		SceneArea area = area(top);
+		if (cacheOverlay.world) drawCache(g, top, area);
+		if (!showWorld) return null;
 		WorldEntity ship = plugin.getShip();
-		if (ship == null || top == null) return null;
+		if (ship == null) return null;
 		LocalPoint anchor = ship.getTargetLocation();
 		LocalPoint center = ship.getLocalLocation();
 		if (anchor == null) anchor = center;
@@ -68,8 +72,8 @@ public class ChartPlotterOverlay extends Overlay {
 		int from = ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
-		Path cur = path(top, wc, anchor, from, course);
-		Path pot = mouse >= 0 ? path(top, wc, anchor, from, mouse) : null;
+		Path cur = path(top, wc, anchor, from, course, area);
+		Path pot = mouse >= 0 ? path(top, wc, anchor, from, mouse, area) : null;
 		int skip = pot != null ? match(cur, pot) : 0;
 		ChartPlotterCollisionDebug debug = config.collisionDebug();
 		Stroke prev = g.getStroke();
@@ -78,19 +82,21 @@ public class ChartPlotterOverlay extends Overlay {
 		drawRoute(g, top, plugin.route());
 		draw(g, top, cur, rx, ry, config.worldLineColor(), skip);
 		if (pot != null) draw(g, top, pot, rx, ry, config.worldPotentialColor(), 0);
-		drawSailableDebug(g, top, center);
 		if (debug != ChartPlotterCollisionDebug.OFF) drawDebug(g, top, wc, center, ship.getOrientation(), cur, pot);
 		g.setStroke(prev);
 		return null;
 	}
 	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target) {
-		return path(wv, wc, anchor, from, target, limit(anchor), true);
+		SceneArea area = area(wv);
+		return path(wv, wc, anchor, from, target, limit(anchor, area), area);
+	}
+	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, SceneArea area) {
+		return path(wv, wc, anchor, from, target, limit(anchor, area), area);
 	}
 	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap) {
-		return path(wv, wc, anchor, from, target, cap, false);
+		return path(wv, wc, anchor, from, target, cap, null);
 	}
-	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, boolean checkLoaded) {
-		Tile[][][] tiles = wv.getScene().getExtendedTiles();
+	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, SceneArea area) {
 		Path p = new Path(cap + 2);
 		p.start = from;
 		p.x[p.n] = anchor.getX();
@@ -124,7 +130,7 @@ public class ChartPlotterOverlay extends Overlay {
 			posY += v.getY();
 			int lx = anchor.getX() + posX;
 			int ly = anchor.getY() + posY;
-			if (checkLoaded && !loaded(tiles, wv.getPlane(), lx, ly)) break;
+			if (area != null && !area.loaded(lx, ly)) break;
 			if (!p.blocked) {
 				Block b = config.stopAtCollision() ? block(wv, wc, cache, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
 				if (b != null) {
@@ -235,6 +241,39 @@ public class ChartPlotterOverlay extends Overlay {
 		g.setColor(config.worldChartColor());
 		g.draw(line);
 	}
+	private void drawCache(Graphics2D g, WorldView wv, SceneArea area) {
+		if (area == null) return;
+		Stroke old = g.getStroke();
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		g.setColor(new Color(0, 210, 120, 150));
+		for (int i = 0; i < area.n; i++) {
+			int cx = area.cx[i];
+			int cy = area.cy[i];
+			if (data.uncached(cx, cy)) continue;
+			int wx = cx << 3;
+			int wy = cy << 3;
+			int x0 = Math.max(wx, area.minWX());
+			int y0 = Math.max(wy, area.minWY());
+			int x1 = Math.min(wx + 8, area.maxWX());
+			int y1 = Math.min(wy + 8, area.maxWY());
+			if (x0 >= x1 || y0 >= y1) continue;
+			if (area.chunk(cx - 1, cy) && data.uncached(cx - 1, cy)) drawCacheEdge(g, wv, x0, y0, x0, y1);
+			if (area.chunk(cx + 1, cy) && data.uncached(cx + 1, cy)) drawCacheEdge(g, wv, x1, y0, x1, y1);
+			if (area.chunk(cx, cy - 1) && data.uncached(cx, cy - 1)) drawCacheEdge(g, wv, x0, y0, x1, y0);
+			if (area.chunk(cx, cy + 1) && data.uncached(cx, cy + 1)) drawCacheEdge(g, wv, x0, y1, x1, y1);
+		}
+		g.setStroke(old);
+	}
+	private void drawCacheEdge(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by) {
+		Point a = cachePoint(wv, ax, ay);
+		Point b = cachePoint(wv, bx, by);
+		if (a == null || b == null) return;
+		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+	}
+	private Point cachePoint(WorldView wv, int wx, int wy) {
+		return Perspective.localToCanvas(client, new LocalPoint((wx - wv.getBaseX()) * TS, (wy - wv.getBaseY()) * TS, wv), 0);
+	}
 	private boolean missing(WorldView wv, Path p, int i, float[] rx, float[] ry, float[] z, int[] cx, int[] cy) {
 		Perspective.modelToCanvas(client, wv, 4, p.x[i], p.y[i], 0, p.o[i], rx, ry, z, cx, cy);
 		return cx[0] == Integer.MIN_VALUE || cx[1] == Integer.MIN_VALUE || cx[2] == Integer.MIN_VALUE || cx[3] == Integer.MIN_VALUE;
@@ -290,61 +329,6 @@ public class ChartPlotterOverlay extends Overlay {
 		g.setColor(Color.WHITE);
 		y = drawDebugText(g, loc, cur, "cur", x, y);
 		if (pot != null) drawDebugText(g, loc, pot, "pot", x, y);
-	}
-	private void drawSailableDebug(Graphics2D g, WorldView wv, LocalPoint loc) {
-		int r = config.sailableDebugRadius();
-		if (r <= 0) return;
-		CollisionData[] maps = wv.getCollisionMaps();
-		int plane = wv.getPlane();
-		int[][] flags = maps != null && plane >= 0 && plane < maps.length && maps[plane] != null ? maps[plane].getFlags() : null;
-		int tx = Math.floorDiv(loc.getX(), TS);
-		int ty = Math.floorDiv(loc.getY(), TS);
-		int liveBad = 0;
-		int cacheBad = 0;
-		int unknown = 0;
-		for (int x = tx - r; x <= tx + r; x++) {
-			for (int y = ty - r; y <= ty + r; y++) {
-				int live = live(flags, x, y);
-				int cache = collisionCache.flag(wv, x, y);
-				if (live == ChartPlotterCollisionCache.UNKNOWN) {
-					unknown++;
-					if (cache == ChartPlotterCollisionCache.UNKNOWN) drawTile(g, wv, x, y, UNKNOWN_TILE);
-					else if (blocker(cache)) {
-						cacheBad++;
-						drawTile(g, wv, x, y, CACHE);
-					}
-				} else if (blocker(live)) {
-					liveBad++;
-					drawTile(g, wv, x, y, HIT);
-				} else if (cache != ChartPlotterCollisionCache.UNKNOWN && blocker(cache)) {
-					cacheBad++;
-					drawTile(g, wv, x, y, CACHE);
-				}
-			}
-		}
-		drawSailableText(g, r, liveBad, cacheBad, unknown);
-	}
-	private void drawSailableText(Graphics2D g, int r, int liveBad, int cacheBad, int unknown) {
-		int x = client.getViewportXOffset() + 8;
-		int y = client.getViewportYOffset() + client.getViewportHeight() - 10;
-		g.setColor(Color.WHITE);
-		g.drawString("sailable radius=" + r + " liveBad=" + liveBad + " cacheBad=" + cacheBad + " unknown=" + unknown, x, y);
-	}
-	private void drawTile(Graphics2D g, WorldView wv, int x, int y, Color c) {
-		Point a = Perspective.localToCanvas(client, new LocalPoint(x * TS, y * TS, wv), 0);
-		Point b = Perspective.localToCanvas(client, new LocalPoint((x + 1) * TS, y * TS, wv), 0);
-		Point d = Perspective.localToCanvas(client, new LocalPoint((x + 1) * TS, (y + 1) * TS, wv), 0);
-		Point e = Perspective.localToCanvas(client, new LocalPoint(x * TS, (y + 1) * TS, wv), 0);
-		if (a == null || b == null || d == null || e == null) return;
-		Path2D p = new Path2D.Double();
-		p.moveTo(a.getX(), a.getY());
-		p.lineTo(b.getX(), b.getY());
-		p.lineTo(d.getX(), d.getY());
-		p.lineTo(e.getX(), e.getY());
-		p.closePath();
-		g.setColor(c);
-		g.fill(p);
-		g.draw(p);
 	}
 	private int drawDebugText(Graphics2D g, LocalPoint loc, Path p, String name, int x, int y) {
 		if (!p.blocked) return y;
@@ -445,10 +429,57 @@ public class ChartPlotterOverlay extends Overlay {
 		float hh = wc != null ? wc.getBoundsHeight() / 2f : TS;
 		return new float[]{oy - hh, oy + hh, oy + hh, oy - hh};
 	}
-	private static boolean loaded(Tile[][][] tiles, int plane, int lx, int ly) {
-		int tx = Math.floorDiv(lx, TS) + EXT;
-		int ty = Math.floorDiv(ly, TS) + EXT;
-		return plane >= 0 && plane < tiles.length && tx >= 0 && ty >= 0 && tx < tiles[plane].length && ty < tiles[plane][tx].length && tiles[plane][tx][ty] != null;
+	private static SceneArea area(WorldView wv) {
+		Tile[][][] all = wv.getScene().getExtendedTiles();
+		int plane = wv.getPlane();
+		if (all == null || plane < 0 || plane >= all.length || all[plane] == null) return null;
+		Tile[][] tiles = all[plane];
+		int offX = wv.isTopLevel() ? (tiles.length - wv.getSizeX()) / 2 : 0;
+		int offY = 0;
+		int minX = Integer.MAX_VALUE;
+		int minY = Integer.MAX_VALUE;
+		int maxX = Integer.MIN_VALUE;
+		int maxY = Integer.MIN_VALUE;
+		for (int x = 0; x < tiles.length; x++) {
+			Tile[] row = tiles[x];
+			if (row == null) continue;
+			if (x == 0) offY = wv.isTopLevel() ? (row.length - wv.getSizeY()) / 2 : 0;
+			for (int y = 0; y < row.length; y++) {
+				if (row[y] == null) continue;
+				int sx = x - offX;
+				int sy = y - offY;
+				if (sx < minX) minX = sx;
+				if (sy < minY) minY = sy;
+				if (sx + 1 > maxX) maxX = sx + 1;
+				if (sy + 1 > maxY) maxY = sy + 1;
+			}
+		}
+		if (minX == Integer.MAX_VALUE) return null;
+		int minCX = (wv.getBaseX() + minX) >> 3;
+		int minCY = (wv.getBaseY() + minY) >> 3;
+		int maxCX = (wv.getBaseX() + maxX - 1) >> 3;
+		int maxCY = (wv.getBaseY() + maxY - 1) >> 3;
+		int cw = maxCX - minCX + 1;
+		int ch = maxCY - minCY + 1;
+		boolean[] chunks = new boolean[cw * ch];
+		int n = 0;
+		for (int x = 0; x < tiles.length; x++) {
+			Tile[] row = tiles[x];
+			if (row == null) continue;
+			for (int y = 0; y < row.length; y++) {
+				if (row[y] == null) continue;
+				int sx = x - offX;
+				int sy = y - offY;
+				int cx = ((wv.getBaseX() + sx) >> 3) - minCX;
+				int cy = ((wv.getBaseY() + sy) >> 3) - minCY;
+				int i = cx * ch + cy;
+				if (!chunks[i]) {
+					chunks[i] = true;
+					n++;
+				}
+			}
+		}
+		return new SceneArea(tiles, wv.getBaseX(), wv.getBaseY(), offX, offY, minX, minY, maxX, maxY, minCX, minCY, cw, ch, chunks, n);
 	}
 	private static Block block(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache, int ax, int ay, int ao, int bx, int by, int bo) {
 		CollisionData[] maps = wv.getCollisionMaps();
@@ -536,14 +567,14 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return cache == null ? ChartPlotterCollisionCache.UNKNOWN : cache.flag(wv, x, y);
 	}
-	private static int live(int[][] flags, int x, int y) {return safe(flags, x, y) && flags[x][y] != VOID ? flags[x][y] : ChartPlotterCollisionCache.UNKNOWN;}
 	private static boolean blocker(int f) {return (f & MOVE) != 0;}
 	private static boolean safe(int[][] flags, int x, int y) {return inside(flags, x, y) && x >= EDGE && y >= EDGE && x < flags.length - EDGE && y < flags[x].length - EDGE;}
 	private static boolean inside(int[][] flags, int x, int y) {return x >= 0 && y >= 0 && x < flags.length && y < flags[x].length;}
-	private static int limit(LocalPoint anchor) {
-		int ax = Math.floorDiv(anchor.getX(), TS) + EXT;
-		int ay = Math.floorDiv(anchor.getY(), TS) + EXT;
-		int edge = Math.max(Math.max(ax, Constants.EXTENDED_SCENE_SIZE - ax), Math.max(ay, Constants.EXTENDED_SCENE_SIZE - ay));
+	private static int limit(LocalPoint anchor, SceneArea area) {
+		if (area == null) return 512;
+		int ax = Math.floorDiv(anchor.getX(), TS);
+		int ay = Math.floorDiv(anchor.getY(), TS);
+		int edge = Math.max(Math.max(Math.abs(ax - area.minX), Math.abs(area.maxX - ax)), Math.max(Math.abs(ay - area.minY), Math.abs(area.maxY - ay)));
 		return edge * 8 + 32;
 	}
 	private static Point velocity(double speed, double angle) {
@@ -552,6 +583,67 @@ public class ChartPlotterOverlay extends Overlay {
 		return new Point(ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dx)), ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dy)));
 	}
 	private static int side(int x1, int y1, int x2, int y2, int x, int y) {return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);}
+	private static final class SceneArea {
+		final Tile[][] tiles;
+		final int baseX;
+		final int baseY;
+		final int offX;
+		final int offY;
+		final int minX;
+		final int minY;
+		final int maxX;
+		final int maxY;
+		final int minCX;
+		final int minCY;
+		final int cw;
+		final int ch;
+		final boolean[] chunks;
+		final int[] cx;
+		final int[] cy;
+		final int n;
+		private SceneArea(Tile[][] tiles, int baseX, int baseY, int offX, int offY, int minX, int minY, int maxX, int maxY, int minCX, int minCY, int cw, int ch, boolean[] chunks, int n) {
+			this.tiles = tiles;
+			this.baseX = baseX;
+			this.baseY = baseY;
+			this.offX = offX;
+			this.offY = offY;
+			this.minX = minX;
+			this.minY = minY;
+			this.maxX = maxX;
+			this.maxY = maxY;
+			this.minCX = minCX;
+			this.minCY = minCY;
+			this.cw = cw;
+			this.ch = ch;
+			this.chunks = chunks;
+			this.n = n;
+			cx = new int[n];
+			cy = new int[n];
+			int j = 0;
+			for (int x = 0; x < cw; x++) {
+				for (int y = 0; y < ch; y++) {
+					if (!chunks[x * ch + y]) continue;
+					cx[j] = minCX + x;
+					cy[j] = minCY + y;
+					j++;
+				}
+			}
+		}
+		boolean loaded(int lx, int ly) {
+			int x = Math.floorDiv(lx, TS) + offX;
+			int y = Math.floorDiv(ly, TS) + offY;
+			return x >= 0 && y >= 0 && x < tiles.length && tiles[x] != null && y < tiles[x].length && tiles[x][y] != null;
+		}
+		boolean chunk(int x, int y) {
+			x -= minCX;
+			y -= minCY;
+			return x >= 0 && y >= 0 && x < cw && y < ch && chunks[x * ch + y];
+		}
+		int minWX() {return baseX + minX;}
+		int minWY() {return baseY + minY;}
+		int maxWX() {return baseX + maxX;}
+		int maxWY() {return baseY + maxY;}
+	}
 	static final class Path {
 		final int[] x;
 		final int[] y;

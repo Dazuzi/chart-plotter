@@ -101,11 +101,12 @@ public class ChartPlotterPlugin extends Plugin {
 		if ("chartplotter".equals(e.getGroup())) apply();
 	}
 	private void apply() {
-		if (config.worldEnabled()) overlayManager.add(overlay);
+		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
+		if (config.worldEnabled() || cacheOverlay.world) overlayManager.add(overlay);
 		else overlayManager.remove(overlay);
 		if (config.minimapEnabled()) overlayManager.add(minimapOverlay);
 		else overlayManager.remove(minimapOverlay);
-		if (config.worldMapEnabled()) overlayManager.add(worldMapOverlay);
+		if (config.worldMapEnabled() || cacheOverlay.worldMap) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
 		boolean any = config.worldEnabled() || config.minimapEnabled() || config.worldMapEnabled();
 		if (!any) {
@@ -194,7 +195,7 @@ public class ChartPlotterPlugin extends Plugin {
 			course = -1;
 			resetMotion();
 		}
-		boolean active = (config.cacheCollision() || config.cacheOverlay()) && boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
+		boolean active = (config.cacheCollision() || config.cacheOverlay() != ChartPlotterCacheOverlay.OFF) && boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
 		collision(active);
 		if (active && config.cacheCollision()) collisionCache.capture(top);
 		if (top != null) updateRoute(top, ship, loc);

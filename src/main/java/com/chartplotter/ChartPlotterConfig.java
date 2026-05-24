@@ -76,12 +76,9 @@ public interface ChartPlotterConfig extends Config {
 	default boolean cacheCollision() {return true;}
 	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)
 	default ChartPlotterCollisionDebug collisionDebug() {return ChartPlotterCollisionDebug.OFF;}
-	@ConfigItem(keyName = "sailableDebugRadius", name = "Sailable debug radius", description = "Draw non-sailable live and cached tiles around the ship. Zero disables it.", section = tweaksSection, position = 3)
-	@Range(max = 128)
-	default int sailableDebugRadius() {return 0;}
-	@ConfigItem(keyName = "cacheOverlay", name = "Cache overlay", description = "Draw remembered collision coverage on the world map.", section = tweaksSection, position = 4)
-	default boolean cacheOverlay() {return false;}
-	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 5)
+	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision coverage.", section = tweaksSection, position = 3)
+	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
+	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 4)
 	@Range(min = 1, max = 20)
 	default int routeClearRadius() {return 5;}
 }

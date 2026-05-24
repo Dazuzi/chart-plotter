@@ -17,6 +17,10 @@ final class ChartPlotterCollisionData {
 		ChartPlotterCollisionCache.Chunk c = live == null ? null : live.get(k);
 		return c == null ? base.get(k) : c;
 	}
+	boolean uncached(int x, int y) {
+		ChartPlotterCollisionCache.Chunk c = chunk(x, y);
+		return c == null || c.empty();
+	}
 	int size() {return size;}
 	Iterable<Map.Entry<Long, ChartPlotterCollisionCache.Chunk>> entries() {return base.entrySet();}
 	static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}

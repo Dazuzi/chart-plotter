@@ -45,30 +45,46 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	@Override
 	public Dimension render(Graphics2D g) {
-		if (!plugin.isSailing() || !config.worldMapEnabled()) return null;
+		if (!plugin.isSailing()) return null;
+		boolean showWorldMap = config.worldMapEnabled();
+		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
+		if (!showWorldMap && !cacheOverlay.worldMap) return null;
 		Widget map = map();
 		WorldMap wm = client.getWorldMap();
 		if (map == null || wm == null || wm.getWorldMapData() == null) return null;
+		Shape clip = clip(map.getBounds());
+		Shape oldClip = g.getClip();
+		Stroke oldStroke = g.getStroke();
+		g.setClip(clip);
+		if (cacheOverlay.worldMap) drawCache(g, map, wm);
+		if (!showWorldMap) {
+			g.setStroke(oldStroke);
+			g.setClip(oldClip);
+			return null;
+		}
 		WorldView top = client.getTopLevelWorldView();
 		WorldEntity ship = plugin.getShip();
-		if (ship == null || top == null) return null;
+		if (ship == null || top == null) {
+			g.setStroke(oldStroke);
+			g.setClip(oldClip);
+			return null;
+		}
 		LocalPoint anchor = ship.getTargetLocation();
 		LocalPoint center = ship.getLocalLocation();
 		if (anchor == null) anchor = center;
-		if (anchor == null || center == null) return null;
+		if (anchor == null || center == null) {
+			g.setStroke(oldStroke);
+			g.setClip(oldClip);
+			return null;
+		}
 		int from = ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int course = plugin.course(ship);
-		Shape clip = clip(map.getBounds());
 		int mouse = hoverHeading(top, center, map, clip);
 		int cap = pathCap(top, anchor, map, wm);
 		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course, cap);
 		ChartPlotterOverlay.Path pot = mouse >= 0 ? world.path(top, ship.getConfig(), anchor, from, mouse, cap) : null;
 		int skip = pot != null ? ChartPlotterOverlay.match(cur, pot) : 0;
-		Shape oldClip = g.getClip();
-		Stroke oldStroke = g.getStroke();
-		g.setClip(clip);
 		g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		if (config.cacheOverlay()) drawCache(g, map, wm);
 		drawRoute(g, map, wm, plugin.route());
 		draw(g, top, map, cur, config.worldMapLineColor(), skip);
 		if (pot != null) draw(g, top, map, pot, config.worldMapPotentialColor(), 0);
@@ -177,27 +193,32 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		return new Point((int) Math.round(x), (int) Math.round(y));
 	}
 	private void drawCache(Graphics2D g, Widget map, WorldMap wm) {
-		g.setColor(new Color(0, 210, 120, 72));
-		for (Map.Entry<Long, ChartPlotterCollisionCache.Chunk> e : collisionCache.snapshot().entries()) {
+		Stroke old = g.getStroke();
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		g.setColor(new Color(0, 210, 120, 150));
+		for (Map.Entry<Long, ChartPlotterCollisionCache.Chunk> e : data.entries()) {
 			if (e.getValue().empty()) continue;
 			int cx = (int) (e.getKey() >> 32);
 			int cy = (int) (long) e.getKey();
-			Rectangle r = chunk(map, wm, cx, cy);
-			if (r != null) g.fill(r);
+			if (!cacheChunkVisible(wm, cx, cy)) continue;
+			int wx = cx << 3;
+			int wy = cy << 3;
+			if (data.uncached(cx - 1, cy)) drawCacheEdge(g, map, wm, wx, wy, 0, 0, wx, wy + 7, 0, 1);
+			if (data.uncached(cx + 1, cy)) drawCacheEdge(g, map, wm, wx + 7, wy, 1, 0, wx + 7, wy + 7, 1, 1);
+			if (data.uncached(cx, cy - 1)) drawCacheEdge(g, map, wm, wx, wy, 0, 0, wx + 7, wy, 1, 0);
+			if (data.uncached(cx, cy + 1)) drawCacheEdge(g, map, wm, wx, wy + 7, 0, 1, wx + 7, wy + 7, 1, 1);
 		}
+		g.setStroke(old);
 	}
-	private Rectangle chunk(Widget map, WorldMap wm, int cx, int cy) {
-		int wx = cx << 3;
-		int wy = cy << 3;
-		if (!wm.getWorldMapData().surfaceContainsPosition(wx + 4, wy + 4)) return null;
-		Point a = mapPoint(map, wm, wx, wy, 0, 0);
-		Point b = mapPoint(map, wm, wx + 7, wy + 7, 1, 1);
-		if (a == null || b == null) return null;
-		int x = Math.min(a.getX(), b.getX());
-		int y = Math.min(a.getY(), b.getY());
-		int w = Math.max(1, Math.abs(a.getX() - b.getX()));
-		int h = Math.max(1, Math.abs(a.getY() - b.getY()));
-		return new Rectangle(x, y, w, h);
+	private boolean cacheChunkVisible(WorldMap wm, int cx, int cy) {
+		return wm.getWorldMapData().surfaceContainsPosition((cx << 3) + 4, (cy << 3) + 4);
+	}
+	private void drawCacheEdge(Graphics2D g, Widget map, WorldMap wm, int ax, int ay, double afx, double afy, int bx, int by, double bfx, double bfy) {
+		Point a = mapPoint(map, wm, ax, ay, afx, afy);
+		Point b = mapPoint(map, wm, bx, by, bfx, bfy);
+		if (a == null || b == null) return;
+		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
 	}
 	private Point mapPoint(Widget map, WorldMap wm, int wx, int wy, double fx, double fy) {
 		float z = wm.getWorldMapZoom();
