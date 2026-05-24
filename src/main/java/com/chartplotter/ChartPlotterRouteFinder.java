@@ -41,23 +41,14 @@ final class ChartPlotterRouteFinder {
 		Grid data = fp == null ? new Grid(raw) : Grid.inflated(raw, fp, d.radius, full, d);
 		d.inflate += since(t);
 		t = System.nanoTime();
-		if (data.flag(sx, sy) == ChartPlotterCollisionCache.UNKNOWN || data.flag(tx, ty) == ChartPlotterCollisionCache.UNKNOWN) {
+		int sf = data.flag(sx, sy);
+		int tf = data.flag(tx, ty);
+		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) {
 			d.pre += since(t);
 			d.mode = "precheck";
 			return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
 		}
-		if (blocked(data, sx, sy) || blocked(data, tx, ty)) {
-			d.pre += since(t);
-			d.mode = "precheck";
-			return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
-		}
-		int end = open(data, tx, ty);
-		if (end < 0) {
-			d.pre += since(t);
-			d.mode = "precheck";
-			return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
-		}
-		if (end == 0) {
+		if (blocker(sf) || blocker(tf)) {
 			d.pre += since(t);
 			d.mode = "precheck";
 			return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
@@ -85,7 +76,7 @@ final class ChartPlotterRouteFinder {
 	}
 	private static Search search(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast, int dirStep, BooleanSupplier cancel) {
 		Work w = WORK.get();
-		w.clearA();
+		w.clear();
 		Nodes nodes = w.a;
 		Heap q = w.aq;
 		LongIntMap best = w.ag;
@@ -94,8 +85,8 @@ final class ChartPlotterRouteFinder {
 		DenseBest dense = w.best;
 		dense.reset(b, dirStep);
 		boolean db = dense.on;
-		if (db) addStarts(q, dense, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep);
-		else addStarts(q, best, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep);
+		if (!db) best.clear();
+		addStarts(q, dense, best, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep, db);
 		boolean unknown = false;
 		boolean capped = false;
 		int seen = 0;
@@ -126,7 +117,7 @@ final class ChartPlotterRouteFinder {
 				int nx = ax + DX[i];
 				int ny = ay + DY[i];
 				if (nx < minX || ny < minY || nx > maxX || ny > maxY) continue;
-				int step = step(i);
+				int step = COST[i];
 				int nd = dist + step;
 				if (nd > cap) continue;
 				int ng = ag + step + (ad != i ? turn : 0);
@@ -242,33 +233,20 @@ final class ChartPlotterRouteFinder {
 		if (f == ChartPlotterCollisionCache.UNKNOWN) return -1;
 		return blocker(f) ? 0 : 1;
 	}
-	private static void addStarts(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast, int dirStep) {
+	private static void addStarts(Heap q, DenseBest dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast, int dirStep, boolean db) {
 		if (start >= 0) {
-			addStart(q, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, dirStep), fast);
+			addStart(q, dense, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, dirStep), fast, db);
 			return;
 		}
-		for (int i = 0; i < DX.length; i += dirStep) addStart(q, best, nodes, sx, sy, tx, ty, turnBias, i, fast);
+		for (int i = 0; i < DX.length; i += dirStep) addStart(q, dense, best, nodes, sx, sy, tx, ty, turnBias, i, fast, db);
 	}
-	private static void addStart(Heap q, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast) {
+	private static void addStart(Heap q, DenseBest dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast, boolean db) {
 		int hh = h(sx, sy, tx, ty, dir, turnBias);
 		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
 		q.add(n);
-		best.put(state(sx, sy, dir), 0);
+		if (db) dense.put(sx, sy, dir, 0);
+		else best.put(state(sx, sy, dir), 0);
 	}
-	private static void addStarts(Heap q, DenseBest best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast, int dirStep) {
-		if (start >= 0) {
-			addStart(q, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, dirStep), fast);
-			return;
-		}
-		for (int i = 0; i < DX.length; i += dirStep) addStart(q, best, nodes, sx, sy, tx, ty, turnBias, i, fast);
-	}
-	private static void addStart(Heap q, DenseBest best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast) {
-		int hh = h(sx, sy, tx, ty, dir, turnBias);
-		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
-		q.add(n);
-		best.put(sx, sy, dir, 0);
-	}
-
 	private static int linePoint(Grid data, int sx, int sy, int tx, int ty, int dir) {
 		int x = sx;
 		int y = sy;
@@ -288,7 +266,6 @@ final class ChartPlotterRouteFinder {
 		}
 		return 1;
 	}
-
 	private static int clearPoint(Grid data, int sx, int sy, int tx, int ty, int dir) {
 		if (Math.max(Math.abs(tx - sx), Math.abs(ty - sy)) <= 1) return linePoint(data, sx, sy, tx, ty, dir);
 		if (dir >= 0 && sx + DX[dir] == tx && sy + DY[dir] == ty) return shortPath(data, sx, sy, dir);
@@ -300,7 +277,7 @@ final class ChartPlotterRouteFinder {
 		for (int i = 0; i < x.length; i++) {
 			int f = data.flag(sx + x[i], sy + y[i], dir);
 			if (f == ChartPlotterCollisionCache.UNKNOWN) return -1;
-			if (hitTile(f)) return 0;
+			if (blocker(f)) return 0;
 		}
 		return 1;
 	}
@@ -315,13 +292,6 @@ final class ChartPlotterRouteFinder {
 		if (p == 1) return true;
 		if (!reverse) return false;
 		return hitFootprint(data, fp, center(sx), center(sy), o, center(tx), center(ty), rev(d)) == 1;
-	}
-	private static boolean blocked(Grid data, int x, int y) {
-		int f = data.flag(x, y);
-		return f != ChartPlotterCollisionCache.UNKNOWN && blocker(f);
-	}
-	private static int open(Grid data, int x, int y) {
-		return blocked(data, x, y) ? 0 : 1;
 	}
 	private static int hitFootprint(Grid data, Footprint fp, int ax, int ay, int ao, int bx, int by, int bo) {
 		int ai = orientIndex(ao);
@@ -354,11 +324,10 @@ final class ChartPlotterRouteFinder {
 			py = y;
 			int f = dir < 0 ? data.flag(x, y) : data.flag(x, y, dir);
 			if (f == ChartPlotterCollisionCache.UNKNOWN) return -1;
-			if (hitTile(f)) return 0;
+			if (blocker(f)) return 0;
 		}
 		return 1;
 	}
-	private static boolean hitTile(int f) {return blocker(f);}
 	private static boolean blocker(int f) {return (f & MOVE) != 0;}
 	private static long since(long t) {return System.nanoTime() - t;}
 	private static int h(int x, int y, int tx, int ty) {
@@ -388,11 +357,10 @@ final class ChartPlotterRouteFinder {
 		int slack = h + margin * 10 + 160;
 		return Math.max(tight, slack);
 	}
-	private static int step(int dir) {return COST[dir];}
 	private static int turn(int turnBias) {return 15 + turnBias * 14;}
 	private static int firstMargin(int sx, int sy, int tx, int ty) {
 		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
-		return Math.min(maxMargin(sx, sy, tx, ty, null), Math.max(32, d / 4 + 32 + radius(null)));
+		return Math.min(maxMargin(sx, sy, tx, ty, null), d / 4 + 32);
 	}
 	private static int maxMargin(int sx, int sy, int tx, int ty, Footprint fp) {
 		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
@@ -437,22 +405,11 @@ final class ChartPlotterRouteFinder {
 		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
 		return Math.max(1, (r + TS - 1) / TS);
 	}
-	private static float[] rectX(WorldEntityConfig wc) {
-		float ox = wc.getBoundsX();
-		float hw = wc.getBoundsWidth() / 2f;
-		return new float[]{ox + hw, ox + hw, ox - hw, ox - hw};
-	}
-	private static float[] rectY(WorldEntityConfig wc) {
-		float oy = wc.getBoundsY();
-		float hh = wc.getBoundsHeight() / 2f;
-		return new float[]{oy - hh, oy + hh, oy + hh, oy - hh};
-	}
 	private static int rotateX(int cx, int o, int x, int y) {return cx + (int) (((long) Perspective.COSINE[o] * x + (long) Perspective.SINE[o] * y) >> 16);}
 	private static int rotateY(int cy, int o, int x, int y) {return cy + (int) (((long) Perspective.COSINE[o] * y - (long) Perspective.SINE[o] * x) >> 16);}
-	private static int min(float[] v) {return (int) Math.floor(Math.min(Math.min(v[0], v[1]), Math.min(v[2], v[3])));}
-	private static int max(float[] v) {return (int) Math.ceil(Math.max(Math.max(v[0], v[1]), Math.max(v[2], v[3])));}
 	private static int next(int v, int max) {return Math.min(v + STEP, max);}
 	private static boolean edge(int x, int y, int minX, int maxX, int minY, int maxY) {return x == minX || x == maxX || y == minY || y == maxY;}
+	private static int span(int min, int max) {return (max - min + STEP - 1) / STEP + 1;}
 	private static int[][] hitOffsets(boolean xAxis) {
 		int[][] r = new int[DX.length][];
 		for (int d = 0; d < DX.length; d++) {
@@ -725,10 +682,9 @@ final class ChartPlotterRouteFinder {
 		final LongIntMap ag = new LongIntMap(1 << 15);
 		final DenseBest best = new DenseBest();
 		final MoveCache moves = new MoveCache();
-		void clearA() {
+		void clear() {
 			a.clear();
 			aq.clear();
-			ag.clear();
 		}
 	}
 	private static final class DenseBest {
@@ -844,7 +800,6 @@ final class ChartPlotterRouteFinder {
 			q = new int[size];
 		}
 		boolean hasNext() {return n != 0;}
-
 		void clear() {n = 0;}
 		void add(int v) {
 			if (n == q.length) q = Arrays.copyOf(q, q.length << 1);
@@ -902,13 +857,17 @@ final class ChartPlotterRouteFinder {
 		final int[][] ry;
 		final int n;
 		private Footprint(WorldEntityConfig wc) {
-			float[] bx = rectX(wc);
-			float[] by = rectY(wc);
-			minX = min(bx);
-			maxX = max(bx);
-			minY = min(by);
-			maxY = max(by);
-			n = count();
+			float ox = wc.getBoundsX();
+			float oy = wc.getBoundsY();
+			float hw = wc.getBoundsWidth() / 2f;
+			float hh = wc.getBoundsHeight() / 2f;
+			minX = (int) Math.floor(Math.min(ox - hw, ox + hw));
+			maxX = (int) Math.ceil(Math.max(ox - hw, ox + hw));
+			minY = (int) Math.floor(Math.min(oy - hh, oy + hh));
+			maxY = (int) Math.ceil(Math.max(oy - hh, oy + hh));
+			int nx = span(minX, maxX);
+			int ny = span(minY, maxY);
+			n = nx == 1 || ny == 1 ? nx * ny : 2 * nx + 2 * ny - 4;
 			x = new int[n];
 			y = new int[n];
 			int p = 0;
@@ -933,17 +892,6 @@ final class ChartPlotterRouteFinder {
 		}
 		int x(int cx, int o, int oi, int i) {return oi >= 0 ? cx + rx[oi][i] : rotateX(cx, o, x[i], y[i]);}
 		int y(int cy, int o, int oi, int i) {return oi >= 0 ? cy + ry[oi][i] : rotateY(cy, o, x[i], y[i]);}
-		private int count() {
-			int n = 0;
-			for (int ix = minX;; ix = next(ix, maxX)) {
-				for (int iy = minY;; iy = next(iy, maxY)) {
-					if (edge(ix, iy, minX, maxX, minY, maxY)) n++;
-					if (iy == maxY) break;
-				}
-				if (ix == maxX) break;
-			}
-			return n;
-		}
 	}
 	private static final class Debug {
 		final long total = System.nanoTime();
