@@ -538,8 +538,10 @@ public class ChartPlotterOverlay extends Overlay {
 	private static Blocker blocker(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache) {
 		CollisionData[] maps = wv.getCollisionMaps();
 		int plane = wv.getPlane();
-		if (maps == null || plane < 0 || plane >= maps.length || maps[plane] == null) return null;
-		return new Blocker(wv, cache, maps[plane].getFlags(), footprint(wc), new FlagMemo(MEMO));
+		int[][] flags = maps == null || plane < 0 || plane >= maps.length || maps[plane] == null ? null : maps[plane].getFlags();
+		ChartPlotterCollisionData data = cache == null ? null : cache.snapshot();
+		if (data == null && flags == null) return null;
+		return new Blocker(wv, data, flags, footprint(wc), new FlagMemo(MEMO));
 	}
 	private static Footprint footprint(WorldEntityConfig wc) {
 		float[] rx = rectX(wc);
@@ -697,11 +699,12 @@ public class ChartPlotterOverlay extends Overlay {
 		return blocker(f) ? new Hit(lx, ly, x, y, f) : null;
 	}
 	private static int flag(ChartPlotterCollisionCache cache, WorldView wv, int[][] flags, int x, int y) {
+		if (cache != null) return cache.flag(wv, x, y);
 		if (safe(flags, x, y)) {
 			int f = flags[x][y];
 			if (f != VOID) return f;
 		}
-		return cache == null ? ChartPlotterCollisionCache.UNKNOWN : cache.flag(wv, x, y);
+		return ChartPlotterCollisionCache.UNKNOWN;
 	}
 	private static int flag(Blocker b, int x, int y) {
 		if (b.memo != null) {
@@ -727,15 +730,22 @@ public class ChartPlotterOverlay extends Overlay {
 		return flagRaw(b, x, y);
 	}
 	private static int flagRaw(Blocker b, int x, int y) {
+		if (b.data != null) return flag(b.data, b.wv, x, y);
 		if (safe(b.flags, x, y)) {
 			int f = b.flags[x][y];
 			if (f != VOID) return f;
 		}
-		return b.cache == null ? ChartPlotterCollisionCache.UNKNOWN : b.cache.flag(b.wv, x, y);
+		return ChartPlotterCollisionCache.UNKNOWN;
+	}
+	private static int flag(ChartPlotterCollisionData data, WorldView wv, int x, int y) {
+		int wx = wv.getBaseX() + x;
+		int wy = wv.getBaseY() + y;
+		ChartPlotterCollisionCache.Chunk c = data.chunk(wx >> 3, wy >> 3);
+		return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((wx & 7) + ((wy & 7) << 3));
 	}
 	private static boolean blocker(int f) {return (f & MOVE) != 0;}
 	private static boolean safe(int[][] flags, int x, int y) {return inside(flags, x, y) && x >= EDGE && y >= EDGE && x < flags.length - EDGE && y < flags[x].length - EDGE;}
-	private static boolean inside(int[][] flags, int x, int y) {return x >= 0 && y >= 0 && x < flags.length && y < flags[x].length;}
+	private static boolean inside(int[][] flags, int x, int y) {return flags != null && x >= 0 && y >= 0 && x < flags.length && y < flags[x].length;}
 	private static int limit(LocalPoint anchor, SceneArea area) {
 		if (area == null) return 512;
 		int ax = Math.floorDiv(anchor.getX(), TS);
@@ -896,13 +906,13 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	private static final class Blocker {
 		final WorldView wv;
-		final ChartPlotterCollisionCache cache;
+		final ChartPlotterCollisionData data;
 		final int[][] flags;
 		final Footprint footprint;
 		final FlagMemo memo;
-		private Blocker(WorldView wv, ChartPlotterCollisionCache cache, int[][] flags, Footprint footprint, FlagMemo memo) {
+		private Blocker(WorldView wv, ChartPlotterCollisionData data, int[][] flags, Footprint footprint, FlagMemo memo) {
 			this.wv = wv;
-			this.cache = cache;
+			this.data = data;
 			this.flags = flags;
 			this.footprint = footprint;
 			this.memo = memo;

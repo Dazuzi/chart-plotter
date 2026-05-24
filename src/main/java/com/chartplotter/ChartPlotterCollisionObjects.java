@@ -9,6 +9,7 @@ final class ChartPlotterCollisionObjects {
 		"SAILING_FETID_POOL_3X3B",
 		"SAILING_FETID_POOL_3X3C"
 	};
+	private static final int[] FALLBACK = {60359, 60360, 60361, 60362, 60363};
 	private static final int[] BLOCKED_IDS = ids();
 	private ChartPlotterCollisionObjects() {}
 	static boolean blocked(int id) {
@@ -16,16 +17,19 @@ final class ChartPlotterCollisionObjects {
 		return false;
 	}
 	private static int[] ids() {
-		int[] ids = new int[ChartPlotterCollisionObjects.BLOCKED.length];
+		int[] ids = new int[ChartPlotterCollisionObjects.BLOCKED.length + FALLBACK.length];
 		int n = 0;
 		for (String name : ChartPlotterCollisionObjects.BLOCKED) {
 			int id = id(name);
 			if (id >= 0) ids[n++] = id;
 		}
+		for (int id : FALLBACK) ids[n++] = id;
 		return Arrays.copyOf(ids, n);
 	}
 	private static int id(String name) {
-		int id = id("net.runelite.api.gameval.ObjectID", name);
+		int id = id("net.runelite.api.gameval.ObjectID1", name);
+		if (id >= 0) return id;
+		id = id("net.runelite.api.gameval.ObjectID", name);
 		return id >= 0 ? id : id("net.runelite.api.ObjectID", name);
 	}
 	private static int id(String type, String name) {
