@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Singleton;
 import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
+import net.runelite.api.GameObject;
+import net.runelite.api.Point;
+import net.runelite.api.Scene;
+import net.runelite.api.Tile;
 import net.runelite.api.WorldView;
 import net.runelite.client.RuneLite;
 @Singleton
@@ -74,6 +78,7 @@ final class ChartPlotterCollisionCache {
 				put(data, chunks, wv.getBaseX() + sx, wv.getBaseY() + sy, f);
 			}
 		}
+		putObjects(data, chunks, wv);
 		merge(data);
 		captures++;
 	}
@@ -111,7 +116,37 @@ final class ChartPlotterCollisionCache {
 				if (f != VOID) put(data, base, wv.getBaseX() + sx, wv.getBaseY() + sy, f);
 			}
 		}
+		putObjects(data, base, wv);
 		return chunks(data, base);
+	}
+	private static void putObjects(Map<Long, Builder> data, Map<Long, Chunk> base, WorldView wv) {
+		Scene scene = wv.getScene();
+		if (scene == null) return;
+		Tile[][][] tiles = scene.getExtendedTiles();
+		int plane = wv.getPlane();
+		if (tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null) return;
+		for (Tile[] row : tiles[plane]) {
+			if (row == null) continue;
+			for (Tile tile : row) {
+				if (tile == null) continue;
+				GameObject[] objects = tile.getGameObjects();
+				if (objects == null) continue;
+				for (GameObject object : objects) {
+					if (object == null || !ChartPlotterCollisionObjects.blocked(object.getId())) continue;
+					putObject(data, base, wv, object);
+				}
+			}
+		}
+	}
+	private static void putObject(Map<Long, Builder> data, Map<Long, Chunk> base, WorldView wv, GameObject object) {
+		Point min = object.getSceneMinLocation();
+		Point max = object.getSceneMaxLocation();
+		if (min == null || max == null) return;
+		for (int sx = min.getX(); sx <= max.getX(); sx++) {
+			for (int sy = min.getY(); sy <= max.getY(); sy++) {
+				put(data, base, wv.getBaseX() + sx, wv.getBaseY() + sy, BLOCKED);
+			}
+		}
 	}
 	private static void put(Map<Long, Builder> data, Map<Long, Chunk> base, int wx, int wy, int f) {
 		f = clean(f);
