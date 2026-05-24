@@ -9,6 +9,7 @@ import java.io.FileOutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -44,12 +45,12 @@ final class ChartPlotterCollisionCache {
 	synchronized void start() {
 		if (io != null) return;
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {}
-		if (!loaded) load();
 		io = Executors.newSingleThreadScheduledExecutor(r -> {
 			Thread t = new Thread(r, "chart-plotter-collision");
 			t.setDaemon(true);
 			return t;
 		});
+		if (!loaded) io.execute(this::loadQuiet);
 		io.scheduleWithFixedDelay(this::flushQuiet, 30, 30, TimeUnit.SECONDS);
 	}
 	void stop() {
@@ -59,28 +60,24 @@ final class ChartPlotterCollisionCache {
 			io = null;
 		}
 		if (ex == null) return;
-		ex.execute(this::flushQuiet);
+		try {ex.execute(this::flushQuiet);} catch (RuntimeException ignored) {}
 		ex.shutdown();
 	}
-	synchronized void capture(WorldView wv) {
-		if (wv == null || wv.isInstance() || wv.getPlane() != 0) return;
-		CollisionData[] maps = wv.getCollisionMaps();
-		if (maps == null || maps.length == 0 || maps[0] == null) return;
-		int[][] flags = maps[0].getFlags();
-		int sx1 = flags.length - EDGE;
-		int sy1 = flags[0].length - EDGE;
-		Map<Long, Builder> data = new HashMap<>();
-		for (int sx = EDGE; sx < sx1; sx++) {
-			for (int sy = EDGE; sy < sy1; sy++) {
-				int f = flags[sx][sy];
-				if (f == VOID) continue;
-				put(data, chunks, wv.getBaseX() + sx, wv.getBaseY() + sy, f);
-			}
+	void capture(WorldView wv) {
+		ScheduledExecutorService ex;
+		synchronized (this) {
+			ex = io;
 		}
-		putObjects(data, chunks, wv);
-		merge(data);
+		if (ex == null) return;
+		Scan scan = scan(wv);
+		if (scan == null) return;
+		synchronized (this) {
+			if (io != ex) return;
+			try {io.execute(() -> mergeQuiet(scan));} catch (RuntimeException ignored) {}
+		}
 	}
 	synchronized int flag(WorldView wv, int sx, int sy) {
+		if (!loaded) load();
 		int wx = wv.getBaseX() + sx;
 		int wy = wv.getBaseY() + sy;
 		Chunk c = chunks.get(key(wx >> 3, wy >> 3));
@@ -94,55 +91,69 @@ final class ChartPlotterCollisionCache {
 		}
 		return view;
 	}
-	synchronized ChartPlotterCollisionData snapshot(WorldView wv) {
-		ChartPlotterCollisionData base = snapshot();
-		Map<Long, Chunk> live = live(wv, base.base);
-		return live.isEmpty() ? base : new ChartPlotterCollisionData(base.base, live);
-	}
 	synchronized long rev() {return rev;}
-	private static Map<Long, Chunk> live(WorldView wv, Map<Long, Chunk> base) {
+	private void mergeQuiet(Scan scan) {
+		try {
+			merge(scan);
+		} catch (Exception ignored) {
+		}
+	}
+	private synchronized void merge(Scan scan) {
+		if (!loaded) load();
 		Map<Long, Builder> data = new HashMap<>();
-		if (wv == null || wv.isInstance() || wv.getPlane() != 0) return new HashMap<>();
-		CollisionData[] maps = wv.getCollisionMaps();
-		if (maps == null || maps.length == 0 || maps[0] == null) return new HashMap<>();
-		int[][] flags = maps[0].getFlags();
-		int sx1 = flags.length - EDGE;
-		int sy1 = flags[0].length - EDGE;
+		int sx1 = scan.width - EDGE;
+		int sy1 = scan.height - EDGE;
 		for (int sx = EDGE; sx < sx1; sx++) {
 			for (int sy = EDGE; sy < sy1; sy++) {
-				int f = flags[sx][sy];
-				if (f != VOID) put(data, base, wv.getBaseX() + sx, wv.getBaseY() + sy, f);
+				int f = scan.flags[sx * scan.height + sy];
+				if (f == VOID) continue;
+				put(data, chunks, scan.baseX + sx, scan.baseY + sy, f);
 			}
 		}
-		putObjects(data, base, wv);
-		return chunks(data, base);
+		for (int i = 0; i < scan.objects.length; i += 4) putObject(data, chunks, scan, i);
+		merge(data);
 	}
-	private static void putObjects(Map<Long, Builder> data, Map<Long, Chunk> base, WorldView wv) {
+	private static Scan scan(WorldView wv) {
+		if (wv == null || wv.isInstance() || wv.getPlane() != 0) return null;
+		CollisionData[] maps = wv.getCollisionMaps();
+		if (maps == null || maps.length == 0 || maps[0] == null) return null;
+		int[][] flags = maps[0].getFlags();
+		if (flags == null || flags.length <= EDGE * 2 || flags[0] == null || flags[0].length <= EDGE * 2) return null;
+		int width = flags.length;
+		int height = flags[0].length;
+		int[] copy = new int[width * height];
+		for (int x = 0; x < width; x++) {
+			int[] row = flags[x];
+			if (row == null || row.length < height) return null;
+			System.arraycopy(row, 0, copy, x * height, height);
+		}
+		return new Scan(wv.getBaseX(), wv.getBaseY(), width, height, copy, objects(wv));
+	}
+	private static int[] objects(WorldView wv) {
 		Scene scene = wv.getScene();
-		if (scene == null) return;
+		if (scene == null) return new int[0];
 		Tile[][][] tiles = scene.getExtendedTiles();
 		int plane = wv.getPlane();
-		if (tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null) return;
+		if (tiles == null || plane < 0 || plane >= tiles.length || tiles[plane] == null) return new int[0];
+		Objects objects = new Objects();
 		for (Tile[] row : tiles[plane]) {
 			if (row == null) continue;
 			for (Tile tile : row) {
 				if (tile == null) continue;
-				GameObject[] objects = tile.getGameObjects();
-				if (objects == null) continue;
-				for (GameObject object : objects) {
+				GameObject[] gameObjects = tile.getGameObjects();
+				if (gameObjects == null) continue;
+				for (GameObject object : gameObjects) {
 					if (object == null || !ChartPlotterCollisionObjects.blocked(object.getId())) continue;
-					putObject(data, base, wv, object);
+					objects.add(object);
 				}
 			}
 		}
+		return objects.array();
 	}
-	private static void putObject(Map<Long, Builder> data, Map<Long, Chunk> base, WorldView wv, GameObject object) {
-		Point min = object.getSceneMinLocation();
-		Point max = object.getSceneMaxLocation();
-		if (min == null || max == null) return;
-		for (int sx = min.getX(); sx <= max.getX(); sx++) {
-			for (int sy = min.getY(); sy <= max.getY(); sy++) {
-				put(data, base, wv.getBaseX() + sx, wv.getBaseY() + sy, BLOCKED);
+	private static void putObject(Map<Long, Builder> data, Map<Long, Chunk> base, Scan scan, int i) {
+		for (int sx = scan.objects[i]; sx <= scan.objects[i + 2]; sx++) {
+			for (int sy = scan.objects[i + 1]; sy <= scan.objects[i + 3]; sy++) {
+				put(data, base, scan.baseX + sx, scan.baseY + sy, BLOCKED);
 			}
 		}
 	}
@@ -163,19 +174,16 @@ final class ChartPlotterCollisionCache {
 			rev++;
 		}
 	}
-	private static Map<Long, Chunk> chunks(Map<Long, Builder> data, Map<Long, Chunk> base) {
-		Map<Long, Chunk> out = new HashMap<>();
-		for (Map.Entry<Long, Builder> e : data.entrySet()) {
-			Chunk old = base.get(e.getKey());
-			Chunk c = e.getValue().chunk();
-			if (!same(old, c)) out.put(e.getKey(), c);
-		}
-		return out;
-	}
 	private static boolean same(Chunk a, Chunk b) {
 		return a == b || a != null && b != null && a.known == b.known && a.blocked == b.blocked;
 	}
-	private void load() {
+	private void loadQuiet() {
+		try {
+			load();
+		} catch (Exception ignored) {
+		}
+	}
+	private synchronized void load() {
 		Map<Long, Chunk> data = read();
 		chunks.clear();
 		chunks.putAll(data);
@@ -266,6 +274,22 @@ final class ChartPlotterCollisionCache {
 		return (f & MOVE) == 0 ? OPEN : BLOCKED;
 	}
 	private static long key(int x, int y) {return ChartPlotterCollisionData.key(x, y);}
+	private static final class Scan {
+		final int baseX;
+		final int baseY;
+		final int width;
+		final int height;
+		final int[] flags;
+		final int[] objects;
+		private Scan(int baseX, int baseY, int width, int height, int[] flags, int[] objects) {
+			this.baseX = baseX;
+			this.baseY = baseY;
+			this.width = width;
+			this.height = height;
+			this.flags = flags;
+			this.objects = objects;
+		}
+	}
 	static final class Chunk {
 		final long known;
 		final long blocked;
@@ -294,5 +318,20 @@ final class ChartPlotterCollisionCache {
 			else blocked &= ~bit;
 		}
 		Chunk chunk() {return new Chunk(known, blocked & known);}
+	}
+	private static final class Objects {
+		int[] data = new int[32];
+		int n;
+		void add(GameObject object) {
+			Point min = object.getSceneMinLocation();
+			Point max = object.getSceneMaxLocation();
+			if (min == null || max == null) return;
+			if (n + 4 > data.length) data = Arrays.copyOf(data, data.length << 1);
+			data[n++] = min.getX();
+			data[n++] = min.getY();
+			data[n++] = max.getX();
+			data[n++] = max.getY();
+		}
+		int[] array() {return n == data.length ? data : Arrays.copyOf(data, n);}
 	}
 }
