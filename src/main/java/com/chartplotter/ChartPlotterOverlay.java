@@ -70,7 +70,7 @@ public class ChartPlotterOverlay extends Overlay {
 		WorldEntityConfig wc = ship.getConfig();
 		float[] rx = rectX(wc);
 		float[] ry = rectY(wc);
-		int from = ChartPlotterPlugin.norm(ship.getTargetOrientation());
+		int from = plugin.heading(ship);
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
 		Path cur = path(top, wc, anchor, from, course, area);
@@ -81,7 +81,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Stroke prev = g.getStroke();
 		if (debug == ChartPlotterCollisionDebug.MASK) mask(g);
 		g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
-		drawRoute(g, top, plugin.route());
+		drawRoute(g, top, plugin.route(), area);
 		draw(g, top, cur, rx, ry, config.worldLineColor(), skip);
 		if (pot != null) draw(g, top, pot, rx, ry, config.worldPotentialColor(), 0);
 		if (debug != ChartPlotterCollisionDebug.OFF) drawDebug(g, top, wc, center, ship.getOrientation(), cur, pot);
@@ -136,7 +136,7 @@ public class ChartPlotterOverlay extends Overlay {
 		boolean stop = config.stopAtCollision();
 		Blocker blocker = stop ? blocker(wv, wc, collisionCache) : null;
 		for (int i = 0; i < cap; i++) {
-			if (o != target) o = ChartPlotterPlugin.norm(o + TURN * dir);
+			if (o != target) o = turn(o, target, dir);
 			speed += accel;
 			double max = Math.max(plugin.maxSpeed(), Math.abs(plugin.speed()));
 			speed = plugin.reversing() ? Math.max(-max, speed) : Math.min(max, speed);
@@ -147,7 +147,7 @@ public class ChartPlotterOverlay extends Overlay {
 			posY += vy;
 			int lx = anchor.getX() + posX;
 			int ly = anchor.getY() + posY;
-			if (area != null && !area.loaded(lx, ly)) break;
+			if (area != null && area.missing(lx, ly)) break;
 			if (!p.blocked) {
 				Block b = stop ? block(blocker, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
 				if (b != null) {
@@ -237,26 +237,75 @@ public class ChartPlotterOverlay extends Overlay {
 		g.setColor(color);
 		g.draw(s);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r) {
-		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, SceneArea area) {
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2 || area == null) return;
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
-		for (int i = 0; i < r.n; i++) {
-			int lx = (r.x[i] - wv.getBaseX()) * TS + TS / 2;
-			int ly = (r.y[i] - wv.getBaseY()) * TS + TS / 2;
-			Point q = Perspective.localToCanvas(client, new LocalPoint(lx, ly, wv), 0);
-			if (q == null) {
-				have = false;
-				continue;
-			}
-			if (have) line.lineTo(q.getX(), q.getY());
-			else {
-				line.moveTo(q.getX(), q.getY());
-				have = true;
-			}
-		}
+		for (int i = 1; i < r.n; i++) have = routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], have);
 		g.setColor(config.worldChartColor());
 		g.draw(line);
+	}
+	private boolean routeSegment(Path2D.Double line, WorldView wv, SceneArea area, int ax, int ay, int bx, int by, boolean have) {
+		double x0 = ax + 0.5;
+		double y0 = ay + 0.5;
+		double dx = bx - ax;
+		double dy = by - ay;
+		double t0 = 0;
+		double t1 = 1;
+		double minX = area.minWX();
+		double minY = area.minWY();
+		double maxX = area.maxWX();
+		double maxY = area.maxWY();
+		if (dx == 0) {
+			if (x0 < minX || x0 > maxX) return false;
+		} else {
+			double a = (minX - x0) / dx;
+			double b = (maxX - x0) / dx;
+			if (a > b) {
+				double c = a;
+				a = b;
+				b = c;
+			}
+			if (a > t0) t0 = a;
+			if (b < t1) t1 = b;
+			if (t0 > t1) return false;
+		}
+		if (dy == 0) {
+			if (y0 < minY || y0 > maxY) return false;
+		} else {
+			double a = (minY - y0) / dy;
+			double b = (maxY - y0) / dy;
+			if (a > b) {
+				double c = a;
+				a = b;
+				b = c;
+			}
+			if (a > t0) t0 = a;
+			if (b < t1) t1 = b;
+			if (t0 > t1) return false;
+		}
+		int n = (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * (t1 - t0));
+		if (n < 1) n = 1;
+		for (int i = 0; i <= n; i++) {
+			double t = t0 + (t1 - t0) * i / n;
+			have = routePoint(line, wv, area, x0 + dx * t, y0 + dy * t, have);
+		}
+		return have;
+	}
+	private boolean routePoint(Path2D.Double line, WorldView wv, SceneArea area, double wx, double wy, boolean have) {
+		Point q = routeCanvas(wv, area, wx, wy);
+		if (q == null) return false;
+		if (have) line.lineTo(q.getX(), q.getY());
+		else {
+			line.moveTo(q.getX(), q.getY());
+		}
+		return true;
+	}
+	private Point routeCanvas(WorldView wv, SceneArea area, double wx, double wy) {
+		int lx = (int) Math.round((wx - wv.getBaseX()) * TS);
+		int ly = (int) Math.round((wy - wv.getBaseY()) * TS);
+		if (area.missing(lx, ly)) return null;
+		return Perspective.localToCanvas(client, new LocalPoint(lx, ly, wv), 0);
 	}
 	private void drawCache(Graphics2D g, WorldView wv, SceneArea area) {
 		if (area == null) return;
@@ -386,10 +435,11 @@ public class ChartPlotterOverlay extends Overlay {
 	private int hoverHeading(WorldView wv, LocalPoint anchor) {
 		Point m = client.getMouseCanvasPosition();
 		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
+		if (plugin.suppressPotential(m)) return -1;
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, m);
 		if (mini >= 0) return mini;
 		if (!viewport(m) || !activeHeading(wv)) return -1;
-		return mouseHeading(client, wv, anchor);
+		return mouseHeading(client, wv, anchor, m);
 	}
 	private boolean activeHeading(WorldView wv) {
 		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return false;
@@ -400,10 +450,6 @@ public class ChartPlotterOverlay extends Overlay {
 		int x = client.getViewportXOffset();
 		int y = client.getViewportYOffset();
 		return m.getX() >= x && m.getY() >= y && m.getX() < x + client.getViewportWidth() && m.getY() < y + client.getViewportHeight();
-	}
-	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor) {
-		Point mouse = client.getMouseCanvasPosition();
-		return mouseHeading(client, wv, anchor, mouse);
 	}
 	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, mouse);
@@ -725,6 +771,12 @@ public class ChartPlotterOverlay extends Overlay {
 		int edge = Math.max(Math.max(Math.abs(ax - area.minX), Math.abs(area.maxX - ax)), Math.max(Math.abs(ay - area.minY), Math.abs(area.maxY - ay)));
 		return edge * 8 + 32;
 	}
+	private static int turn(int o, int target, int dir) {
+		if (dir == 0) return target;
+		int d = dir > 0 ? ChartPlotterPlugin.norm(target - o) : ChartPlotterPlugin.norm(o - target);
+		if (d <= TURN) return target;
+		return ChartPlotterPlugin.norm(o + TURN * dir);
+	}
 	private static int velocityX(double speed, int o) {return ChartPlotterPlugin.snap(ChartPlotterPlugin.round(-Perspective.SINE[o] * speed / 512.0));}
 	private static int velocityY(double speed, int o) {return ChartPlotterPlugin.snap(ChartPlotterPlugin.round(-Perspective.COSINE[o] * speed / 512.0));}
 	private static int side(int x1, int y1, int x2, int y2, int x, int y) {return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);}
@@ -797,10 +849,10 @@ public class ChartPlotterOverlay extends Overlay {
 				}
 			}
 		}
-		boolean loaded(int lx, int ly) {
+		boolean missing(int lx, int ly) {
 			int x = Math.floorDiv(lx, TS) + offX;
 			int y = Math.floorDiv(ly, TS) + offY;
-			return x >= 0 && y >= 0 && x < tiles.length && tiles[x] != null && y < tiles[x].length && tiles[x][y] != null;
+			return x < 0 || y < 0 || x >= tiles.length || tiles[x] == null || y >= tiles[x].length || tiles[x][y] == null;
 		}
 		boolean chunk(int x, int y) {
 			x -= minCX;

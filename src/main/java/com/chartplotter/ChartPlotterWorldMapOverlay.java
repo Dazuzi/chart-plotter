@@ -78,7 +78,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			g.setClip(oldClip);
 			return null;
 		}
-		int from = ChartPlotterPlugin.norm(ship.getTargetOrientation());
+		int from = plugin.heading(ship);
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center, map, clip);
 		int cap = pathCap(top, anchor, map, wm);
@@ -283,6 +283,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private int hoverHeading(WorldView wv, LocalPoint anchor, Widget map, Shape clip) {
 		Point m = client.getMouseCanvasPosition();
 		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen() || !clip.contains(m.getX(), m.getY())) return -1;
+		if (plugin.suppressPotential(m)) return -1;
 		WorldMap wm = client.getWorldMap();
 		float z = wm.getWorldMapZoom();
 		if (z <= 0) return -1;

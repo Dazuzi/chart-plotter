@@ -38,6 +38,10 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class ChartPlotterPlugin extends Plugin {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int ROUTE_LEEWAY = 6;
+	private static final int ROUTE_PRUNE = 4;
+	private static final int MOTION_HOLD = 2;
+	private static final int COURSE_STALL = 2;
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -54,15 +58,20 @@ public class ChartPlotterPlugin extends Plugin {
 	private double lastMoveMode = 2;
 	private double speed;
 	private double lastSpeed;
+	private int motionHold;
+	private int stillTicks;
 	private int turnDir;
 	private int lastAngle;
 	private int lastBaseX = Integer.MIN_VALUE;
 	private int lastBaseY = Integer.MIN_VALUE;
 	private int lastPlane = Integer.MIN_VALUE;
 	private int course = -1;
+	private int potentialX;
+	private int potentialY;
 	private LocalPoint lastLoc;
 	private boolean collisionActive;
 	private boolean mouseRegistered;
+	private boolean potentialBlocked;
 	private volatile ChartPlotterRoute route;
 	private final AtomicInteger routeSeq = new AtomicInteger();
 	private volatile boolean routeBusy;
@@ -135,6 +144,7 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		if (!boarded) {
 			course = -1;
+			potentialBlocked = false;
 			clearRoute();
 			collision(false, null);
 			resetMotion();
@@ -160,7 +170,11 @@ public class ChartPlotterPlugin extends Plugin {
 		LocalPoint loc = ship.getLocalLocation();
 		if (loc == null) return;
 		int h = ChartPlotterOverlay.mouseHeading(client, top, loc, m);
-		if (h >= 0) course = h;
+		if (h >= 0) {
+			course = h;
+			stillTicks = 0;
+			blockPotential(m);
+		}
 	}
 	private void chartCourse(Point m) {
 		if (!isSailing()) return;
@@ -198,26 +212,37 @@ public class ChartPlotterPlugin extends Plugin {
 			return;
 		}
 		boolean scene = top != null && sceneChanged(top);
+		boolean skipMotion = false;
 		if (scene) {
 			course = -1;
-			resetMotion();
+			motionHold = MOTION_HOLD;
+			lastLoc = loc;
+			lastAngle = heading(ship);
+			skipMotion = true;
 		}
 		boolean normal = boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
 		boolean started = collision(normal, top);
 		if (scene && normal && !started) capture(top);
 		if (top != null) updateRoute(top, ship, loc);
-		if (lastLoc != null) {
+		if (!skipMotion && lastLoc != null) {
 			int vx = loc.getX() - lastLoc.getX();
 			int vy = loc.getY() - lastLoc.getY();
-			double s = speed(vx, vy);
-			double a = s - lastSpeed;
-			turnDir = angleDir(lastAngle, ship.getTargetOrientation(), 0);
-			lastAngle = ship.getTargetOrientation();
-			if (a < 10) {
-				speed = s;
-				lastSpeed = speed;
+			int angle = heading(ship);
+			turnDir = angleDir(lastAngle, angle, 0);
+			lastAngle = angle;
+			if (vx == 0 && vy == 0 && motionHold > 0 && lastSpeed > 0) motionHold--;
+			else {
+				motionHold = 0;
+				if (vx == 0 && vy == 0) stillTicks++;
+				else stillTicks = 0;
+				double s = speed(vx, vy);
+				double a = s - lastSpeed;
+				if (a < 10) {
+					speed = s;
+					lastSpeed = speed;
+				}
 			}
-		} else lastAngle = ship.getTargetOrientation();
+		} else if (!skipMotion) lastAngle = heading(ship);
 		lastLoc = loc;
 	}
 	@SuppressWarnings("unused")
@@ -230,7 +255,9 @@ public class ChartPlotterPlugin extends Plugin {
 		return boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING && getShip() != null;
 	}
 	ChartPlotterRoute route() {return route;}
-	int course(WorldEntity ship) {return course >= 0 ? course : norm(ship.getTargetOrientation());}
+	boolean suppressPotential(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
+	int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
+	int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
 	double speed() {return speed;}
 	double accel() {return accel;}
 	int turnDir() {return turnDir;}
@@ -282,6 +309,7 @@ public class ChartPlotterPlugin extends Plugin {
 		accel = 0;
 		moveMode = 0;
 		lastMoveMode = 2;
+		potentialBlocked = false;
 		lastBaseX = Integer.MIN_VALUE;
 		lastBaseY = Integer.MIN_VALUE;
 		lastPlane = Integer.MIN_VALUE;
@@ -301,6 +329,8 @@ public class ChartPlotterPlugin extends Plugin {
 	private void resetMotion() {
 		speed = 0;
 		lastSpeed = 0;
+		motionHold = 0;
+		stillTicks = 0;
 		turnDir = 0;
 		lastLoc = null;
 	}
@@ -339,10 +369,14 @@ public class ChartPlotterPlugin extends Plugin {
 			return;
 		}
 		if (r.status == ChartPlotterRoute.OK) {
-			ChartPlotterRoute nr = r.advance(sx, sy);
+			LocalPoint front = routeLoc(top, ship, loc);
+			int fx = top.getBaseX() + Math.floorDiv(front.getX(), TS);
+			int fy = top.getBaseY() + Math.floorDiv(front.getY(), TS);
+			ChartPlotterRoute nr = r.advance(fx, fy, ROUTE_LEEWAY, ROUTE_PRUNE);
 			if (nr == r) return;
 			if (nr != null) {
-				checkRoute(ship, nr);
+				route = nr;
+				routeRev = collisionCache.rev();
 				return;
 			}
 			routeTo(top, ship, loc, r.tx, r.ty, false);
@@ -350,37 +384,13 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		if (!r.start(sx, sy)) routeTo(top, ship, loc, r.tx, r.ty, false);
 	}
-	private void checkRoute(WorldEntity ship, ChartPlotterRoute r) {
-		if (r.n < 2) {
-			route = r;
-			routeRev = collisionCache.rev();
-			return;
-		}
-		ChartPlotterCollisionData data = collisionData();
-		long rev = data.rev;
-		int start = speed == 0 ? -1 : norm(ship.getTargetOrientation());
-		ChartPlotterRouteEffort effort = r.effort == null ? config.routeEffort() : r.effort;
-		WorldEntityConfig wc = effort.footprint ? ship.getConfig() : null;
-		boolean reverse = reversing();
-		int seq = routeSeq.incrementAndGet();
-		routeBusy = true;
-		startRouteExec();
-		routeExec.execute(() -> {
-			boolean clear = ChartPlotterRouteFinder.clear(data, wc, start, r.sx, r.sy, r.x[1], r.y[1], reverse);
-			if (seq != routeSeq.get() || Thread.currentThread().isInterrupted()) return;
-			if (clear) {
-				route = r;
-				routeRev = rev;
-				routeBusy = false;
-				return;
-			}
-			ChartPlotterRoute nr = ChartPlotterRouteFinder.find(data, wc, start, r.sx, r.sy, r.tx, r.ty, r.turnBias, reverse, r.fast, effort.dirs, effort.adaptive, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
-			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
-				route = nr;
-				routeRev = rev;
-				routeBusy = false;
-			}
-		});
+	private LocalPoint routeLoc(WorldView top, WorldEntity ship, LocalPoint loc) {
+		WorldEntityConfig wc = ship.getConfig();
+		if (wc == null) return loc;
+		int o = actualHeading(ship);
+		int x = wc.getBoundsX();
+		int y = Math.round(wc.getBoundsY() - wc.getBoundsHeight() / 2f);
+		return new LocalPoint(rotateX(loc.getX(), o, x, y), rotateY(loc.getY(), o, x, y), top);
 	}
 	private void routeTo(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty, boolean pending) {
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
@@ -392,7 +402,7 @@ public class ChartPlotterPlugin extends Plugin {
 		int dirs = effort.dirs;
 		boolean fast = effort.fast;
 		boolean reverse = reversing();
-		int start = speed == 0 ? -1 : ChartPlotterPlugin.norm(ship.getTargetOrientation());
+		int start = speed == 0 ? -1 : heading(ship);
 		int seq = routeSeq.incrementAndGet();
 		ChartPlotterCollisionData data = collisionData();
 		long rev = data.rev;
@@ -403,7 +413,7 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		startRouteExec();
 		routeExec.execute(() -> {
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, config.routeClearRadius(), () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;
@@ -414,6 +424,17 @@ public class ChartPlotterPlugin extends Plugin {
 	private ChartPlotterCollisionData collisionData() {
 		return collisionCache.snapshot();
 	}
+	private void blockPotential(Point m) {
+		if (m == null) return;
+		potentialBlocked = true;
+		potentialX = m.getX();
+		potentialY = m.getY();
+	}
+	private boolean stalled() {return speed == 0 && stillTicks >= COURSE_STALL;}
+	private int actualHeading(WorldEntity ship) {return norm(ship.getOrientation());}
+	private int targetHeading(WorldEntity ship) {return norm(ship.getTargetOrientation());}
+	private static int rotateX(int cx, int o, int x, int y) {return cx + (int) (((long) Perspective.COSINE[o] * x + (long) Perspective.SINE[o] * y) >> 16);}
+	private static int rotateY(int cy, int o, int x, int y) {return cy + (int) (((long) Perspective.COSINE[o] * y - (long) Perspective.SINE[o] * x) >> 16);}
 	private void startRouteExec() {
 		if (routeExec != null) return;
 		routeExec = Executors.newSingleThreadExecutor(r -> {

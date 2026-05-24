@@ -63,7 +63,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		LocalPoint center = ship.getLocalLocation();
 		if (anchor == null) anchor = center;
 		if (anchor == null || center == null) return null;
-		int from = ChartPlotterPlugin.norm(ship.getTargetOrientation());
+		int from = plugin.heading(ship);
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
 		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course);
@@ -167,6 +167,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	private int hoverHeading(WorldView wv, LocalPoint anchor) {
 		Point m = client.getMouseCanvasPosition();
 		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
+		if (plugin.suppressPotential(m)) return -1;
 		if (overMinimap(m)) return mouseHeading(client, anchor, m);
 		if (!viewport(m) || !activeHeading(wv)) return -1;
 		return ChartPlotterOverlay.mouseHeading(client, wv, anchor, m);

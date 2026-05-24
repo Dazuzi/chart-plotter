@@ -12,7 +12,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "stopAtCollision", name = "Collision clipping", description = "Clip projected paths at collision flags.", position = 0)
 	default boolean stopAtCollision() {return true;}
 	@ConfigItem(keyName = "showBlockedExtension", name = "Show blocked extension", description = "Continue drawing the projected path past collisions in a different color.", position = 1)
-	default boolean showBlockedExtension() {return false;}
+	default boolean showBlockedExtension() {return true;}
 	@Alpha
 	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Color for the section of the projected path that would collide.", position = 2)
 	default Color blockedColor() {return ColorUtil.colorWithAlpha(new Color(255, 80, 60), 140);}
@@ -25,10 +25,10 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldLineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 185);}
 	@Alpha
 	@ConfigItem(keyName = "potentialColor", name = "Projected color", description = "Color of the projected course lines.", section = worldSection, position = 2)
-	default Color worldPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
+	default Color worldPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldChartColor", name = "Chart color", description = "Color of charted world routes.", section = worldSection, position = 3)
-	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
+	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(100, 255, 185), 185);}
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 1;}
@@ -41,10 +41,10 @@ public interface ChartPlotterConfig extends Config {
 	default Color minimapLineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 185);}
 	@Alpha
 	@ConfigItem(keyName = "minimapPotentialColor", name = "Projected color", description = "Color of the projected minimap line.", section = minimapSection, position = 2)
-	default Color minimapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
+	default Color minimapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "minimapChartColor", name = "Chart color", description = "Color of charted minimap routes.", section = minimapSection, position = 3)
-	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
+	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(100, 255, 185), 185);}
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 1;}
@@ -57,10 +57,10 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldMapLineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldMapPotentialColor", name = "Projected color", description = "Color of the projected world map line.", section = worldMapSection, position = 2)
-	default Color worldMapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(255, 170, 40), 185);}
+	default Color worldMapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldMapChartColor", name = "Chart color", description = "Color of charted world map routes.", section = worldMapSection, position = 3)
-	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 210);}
+	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(100, 255, 185), 185);}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
@@ -75,8 +75,8 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)
 	default ChartPlotterCollisionDebug collisionDebug() {return ChartPlotterCollisionDebug.OFF;}
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision coverage.", section = tweaksSection, position = 3)
-	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
+	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.BOTH;}
 	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 4)
 	@Range(min = 1, max = 20)
-	default int routeClearRadius() {return 5;}
+	default int routeClearRadius() {return 10;}
 }
