@@ -112,9 +112,14 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 			return;
 		}
 		int start = skip > 0 ? skip - 1 : 0;
+		int mid = Math.min(p.blockedAt, p.n);
+		segment(g, wv, p, color, start, mid);
+		if (mid < p.n) segment(g, wv, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+	}
+	private void segment(Graphics2D g, WorldView wv, ChartPlotterOverlay.Path p, Color color, int from, int to) {
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
-		for (int i = start; i < p.n; i++) {
+		for (int i = from; i < to; i++) {
 			Point q = Perspective.localToMinimap(client, new LocalPoint(p.x[i], p.y[i], wv), DIST);
 			if (q == null) {
 				have = false;

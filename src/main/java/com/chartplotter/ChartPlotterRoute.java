@@ -5,6 +5,7 @@ final class ChartPlotterRoute {
 	static final int UNCHARTED = 2;
 	static final int NO_ROUTE = 3;
 	static final int COMPLEX = 4;
+	static final int BLOCKED = 5;
 	final int status;
 	final int sx;
 	final int sy;
@@ -15,8 +16,9 @@ final class ChartPlotterRoute {
 	final int n;
 	final int turnBias;
 	final boolean fast;
+	final ChartPlotterRouteEffort effort;
 	final String debug;
-	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast, String debug) {
+	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast, ChartPlotterRouteEffort effort, String debug) {
 		this.status = status;
 		this.sx = sx;
 		this.sy = sy;
@@ -27,14 +29,17 @@ final class ChartPlotterRoute {
 		this.n = n;
 		this.turnBias = turnBias;
 		this.fast = fast;
+		this.effort = effort;
 		this.debug = debug;
 	}
-	static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(PENDING, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null);}
-	static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(UNCHARTED, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null);}
-	static ChartPlotterRoute none(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(NO_ROUTE, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null);}
-	static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(COMPLEX, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null);}
-	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, turnBias, fast, null);}
-	ChartPlotterRoute debug(String debug) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, turnBias, fast, debug);}
+	static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(PENDING, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null, null);}
+	static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(UNCHARTED, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null, null);}
+	static ChartPlotterRoute none(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(NO_ROUTE, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null, null);}
+	static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(COMPLEX, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null, null);}
+	static ChartPlotterRoute blocked(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(BLOCKED, sx, sy, tx, ty, new int[0], new int[0], 0, turnBias, fast, null, null);}
+	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, turnBias, fast, null, null);}
+	ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, turnBias, fast, effort, debug);}
+	ChartPlotterRoute debug(String debug) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, turnBias, fast, effort, debug);}
 	boolean target(int x, int y, int r) {return Math.max(Math.abs(tx - x), Math.abs(ty - y)) <= r;}
 	boolean start(int x, int y) {return sx == x && sy == y;}
 	ChartPlotterRoute advance(int sx, int sy) {
@@ -61,12 +66,13 @@ final class ChartPlotterRoute {
 			ox[i] = x[skip + i - 1];
 			oy[i] = y[skip + i - 1];
 		}
-		return ok(sx, sy, tx, ty, ox, oy, nn, turnBias, fast);
+		return ok(sx, sy, tx, ty, ox, oy, nn, turnBias, fast).effort(effort);
 	}
 	String text() {
 		if (status == PENDING) return "Charting course";
 		if (status == UNCHARTED) return "Uncharted waters";
-		if (status == NO_ROUTE) return "No charted route";
+		if (status == BLOCKED) return "Not sailable";
+		if (status == NO_ROUTE) return "No route found";
 		if (status == COMPLEX) return "Route too complex";
 		return null;
 	}

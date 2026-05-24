@@ -11,6 +11,11 @@ import net.runelite.client.util.ColorUtil;
 public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "stopAtCollision", name = "Collision clipping", description = "Clip projected paths at collision flags.", position = 0)
 	default boolean stopAtCollision() {return true;}
+	@ConfigItem(keyName = "showBlockedExtension", name = "Show blocked extension", description = "Continue drawing the projected path past collisions in a different color.", position = 1)
+	default boolean showBlockedExtension() {return false;}
+	@Alpha
+	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Color for the section of the projected path that would collide.", position = 2)
+	default Color blockedColor() {return ColorUtil.colorWithAlpha(new Color(255, 80, 60), 140);}
 	@ConfigSection(name = "World", description = "World overlay settings.", position = 0)
 	String worldSection = "worldSection";
 	@ConfigItem(keyName = "worldEnabled", name = "Enabled", description = "Draw course lines in the world.", section = worldSection, position = 0)
@@ -61,23 +66,18 @@ public interface ChartPlotterConfig extends Config {
 	default int worldMapLineWidth() {return 1;}
 	@ConfigSection(name = "Charting", description = "Charted route settings.", position = 3)
 	String chartingSection = "chartingSection";
-	@ConfigItem(keyName = "chartTurnBias", name = "Turn preference", description = "Higher values prefer fewer turns and allow larger detours.", section = chartingSection, position = 0)
-	@Range(max = 10)
-	default int chartTurnBias() {return 5;}
-	@ConfigItem(keyName = "chartBidirectional", name = "Bidirectional search", description = "Search from both ends when charting long routes.", section = chartingSection, position = 1)
-	default boolean chartBidirectional() {return false;}
-	@ConfigItem(keyName = "chartFastRoute", name = "Fast route", description = "Use a faster weighted search that may choose a less optimal route.", section = chartingSection, position = 2)
-	default boolean chartFastRoute() {return false;}
+	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
+	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
+	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining precise, footprint-aware routes; lower effort returns quicker.", section = chartingSection, position = 1)
+	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 4)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheCollision", name = "Remember collision", description = "Save reliable collision tiles to disk.", section = tweaksSection, position = 0)
 	default boolean cacheCollision() {return true;}
 	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)
 	default ChartPlotterCollisionDebug collisionDebug() {return ChartPlotterCollisionDebug.OFF;}
-	@ConfigItem(keyName = "collisionLog", name = "Collision log", description = "Print collision debug lines to the console.", section = tweaksSection, position = 2)
-	default boolean collisionLog() {return false;}
 	@ConfigItem(keyName = "sailableDebugRadius", name = "Sailable debug radius", description = "Draw non-sailable live and cached tiles around the ship. Zero disables it.", section = tweaksSection, position = 3)
-	@Range(max = 64)
+	@Range(max = 128)
 	default int sailableDebugRadius() {return 0;}
 	@ConfigItem(keyName = "cacheOverlay", name = "Cache overlay", description = "Draw remembered collision coverage on the world map.", section = tweaksSection, position = 4)
 	default boolean cacheOverlay() {return false;}

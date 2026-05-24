@@ -43,7 +43,6 @@ public class ChartPlotterOverlay extends Overlay {
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
-	private String lastDebug;
 	@Inject
 	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache) {
 		this.client = client;
@@ -81,7 +80,6 @@ public class ChartPlotterOverlay extends Overlay {
 		if (pot != null) draw(g, top, pot, rx, ry, config.worldPotentialColor(), 0);
 		drawSailableDebug(g, top, center);
 		if (debug != ChartPlotterCollisionDebug.OFF) drawDebug(g, top, wc, center, ship.getOrientation(), cur, pot);
-		if (config.collisionLog()) logDebug(top, wc, anchor, from, course, mouse, cur, pot);
 		g.setStroke(prev);
 		return null;
 	}
@@ -93,7 +91,7 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, boolean checkLoaded) {
 		Tile[][][] tiles = wv.getScene().getExtendedTiles();
-		Path p = new Path(cap + 1);
+		Path p = new Path(cap + 2);
 		p.start = from;
 		p.x[p.n] = anchor.getX();
 		p.y[p.n] = anchor.getY();
@@ -114,6 +112,7 @@ public class ChartPlotterOverlay extends Overlay {
 		p.o[0] = from;
 		int dir = ChartPlotterPlugin.angleDir(from, target, plugin.turnDir());
 		ChartPlotterCollisionCache cache = config.cacheCollision() ? collisionCache : null;
+		boolean showExt = config.showBlockedExtension();
 		for (int i = 0; i < cap; i++) {
 			if (o != target) o = ChartPlotterPlugin.norm(o + TURN * dir);
 			speed += accel;
@@ -126,24 +125,27 @@ public class ChartPlotterOverlay extends Overlay {
 			int lx = anchor.getX() + posX;
 			int ly = anchor.getY() + posY;
 			if (checkLoaded && !loaded(tiles, wv.getPlane(), lx, ly)) break;
-			Block b = config.stopAtCollision() ? block(wv, wc, cache, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
-			if (b != null) {
-				if (b.sx != p.x[p.n - 1] || b.sy != p.y[p.n - 1] || b.so != p.o[p.n - 1]) {
-					p.x[p.n] = b.sx;
-					p.y[p.n] = b.sy;
-					p.o[p.n] = b.so;
-					p.n++;
+			if (!p.blocked) {
+				Block b = config.stopAtCollision() ? block(wv, wc, cache, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
+				if (b != null) {
+					if (b.sx != p.x[p.n - 1] || b.sy != p.y[p.n - 1] || b.so != p.o[p.n - 1]) {
+						p.x[p.n] = b.sx;
+						p.y[p.n] = b.sy;
+						p.o[p.n] = b.so;
+						p.n++;
+					}
+					p.blocked = true;
+					p.blockedAt = p.n;
+					p.bx = b.bx;
+					p.by = b.by;
+					p.bo = b.bo;
+					p.hx = b.h.x;
+					p.hy = b.h.y;
+					p.htx = b.h.tx;
+					p.hty = b.h.ty;
+					p.hf = b.h.f;
+					if (!showExt) break;
 				}
-				p.blocked = true;
-				p.bx = b.bx;
-				p.by = b.by;
-				p.bo = b.bo;
-				p.hx = b.h.x;
-				p.hy = b.h.y;
-				p.htx = b.h.tx;
-				p.hty = b.h.ty;
-				p.hf = b.h.f;
-				break;
 			}
 			p.x[p.n] = lx;
 			p.y[p.n] = ly;
@@ -165,6 +167,8 @@ public class ChartPlotterOverlay extends Overlay {
 		Path2D.Double s = new Path2D.Double();
 		boolean have = false;
 		int sA = color.getAlpha();
+		Color blockedColor = config.blockedColor();
+		int sBA = blockedColor.getAlpha();
 		for (int i = 0; i < p.n; i++) {
 			if (missing(wv, p, i, rx, ry, z, cx, cy)) {
 				have = false;
@@ -175,9 +179,11 @@ public class ChartPlotterOverlay extends Overlay {
 				have = true;
 				continue;
 			}
-			int a = alpha(sA, i, p.n);
+			boolean inBlock = i >= p.blockedAt;
+			Color base = inBlock ? blockedColor : color;
+			int a = alpha(inBlock ? sBA : sA, i, p.n);
 			if (a > 0) {
-				g.setColor(ColorUtil.colorWithAlpha(color, a));
+				g.setColor(ColorUtil.colorWithAlpha(base, a));
 				s.reset();
 				boolean d = false;
 				if (have && p.o[i] == prev(p, i)) {
@@ -345,59 +351,6 @@ public class ChartPlotterOverlay extends Overlay {
 		int d = Math.max(Math.abs(p.hx - loc.getX()), Math.abs(p.hy - loc.getY())) / TS;
 		g.drawString(name + " block tile=" + p.htx + "," + p.hty + " dist=" + d + " flag=0x" + Integer.toHexString(p.hf), x, y);
 		return y + 14;
-	}
-	private void logDebug(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int course, int mouse, Path cur, Path pot) {
-		String s = blockLog(wv, wc, anchor, from, course, mouse, cur, "cur");
-		if (s == null && pot != null) s = blockLog(wv, wc, anchor, from, course, mouse, pot, "pot");
-		if (s == null || s.equals(lastDebug)) return;
-		lastDebug = s;
-		System.out.println(s);
-	}
-	private String blockLog(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int course, int mouse, Path p, String name) {
-		if (!p.blocked) return null;
-		int wx = wv.getBaseX() + p.htx;
-		int wy = wv.getBaseY() + p.hty;
-		int region = (wx >> 6 << 8) | wy >> 6;
-		int chunkX = wx >> 3;
-		int chunkY = wy >> 3;
-		int d = Math.max(Math.abs(p.hx - anchor.getX()), Math.abs(p.hy - anchor.getY())) / TS;
-		CollisionData[] maps = wv.getCollisionMaps();
-		int[][] flags = maps != null && wv.getPlane() >= 0 && wv.getPlane() < maps.length && maps[wv.getPlane()] != null ? maps[wv.getPlane()].getFlags() : null;
-		return "ChartPlotter collision " + name + " kind=block dist=" + d + " flag=0x" + Integer.toHexString(p.hf) + " bits=" + bits(p.hf) + " scene=" + p.htx + "," + p.hty + " world=" + wx + "," + wy + " chunk=" + chunkX + "," + chunkY + " region=" + region + " plane=" + wv.getPlane() + " base=" + wv.getBaseX() + "," + wv.getBaseY() + " localHit=" + p.hx + "," + p.hy + " safe=" + p.x[p.n - 1] + "," + p.y[p.n - 1] + "," + p.o[p.n - 1] + " block=" + p.bx + "," + p.by + "," + p.bo + " anchor=" + anchor.getX() + "," + anchor.getY() + " from=" + from + " course=" + course + " mouse=" + mouse + " speed=" + plugin.speed() + " accel=" + plugin.accel() + " reverse=" + plugin.reversing() + " max=" + plugin.maxSpeed() + " edge=" + EDGE + " bounds=" + bounds(wc) + " regions=" + java.util.Arrays.toString(wv.getMapRegions()) + " " + collisionCache.stats() + " grid=" + grid(flags, p.htx, p.hty);
-	}
-	private static String bounds(WorldEntityConfig wc) {
-		if (wc == null) return "null";
-		return wc.getBoundsX() + "," + wc.getBoundsY() + "," + wc.getBoundsWidth() + "," + wc.getBoundsHeight();
-	}
-	private static String grid(int[][] flags, int x, int y) {
-		if (flags == null) return "null";
-		StringBuilder s = new StringBuilder();
-		for (int yy = y + 1; yy >= y - 1; yy--) {
-			if (yy < y + 1) s.append("/");
-			for (int xx = x - 1; xx <= x + 1; xx++) {
-				if (xx > x - 1) s.append(",");
-				s.append(inside(flags, xx, yy) ? Integer.toHexString(flags[xx][yy]) : "out");
-			}
-		}
-		return s.toString();
-	}
-	private static String bits(int f) {
-		StringBuilder s = new StringBuilder();
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_FULL, "full");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_NORTH, "n");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_EAST, "e");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_SOUTH, "s");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_WEST, "w");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST, "ne");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST, "se");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST, "sw");
-		bit(s, f, CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST, "nw");
-		return s.length() == 0 ? "none" : s.toString();
-	}
-	private static void bit(StringBuilder s, int f, int b, String n) {
-		if ((f & b) == 0) return;
-		if (s.length() > 0) s.append("|");
-		s.append(n);
 	}
 	private static void rails(Path2D p, int[] px, int[] py, int[] cx, int[] cy) {
 		p.moveTo(px[0], py[0]);
@@ -606,6 +559,7 @@ public class ChartPlotterOverlay extends Overlay {
 		int start;
 		int n;
 		boolean blocked;
+		int blockedAt = Integer.MAX_VALUE;
 		int bx;
 		int by;
 		int bo;

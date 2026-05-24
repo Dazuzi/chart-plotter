@@ -97,9 +97,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			return;
 		}
 		int start = skip > 0 ? skip - 1 : 0;
+		int mid = Math.min(p.blockedAt, p.n);
+		segment(g, wv, map, p, color, start, mid);
+		if (mid < p.n) segment(g, wv, map, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+	}
+	private void segment(Graphics2D g, WorldView wv, Widget map, ChartPlotterOverlay.Path p, Color color, int from, int to) {
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
-		for (int i = start; i < p.n; i++) {
+		for (int i = from; i < to; i++) {
 			Point q = mapPoint(wv, p.x[i], p.y[i], map);
 			if (q == null) {
 				have = false;
@@ -124,7 +129,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private void drawRoute(Graphics2D g, Widget map, WorldMap wm, ChartPlotterRoute r) {
 		if (r == null) return;
-		Color c = r.status == ChartPlotterRoute.OK ? config.worldMapChartColor() : r.status == ChartPlotterRoute.UNCHARTED ? new Color(255, 80, 60, 220) : new Color(255, 190, 40, 220);
+		Color c = r.status == ChartPlotterRoute.OK ? config.worldMapChartColor() : r.status == ChartPlotterRoute.UNCHARTED ? new Color(255, 80, 60, 220) : r.status == ChartPlotterRoute.BLOCKED ? new Color(170, 170, 170, 220) : new Color(255, 190, 40, 220);
 		if (r.status == ChartPlotterRoute.OK && r.n > 1) {
 			Path2D.Double line = new Path2D.Double();
 			boolean have = false;
@@ -172,24 +177,25 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		return new Point((int) Math.round(x), (int) Math.round(y));
 	}
 	private void drawCache(Graphics2D g, Widget map, WorldMap wm) {
+		g.setColor(new Color(0, 210, 120, 72));
 		for (Map.Entry<Long, int[]> e : collisionCache.snapshot().entrySet()) {
+			if (!known(e.getValue())) continue;
 			int cx = (int) (e.getKey() >> 32);
 			int cy = (int) (long) e.getKey();
-			for (int i = 0; i < e.getValue().length; i++) {
-				if (e.getValue()[i] == ChartPlotterCollisionCache.UNKNOWN) continue;
-				Rectangle r = tile(map, wm, (cx << 3) + (i & 7), (cy << 3) + (i >> 3));
-				if (r == null) continue;
-				g.setColor(new Color(0, 210, 120, 72));
-				g.fill(r);
-				g.setColor(new Color(0, 255, 170, 90));
-				g.draw(r);
-			}
+			Rectangle r = chunk(map, wm, cx, cy);
+			if (r != null) g.fill(r);
 		}
 	}
-	private Rectangle tile(Widget map, WorldMap wm, int wx, int wy) {
-		if (!wm.getWorldMapData().surfaceContainsPosition(wx, wy)) return null;
+	private static boolean known(int[] v) {
+		for (int f : v) if (f != ChartPlotterCollisionCache.UNKNOWN) return true;
+		return false;
+	}
+	private Rectangle chunk(Widget map, WorldMap wm, int cx, int cy) {
+		int wx = cx << 3;
+		int wy = cy << 3;
+		if (!wm.getWorldMapData().surfaceContainsPosition(wx + 4, wy + 4)) return null;
 		Point a = mapPoint(map, wm, wx, wy, 0, 0);
-		Point b = mapPoint(map, wm, wx, wy, 1, 1);
+		Point b = mapPoint(map, wm, wx + 7, wy + 7, 1, 1);
 		if (a == null || b == null) return null;
 		int x = Math.min(a.getX(), b.getX());
 		int y = Math.min(a.getY(), b.getY());
