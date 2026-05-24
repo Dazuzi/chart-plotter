@@ -3,9 +3,14 @@ import java.util.Map;
 final class ChartPlotterCollisionData {
 	final Map<Long, ChartPlotterCollisionCache.Chunk> base;
 	final int size;
+	final long rev;
 	ChartPlotterCollisionData(Map<Long, ChartPlotterCollisionCache.Chunk> base) {
+		this(base, 0);
+	}
+	ChartPlotterCollisionData(Map<Long, ChartPlotterCollisionCache.Chunk> base, long rev) {
 		this.base = base;
 		this.size = base.size();
+		this.rev = rev;
 	}
 	ChartPlotterCollisionCache.Chunk chunk(int x, int y) {
 		return base.get(key(x, y));

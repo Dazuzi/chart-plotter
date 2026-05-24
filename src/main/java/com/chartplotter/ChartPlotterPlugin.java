@@ -66,6 +66,7 @@ public class ChartPlotterPlugin extends Plugin {
 	private volatile ChartPlotterRoute route;
 	private final AtomicInteger routeSeq = new AtomicInteger();
 	private volatile boolean routeBusy;
+	private volatile long routeRev;
 	private ExecutorService routeExec;
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
@@ -333,11 +334,15 @@ public class ChartPlotterPlugin extends Plugin {
 			routeTo(top, ship, loc, r.tx, r.ty, false);
 			return;
 		}
+		if (r.status != ChartPlotterRoute.OK && routeRev != collisionCache.rev()) {
+			routeTo(top, ship, loc, r.tx, r.ty, false);
+			return;
+		}
 		if (r.status == ChartPlotterRoute.OK) {
 			ChartPlotterRoute nr = r.advance(sx, sy);
 			if (nr == r) return;
-			if (nr != null && routeClear(ship, nr)) {
-				route = nr;
+			if (nr != null) {
+				checkRoute(ship, nr);
 				return;
 			}
 			routeTo(top, ship, loc, r.tx, r.ty, false);
@@ -345,12 +350,37 @@ public class ChartPlotterPlugin extends Plugin {
 		}
 		if (!r.start(sx, sy)) routeTo(top, ship, loc, r.tx, r.ty, false);
 	}
-	private boolean routeClear(WorldEntity ship, ChartPlotterRoute r) {
-		if (r.n < 2) return true;
+	private void checkRoute(WorldEntity ship, ChartPlotterRoute r) {
+		if (r.n < 2) {
+			route = r;
+			routeRev = collisionCache.rev();
+			return;
+		}
 		ChartPlotterCollisionData data = collisionData();
+		long rev = data.rev;
 		int start = speed == 0 ? -1 : norm(ship.getTargetOrientation());
 		ChartPlotterRouteEffort effort = r.effort == null ? config.routeEffort() : r.effort;
-		return ChartPlotterRouteFinder.clear(data, effort.footprint ? ship.getConfig() : null, start, r.sx, r.sy, r.x[1], r.y[1], reversing());
+		WorldEntityConfig wc = effort.footprint ? ship.getConfig() : null;
+		boolean reverse = reversing();
+		int seq = routeSeq.incrementAndGet();
+		routeBusy = true;
+		startRouteExec();
+		routeExec.execute(() -> {
+			boolean clear = ChartPlotterRouteFinder.clear(data, wc, start, r.sx, r.sy, r.x[1], r.y[1], reverse);
+			if (seq != routeSeq.get() || Thread.currentThread().isInterrupted()) return;
+			if (clear) {
+				route = r;
+				routeRev = rev;
+				routeBusy = false;
+				return;
+			}
+			ChartPlotterRoute nr = ChartPlotterRouteFinder.find(data, wc, start, r.sx, r.sy, r.tx, r.ty, r.turnBias, reverse, r.fast, effort.dirs, effort.adaptive, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
+			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
+				route = nr;
+				routeRev = rev;
+				routeBusy = false;
+			}
+		});
 	}
 	private void routeTo(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty, boolean pending) {
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
@@ -365,14 +395,19 @@ public class ChartPlotterPlugin extends Plugin {
 		int start = speed == 0 ? -1 : ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int seq = routeSeq.incrementAndGet();
 		ChartPlotterCollisionData data = collisionData();
+		long rev = data.rev;
 		routeBusy = true;
-		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
+		if (pending) {
+			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
+			routeRev = rev;
+		}
 		startRouteExec();
 		routeExec.execute(() -> {
 			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
-				routeBusy = false;
 				route = r;
+				routeRev = rev;
+				routeBusy = false;
 			}
 		});
 	}
@@ -395,6 +430,7 @@ public class ChartPlotterPlugin extends Plugin {
 	private void clearRoute() {
 		routeSeq.incrementAndGet();
 		route = null;
+		routeRev = 0;
 		routeBusy = false;
 	}
 }

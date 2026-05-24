@@ -44,7 +44,6 @@ final class ChartPlotterCollisionCache {
 	private long viewRev = -1;
 	synchronized void start() {
 		if (io != null) return;
-		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {}
 		io = Executors.newSingleThreadScheduledExecutor(r -> {
 			Thread t = new Thread(r, "chart-plotter-collision");
 			t.setDaemon(true);
@@ -77,16 +76,16 @@ final class ChartPlotterCollisionCache {
 		}
 	}
 	synchronized int flag(WorldView wv, int sx, int sy) {
-		if (!loaded) load();
+		if (!loaded) return UNKNOWN;
 		int wx = wv.getBaseX() + sx;
 		int wy = wv.getBaseY() + sy;
 		Chunk c = chunks.get(key(wx >> 3, wy >> 3));
 		return c == null ? UNKNOWN : c.flag((wx & 7) + ((wy & 7) << 3));
 	}
 	synchronized ChartPlotterCollisionData snapshot() {
-		if (!loaded) load();
+		if (!loaded) return view;
 		if (viewRev != rev) {
-			view = new ChartPlotterCollisionData(new HashMap<>(chunks));
+			view = new ChartPlotterCollisionData(new HashMap<>(chunks), rev);
 			viewRev = rev;
 		}
 		return view;
@@ -99,7 +98,7 @@ final class ChartPlotterCollisionCache {
 		}
 	}
 	private synchronized void merge(Scan scan) {
-		if (!loaded) load();
+		if (!loaded) return;
 		Map<Long, Builder> data = new HashMap<>();
 		int sx1 = scan.width - EDGE;
 		int sy1 = scan.height - EDGE;
@@ -183,14 +182,16 @@ final class ChartPlotterCollisionCache {
 		} catch (Exception ignored) {
 		}
 	}
-	private synchronized void load() {
+	private void load() {
 		Map<Long, Chunk> data = read();
-		chunks.clear();
-		chunks.putAll(data);
-		rev = 0;
-		savedRev = 0;
-		viewRev = -1;
-		loaded = true;
+		synchronized (this) {
+			chunks.clear();
+			chunks.putAll(data);
+			rev++;
+			savedRev = rev;
+			viewRev = -1;
+			loaded = true;
+		}
 	}
 	private Map<Long, Chunk> read() {
 		Map<Long, Chunk> data = new HashMap<>();
@@ -234,6 +235,7 @@ final class ChartPlotterCollisionCache {
 	}
 	private boolean write(Map<Long, Chunk> data) {
 		File tmp = new File(dir, "collision.bin.tmp");
+		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
 		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmp)))) {
 			out.writeByte(VERSION);
 			out.writeInt(count(data));

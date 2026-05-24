@@ -17,6 +17,7 @@ final class ChartPlotterRouteFinder {
 	private static final int MC_OFF = 0;
 	private static final int MC_DENSE = 1;
 	private static final int MC_SPARSE = 2;
+	private static final int REACH_CHECK = 4095;
 	private static final int[] DX = {0, 1, 1, 2, 1, 2, 1, 1, 0, -1, -1, -2, -1, -2, -1, -1};
 	private static final int[] DY = {1, 2, 1, 1, 0, -1, -1, -2, -1, -2, -1, -1, 0, 1, 1, 2};
 	private static final int[] COST = {10, 22, 14, 22, 10, 22, 14, 22, 10, 22, 14, 22, 10, 22, 14, 22};
@@ -48,6 +49,9 @@ final class ChartPlotterRouteFinder {
 		int tf = data.flag(tx, ty);
 		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
 		if (blocker(sf) || blocker(tf)) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
+		int c = connected(data, WORK.get().reach, sx, sy, tx, ty, full, cancel);
+		if (c < 0) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
+		if (c == 0) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
 		int max = maxMargin(sx, sy, tx, ty, null);
 		int fm = tightMargin(sx, sy, tx, ty);
 		for (int m = fm;; m = Math.min(max, m * 2)) {
@@ -72,7 +76,6 @@ final class ChartPlotterRouteFinder {
 		boolean db = dense.on;
 		if (!db) best.clear();
 		addStarts(q, dense, best, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep, db);
-		boolean unknown = false;
 		boolean capped = false;
 		int seen = 0;
 		int minX = b.minX;
@@ -120,7 +123,6 @@ final class ChartPlotterRouteFinder {
 					p = move(data, raw, ax, ay, nx, ny, ad, i, reverse, strict);
 					if (moves.on) moves.put(ax, ay, ad, i, p);
 				}
-				if (p < 0) unknown = true;
 				if (p != 1) continue;
 				if (db) dense.put(nx, ny, i, ng);
 				else best.put(key, ng);
@@ -128,7 +130,31 @@ final class ChartPlotterRouteFinder {
 				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a));
 			}
 		}
-		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : unknown ? ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+	}
+	private static int connected(Grid data, Reach r, int sx, int sy, int tx, int ty, Bounds b, BooleanSupplier cancel) {
+		if (sx == tx && sy == ty) return 1;
+		r.clear();
+		r.add(chunk(sx, sy));
+		int i = 0;
+		while (i < r.n) {
+			if ((i & REACH_CHECK) == 0 && cancel.getAsBoolean()) return -1;
+			long k = r.q[i++];
+			int x = (int) (k >> 32);
+			int y = (int) k;
+			for (int d = 0; d < DX.length; d += 2) {
+				int nx = x + DX[d];
+				int ny = y + DY[d];
+				if (nx < b.minX || ny < b.minY || nx > b.maxX || ny > b.maxY) continue;
+				long nk = chunk(nx, ny);
+				if (r.seen.get(nk) != LongIntMap.MISS) continue;
+				int f = data.flag(nx, ny);
+				if (f == ChartPlotterCollisionCache.UNKNOWN || blocker(f)) continue;
+				if (nx == tx && ny == ty) return 1;
+				r.add(nk);
+			}
+		}
+		return 0;
 	}
 	private static ChartPlotterRoute route(Grid data, int start, Nodes nodes, int end, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep) {
 		int n = 0;
@@ -748,9 +774,24 @@ final class ChartPlotterRouteFinder {
 		final LongIntMap ag = new LongIntMap(1 << 15);
 		final DenseBest best = new DenseBest();
 		final MoveCache moves = new MoveCache();
+		final Reach reach = new Reach();
 		void clear() {
 			a.clear();
 			aq.clear();
+		}
+	}
+	private static final class Reach {
+		final LongIntMap seen = new LongIntMap(1 << 15);
+		long[] q = new long[1 << 15];
+		int n;
+		void clear() {
+			seen.clear();
+			n = 0;
+		}
+		void add(long k) {
+			if (n == q.length) q = Arrays.copyOf(q, q.length << 1);
+			q[n++] = k;
+			seen.put(k, 1);
 		}
 	}
 	private static final class DenseBest {
