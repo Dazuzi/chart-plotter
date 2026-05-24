@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 import javax.inject.Singleton;
 import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
@@ -197,16 +199,15 @@ final class ChartPlotterCollisionCache {
 		Map<Long, Chunk> data = new HashMap<>();
 		File file = file();
 		if (file.isFile()) {
-			try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
-				if (in.readByte() == VERSION) {
-					int n = in.readInt();
-					for (int i = 0; i < n; i++) {
-						int cx = in.readUnsignedShort();
-						int cy = in.readUnsignedShort();
-						long mask = in.readLong();
-						long blocked = in.readLong();
-						data.put(key(cx, cy), new Chunk(mask, blocked & mask));
-					}
+			try (DataInputStream in = new DataInputStream(new GZIPInputStream(new BufferedInputStream(new FileInputStream(file))))) {
+				if (in.readByte() != VERSION) return data;
+				int n = in.readInt();
+				for (int i = 0; i < n; i++) {
+					int cx = in.readUnsignedShort();
+					int cy = in.readUnsignedShort();
+					long mask = in.readLong();
+					long blocked = in.readLong();
+					data.put(key(cx, cy), new Chunk(mask, blocked & mask));
 				}
 			} catch (Exception ignored) {
 			}
@@ -236,7 +237,7 @@ final class ChartPlotterCollisionCache {
 	private boolean write(Map<Long, Chunk> data) {
 		File tmp = new File(dir, "collision.bin.tmp");
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
-		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmp)))) {
+		try (DataOutputStream out = new DataOutputStream(new GZIPOutputStream(new BufferedOutputStream(new FileOutputStream(tmp))))) {
 			out.writeByte(VERSION);
 			out.writeInt(count(data));
 			for (Map.Entry<Long, Chunk> e : data.entrySet()) {
