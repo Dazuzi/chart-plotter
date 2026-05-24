@@ -1,6 +1,5 @@
 package com.chartplotter;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.function.BooleanSupplier;
 import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Perspective;
@@ -21,20 +20,20 @@ final class ChartPlotterRouteFinder {
 	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
-	static ChartPlotterRoute find(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirs, BooleanSupplier cancel) {
+	static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirs, BooleanSupplier cancel) {
 		Footprint fp = wc == null ? null : new Footprint(wc);
 		int dirStep = dirs == 8 ? 2 : 1;
 		Debug d = new Debug(data.size(), fp != null, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs);
 		ChartPlotterRoute r = find(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, d, cancel);
 		return r.debug(d.text(r));
 	}
-	static boolean clear(Map<Long, int[]> data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, boolean reverse) {
+	static boolean clear(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, boolean reverse) {
 		int d = dir(tx - sx, ty - sy);
 		if (d < 0) return false;
 		Footprint fp = wc == null ? null : new Footprint(wc);
 		return clear(new Grid(data), fp, start, sx, sy, tx, ty, orient(d, d), reverse);
 	}
-	private static ChartPlotterRoute find(Map<Long, int[]> raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, Debug d, BooleanSupplier cancel) {
+	private static ChartPlotterRoute find(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, Debug d, BooleanSupplier cancel) {
 		long t = System.nanoTime();
 		turnBias = Math.max(0, Math.min(10, turnBias));
 		d.radius = radius(fp);
@@ -488,7 +487,7 @@ final class ChartPlotterRouteFinder {
 	private static long state(int x, int y, int d) {return ((long) x & 0xfffffL) << 44 | ((long) y & 0xfffffL) << 4 | d;}
 	private static long chunk(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private static final class Grid {
-		final Map<Long, int[]> data;
+		final ChartPlotterCollisionData data;
 		final byte[] dense;
 		final byte[] dirs;
 		final byte[] cached;
@@ -504,12 +503,12 @@ final class ChartPlotterRouteFinder {
 		final Footprint fp;
 		int cx;
 		int cy;
-		int[] c;
+		ChartPlotterCollisionCache.Chunk c;
 		boolean have;
-		private Grid(Map<Long, int[]> data) {
+		private Grid(ChartPlotterCollisionData data) {
 			this(data, null, null, null, null, 0, 0, 0, 0, 0, null, null, null);
 		}
-		private Grid(Map<Long, int[]> data, byte[] dense, byte[] dirs, byte[] cached, byte[] cachedDirs, int minX, int minY, int width, int height, int radius, LongIntMap cache, LongIntMap dirCache, Footprint fp) {
+		private Grid(ChartPlotterCollisionData data, byte[] dense, byte[] dirs, byte[] cached, byte[] cachedDirs, int minX, int minY, int width, int height, int radius, LongIntMap cache, LongIntMap dirCache, Footprint fp) {
 			this.data = data;
 			this.dense = dense;
 			this.dirs = dirs;
@@ -525,7 +524,7 @@ final class ChartPlotterRouteFinder {
 			this.dirCache = dirCache;
 			this.fp = fp;
 		}
-		static Grid inflated(Map<Long, int[]> data, Footprint fp, int radius, Bounds b, Debug d) {
+		static Grid inflated(ChartPlotterCollisionData data, Footprint fp, int radius, Bounds b, Debug d) {
 			int width = b.maxX - b.minX + 1;
 			int height = b.maxY - b.minY + 1;
 			long area = (long) width * height;
@@ -540,7 +539,7 @@ final class ChartPlotterRouteFinder {
 			d.gridCache = cachedDirs != null ? "dense" : "map";
 			return new Grid(data, null, null, cached, cachedDirs, b.minX, b.minY, width, height, radius, new LongIntMap(1 << 15), new LongIntMap(1 << 15), fp);
 		}
-		private static Grid dense(Map<Long, int[]> data, Footprint fp, int radius, Bounds b, int width, int height, Debug d) {
+		private static Grid dense(ChartPlotterCollisionData data, Footprint fp, int radius, Bounds b, int width, int height, Debug d) {
 			int stride = width * height;
 			byte[] dense = new byte[stride];
 			byte[] dirs = new byte[stride * OR.length];
@@ -651,10 +650,10 @@ final class ChartPlotterRouteFinder {
 			if (!have || nx != cx || ny != cy) {
 				cx = nx;
 				cy = ny;
-				c = data.get(chunk(nx, ny));
+				c = data.chunk(nx, ny);
 				have = true;
 			}
-			return c == null ? ChartPlotterCollisionCache.UNKNOWN : c[(x & 7) + ((y & 7) << 3)];
+			return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((x & 7) + ((y & 7) << 3));
 		}
 		private static int flag(byte v) {return v == 0 ? ChartPlotterCollisionCache.OPEN : v == 1 ? ChartPlotterCollisionCache.UNKNOWN : ChartPlotterCollisionCache.BLOCKED;}
 	}

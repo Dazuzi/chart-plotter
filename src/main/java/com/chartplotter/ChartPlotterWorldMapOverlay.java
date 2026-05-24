@@ -178,17 +178,13 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private void drawCache(Graphics2D g, Widget map, WorldMap wm) {
 		g.setColor(new Color(0, 210, 120, 72));
-		for (Map.Entry<Long, int[]> e : collisionCache.snapshot().entrySet()) {
-			if (!known(e.getValue())) continue;
+		for (Map.Entry<Long, ChartPlotterCollisionCache.Chunk> e : collisionCache.snapshot().entries()) {
+			if (e.getValue().empty()) continue;
 			int cx = (int) (e.getKey() >> 32);
 			int cy = (int) (long) e.getKey();
 			Rectangle r = chunk(map, wm, cx, cy);
 			if (r != null) g.fill(r);
 		}
-	}
-	private static boolean known(int[] v) {
-		for (int f : v) if (f != ChartPlotterCollisionCache.UNKNOWN) return true;
-		return false;
 	}
 	private Rectangle chunk(Widget map, WorldMap wm, int cx, int cy) {
 		int wx = cx << 3;

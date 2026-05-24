@@ -1,7 +1,6 @@
 package com.chartplotter;
 import com.google.inject.Provides;
 import java.awt.event.MouseEvent;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -332,7 +331,7 @@ public class ChartPlotterPlugin extends Plugin {
 	}
 	private boolean routeClear(WorldView top, WorldEntity ship, ChartPlotterRoute r) {
 		if (r.n < 2) return true;
-		Map<Long, int[]> data = collisionCache.snapshot(top);
+		ChartPlotterCollisionData data = collisionCache.snapshot(top);
 		int start = speed == 0 ? -1 : norm(ship.getTargetOrientation());
 		ChartPlotterRouteEffort effort = r.effort == null ? config.routeEffort() : r.effort;
 		return ChartPlotterRouteFinder.clear(data, effort.footprint ? ship.getConfig() : null, start, r.sx, r.sy, r.x[1], r.y[1], reversing());
@@ -349,30 +348,18 @@ public class ChartPlotterPlugin extends Plugin {
 		boolean reverse = reversing();
 		int start = speed == 0 ? -1 : ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int seq = routeSeq.incrementAndGet();
-		Map<Long, int[]> data = collisionCache.snapshot(top);
+		ChartPlotterCollisionData data = collisionCache.snapshot(top);
 		long queued = System.nanoTime();
 		String context = pending ? routeContext(top, ship, loc, sx, sy, tx, ty, shape, effort, wc, start, turnBias, dirs, fast, reverse, data.size()) : null;
-		String previewContext = pending && effort.refine ? routeContext(top, ship, loc, sx, sy, tx, ty, shape, effort, wc, start, turnBias, dirs, true, reverse, data.size()) : null;
 		routeBusy = true;
 		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
 		startRouteExec();
 		routeExec.execute(() -> {
-			ChartPlotterRoute best = null;
-			if (effort.refine) {
-				ChartPlotterRoute preview = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, true, dirs, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
-				if (seq != routeSeq.get() || Thread.currentThread().isInterrupted()) return;
-				if (preview.status == ChartPlotterRoute.OK) {
-					route = preview;
-					best = preview;
-				}
-				if (pending) System.out.println(routeDebug(previewContext + " pass=preview", preview, System.nanoTime() - queued));
-			}
 			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				routeBusy = false;
-				ChartPlotterRoute out = best != null && r.status != ChartPlotterRoute.OK ? best : r;
-				route = out;
-				if (pending) System.out.println(routeDebug(context + (effort.refine ? " pass=final kept=" + (out == best ? "preview" : "final") : ""), r, System.nanoTime() - queued));
+				route = r;
+				if (pending) System.out.println(routeDebug(context, r, System.nanoTime() - queued));
 			}
 		});
 	}
