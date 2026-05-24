@@ -27,6 +27,7 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int TURN = 128;
 	private static final int STEP = 32;
+	private static final int MEMO = 16384;
 	private static final int DOT = 4;
 	private static final int EDGE = 8;
 	private static final int VOID = 0xffffff;
@@ -40,6 +41,9 @@ public class ChartPlotterOverlay extends Overlay {
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
+	private final PathSlot[] pathCache = new PathSlot[8];
+	private int pathCacheNext;
+	private AreaSlot areaCache;
 	@Inject
 	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache) {
 		this.client = client;
@@ -57,7 +61,7 @@ public class ChartPlotterOverlay extends Overlay {
 		if (!showWorld && !cacheOverlay.world) return null;
 		WorldView top = client.getTopLevelWorldView();
 		if (top == null) return null;
-		SceneArea area = area(top);
+		SceneArea area = sceneArea(top);
 		if (cacheOverlay.world) drawCache(g, top, area);
 		if (!showWorld) return null;
 		WorldEntity ship = plugin.getShip();
@@ -73,7 +77,8 @@ public class ChartPlotterOverlay extends Overlay {
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
 		Path cur = path(top, wc, anchor, from, course, area);
-		Path pot = mouse >= 0 ? path(top, wc, anchor, from, mouse, area) : null;
+		Path pot = null;
+		if (mouse >= 0) pot = path(top, wc, anchor, from, mouse, area);
 		int skip = pot != null ? match(cur, pot) : 0;
 		ChartPlotterCollisionDebug debug = config.collisionDebug();
 		Stroke prev = g.getStroke();
@@ -87,7 +92,7 @@ public class ChartPlotterOverlay extends Overlay {
 		return null;
 	}
 	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target) {
-		SceneArea area = area(wv);
+		SceneArea area = sceneArea(wv);
 		return path(wv, wc, anchor, from, target, limit(anchor, area), area);
 	}
 	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, SceneArea area) {
@@ -97,6 +102,19 @@ public class ChartPlotterOverlay extends Overlay {
 		return path(wv, wc, anchor, from, target, cap, null);
 	}
 	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, SceneArea area) {
+		PathKey key = key(wv, wc, anchor, from, target, cap, area);
+		for (PathSlot s : pathCache) {
+			if (s == null) continue;
+			if (s.same(key)) return s.path;
+		}
+		Path p = pathRaw(wv, wc, anchor, from, target, cap, area);
+		pathCache[pathCacheNext++ & pathCache.length - 1] = new PathSlot(key, p);
+		return p;
+	}
+	private PathKey key(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, SceneArea area) {
+		return new PathKey(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, plugin.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(plugin.speed()), Double.doubleToLongBits(plugin.accel()), Double.doubleToLongBits(plugin.maxSpeed()), plugin.reversing(), config.stopAtCollision(), config.showBlockedExtension(), config.cacheCollision(), config.cacheCollision() ? collisionCache.rev() : 0, areaKey(area));
+	}
+	private Path pathRaw(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, SceneArea area) {
 		Path p = new Path(cap + 2);
 		p.start = from;
 		p.x[p.n] = anchor.getX();
@@ -119,20 +137,23 @@ public class ChartPlotterOverlay extends Overlay {
 		int dir = ChartPlotterPlugin.angleDir(from, target, plugin.turnDir());
 		ChartPlotterCollisionCache cache = config.cacheCollision() ? collisionCache : null;
 		boolean showExt = config.showBlockedExtension();
+		boolean stop = config.stopAtCollision();
+		Blocker blocker = stop ? blocker(wv, wc, cache) : null;
 		for (int i = 0; i < cap; i++) {
 			if (o != target) o = ChartPlotterPlugin.norm(o + TURN * dir);
 			speed += accel;
 			double max = Math.max(plugin.maxSpeed(), Math.abs(plugin.speed()));
 			speed = plugin.reversing() ? Math.max(-max, speed) : Math.min(max, speed);
-			Point v = velocity(speed, ChartPlotterPlugin.orientationToDegrees(o));
-			if (v.getX() == 0 && v.getY() == 0) break;
-			posX += v.getX();
-			posY += v.getY();
+			int vx = velocityX(speed, o);
+			int vy = velocityY(speed, o);
+			if (vx == 0 && vy == 0) break;
+			posX += vx;
+			posY += vy;
 			int lx = anchor.getX() + posX;
 			int ly = anchor.getY() + posY;
 			if (area != null && !area.loaded(lx, ly)) break;
 			if (!p.blocked) {
-				Block b = config.stopAtCollision() ? block(wv, wc, cache, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
+				Block b = stop ? block(blocker, p.x[p.n - 1], p.y[p.n - 1], p.o[p.n - 1], lx, ly, o) : null;
 				if (b != null) {
 					if (b.sx != p.x[p.n - 1] || b.sy != p.y[p.n - 1] || b.so != p.o[p.n - 1]) {
 						p.x[p.n] = b.sx;
@@ -429,11 +450,38 @@ public class ChartPlotterOverlay extends Overlay {
 		float hh = wc != null ? wc.getBoundsHeight() / 2f : TS;
 		return new float[]{oy - hh, oy + hh, oy + hh, oy - hh};
 	}
+	private static int wid(WorldEntityConfig wc) {return wc == null ? 0 : wc.getId();}
+	private static int wcat(WorldEntityConfig wc) {return wc == null ? 0 : wc.getCategory();}
+	private static int wx(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsX());}
+	private static int wy(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsY());}
+	private static int ww(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsWidth());}
+	private static int wh(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsHeight());}
+	private static long areaKey(SceneArea a) {
+		if (a == null) return 0;
+		long h = 1125899906842597L;
+		h = h * 31 + a.baseX;
+		h = h * 31 + a.baseY;
+		h = h * 31 + a.offX;
+		h = h * 31 + a.offY;
+		h = h * 31 + a.minX;
+		h = h * 31 + a.minY;
+		h = h * 31 + a.maxX;
+		h = h * 31 + a.maxY;
+		h = h * 31 + a.n;
+		for (boolean b : a.chunks) h = h * 31 + (b ? 1 : 0);
+		return h;
+	}
+	private SceneArea sceneArea(WorldView wv) {
+		Tile[][] tiles = tiles(wv);
+		AreaSlot s = areaCache;
+		if (s != null && s.same(wv, tiles)) return s.area;
+		SceneArea area = area(wv);
+		areaCache = new AreaSlot(wv, tiles, area);
+		return area;
+	}
 	private static SceneArea area(WorldView wv) {
-		Tile[][][] all = wv.getScene().getExtendedTiles();
-		int plane = wv.getPlane();
-		if (all == null || plane < 0 || plane >= all.length || all[plane] == null) return null;
-		Tile[][] tiles = all[plane];
+		Tile[][] tiles = tiles(wv);
+		if (tiles == null) return null;
 		int offX = wv.isTopLevel() ? (tiles.length - wv.getSizeX()) / 2 : 0;
 		int offY = 0;
 		int minX = Integer.MAX_VALUE;
@@ -481,11 +529,52 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return new SceneArea(tiles, wv.getBaseX(), wv.getBaseY(), offX, offY, minX, minY, maxX, maxY, minCX, minCY, cw, ch, chunks, n);
 	}
-	private static Block block(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache, int ax, int ay, int ao, int bx, int by, int bo) {
+	private static Tile[][] tiles(WorldView wv) {
+		Tile[][][] all = wv.getScene().getExtendedTiles();
+		int plane = wv.getPlane();
+		if (all == null || plane < 0 || plane >= all.length) return null;
+		return all[plane];
+	}
+	private static Blocker blocker(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache) {
 		CollisionData[] maps = wv.getCollisionMaps();
 		int plane = wv.getPlane();
 		if (maps == null || plane < 0 || plane >= maps.length || maps[plane] == null) return null;
-		int[][] flags = maps[plane].getFlags();
+		return new Blocker(wv, cache, maps[plane].getFlags(), footprint(wc), new FlagMemo(MEMO));
+	}
+	private static Footprint footprint(WorldEntityConfig wc) {
+		float[] rx = rectX(wc);
+		float[] ry = rectY(wc);
+		int minX = min(rx);
+		int maxX = max(rx);
+		int minY = min(ry);
+		int maxY = max(ry);
+		int n = 0;
+		for (int x = minX;; x = next(x, maxX)) {
+			for (int y = minY;; y = next(y, maxY)) {
+				if (edge(x, y, minX, maxX, minY, maxY)) n++;
+				if (y == maxY) break;
+			}
+			if (x == maxX) break;
+		}
+		Footprint p = new Footprint(n);
+		for (int x = minX;; x = next(x, maxX)) {
+			for (int y = minY;; y = next(y, maxY)) {
+				if (edge(x, y, minX, maxX, minY, maxY)) {
+					p.x[p.n] = x;
+					p.y[p.n] = y;
+					p.corner[p.n] = (x == minX || x == maxX) && (y == minY || y == maxY);
+					p.n++;
+				}
+				if (y == maxY) break;
+			}
+			if (x == maxX) break;
+		}
+		return p;
+	}
+	private static Block block(Blocker b, int ax, int ay, int ao, int bx, int by, int bo) {
+		return b == null ? null : blockBoundsExact(b, ax, ay, ao, bx, by, bo);
+	}
+	private static Block blockBoundsExact(Blocker b, int ax, int ay, int ao, int bx, int by, int bo) {
 		int dx = bx - ax;
 		int dy = by - ay;
 		int steps = Math.max(Math.abs(dx), Math.abs(dy)) / STEP;
@@ -496,34 +585,64 @@ public class ChartPlotterOverlay extends Overlay {
 		for (int i = 1; i <= steps; i++) {
 			int qx = ax + dx * i / steps;
 			int qy = ay + dy * i / steps;
-			Hit h = hitFootprint(cache, wv, flags, wc, px, py, po, qx, qy, bo);
-			if (h != null) return new Block(px, py, po, qx, qy, bo, h);
+			if (!clearBounds(b, px, py, po, qx, qy, bo)) {
+				Hit h = hitFootprint(b, px, py, po, qx, qy, bo);
+				if (h != null) return new Block(px, py, po, qx, qy, bo, h);
+			}
 			px = qx;
 			py = qy;
 			po = bo;
 		}
 		return null;
 	}
-	private static Hit hitFootprint(ChartPlotterCollisionCache cache, WorldView wv, int[][] flags, WorldEntityConfig wc, int ax, int ay, int ao, int bx, int by, int bo) {
-		float[] rx = rectX(wc);
-		float[] ry = rectY(wc);
-		int minX = min(rx);
-		int maxX = max(rx);
-		int minY = min(ry);
-		int maxY = max(ry);
-		for (int x = minX;; x = next(x, maxX)) {
-			for (int y = minY;; y = next(y, maxY)) {
-				if (edge(x, y, minX, maxX, minY, maxY)) {
-					int px = rotateX(ax, ao, x, y);
-					int py = rotateY(ay, ao, x, y);
-					int qx = rotateX(bx, bo, x, y);
-					int qy = rotateY(by, bo, x, y);
-					Hit h = hitPath(cache, wv, flags, px, py, qx, qy);
-					if (h != null) return h;
+	private static boolean clearBounds(Blocker b, int ax, int ay, int ao, int bx, int by, int bo) {
+		Footprint fp = b.footprint;
+		int minX = Integer.MAX_VALUE;
+		int minY = Integer.MAX_VALUE;
+		int maxX = Integer.MIN_VALUE;
+		int maxY = Integer.MIN_VALUE;
+		for (int i = 0; i < fp.n; i++) {
+			if (!fp.corner[i]) continue;
+			int x = fp.x[i];
+			int y = fp.y[i];
+			int px = rotateX(ax, ao, x, y);
+			int py = rotateY(ay, ao, x, y);
+			int qx = rotateX(bx, bo, x, y);
+			int qy = rotateY(by, bo, x, y);
+			if (px < minX) minX = px;
+			if (qx < minX) minX = qx;
+			if (py < minY) minY = py;
+			if (qy < minY) minY = qy;
+			if (px > maxX) maxX = px;
+			if (qx > maxX) maxX = qx;
+			if (py > maxY) maxY = py;
+			if (qy > maxY) maxY = qy;
+		}
+		int x0 = Math.floorDiv(minX, TS);
+		int y0 = Math.floorDiv(minY, TS);
+		int x1 = Math.floorDiv(maxX, TS);
+		int y1 = Math.floorDiv(maxY, TS);
+		for (int x = x0; x <= x1; x++) {
+			for (int y = y0; y <= y1; y++) {
+				int f = flag(b, x, y);
+				if (f != ChartPlotterCollisionCache.UNKNOWN && blocker(f)) {
+					return false;
 				}
-				if (y == maxY) break;
 			}
-			if (x == maxX) break;
+		}
+		return true;
+	}
+	private static Hit hitFootprint(Blocker b, int ax, int ay, int ao, int bx, int by, int bo) {
+		Footprint fp = b.footprint;
+		for (int i = 0; i < fp.n; i++) {
+			int x = fp.x[i];
+			int y = fp.y[i];
+			int px = rotateX(ax, ao, x, y);
+			int py = rotateY(ay, ao, x, y);
+			int qx = rotateX(bx, bo, x, y);
+			int qy = rotateY(by, bo, x, y);
+			Hit h = hitPath(b, px, py, qx, qy);
+			if (h != null) return h;
 		}
 		return null;
 	}
@@ -538,6 +657,23 @@ public class ChartPlotterOverlay extends Overlay {
 			int x = Math.floorDiv(lx, TS);
 			int y = Math.floorDiv(ly, TS);
 			int f = flag(cache, wv, flags, x, y);
+			if (f == ChartPlotterCollisionCache.UNKNOWN) return null;
+			Hit h = hitTile(f, lx, ly, x, y);
+			if (h != null) return h;
+		}
+		return null;
+	}
+	private static Hit hitPath(Blocker b, int ax, int ay, int bx, int by) {
+		int dx = bx - ax;
+		int dy = by - ay;
+		int steps = Math.max(Math.abs(dx), Math.abs(dy)) / STEP;
+		if (steps < 1) steps = 1;
+		for (int i = 1; i <= steps; i++) {
+			int lx = ax + dx * i / steps;
+			int ly = ay + dy * i / steps;
+			int x = Math.floorDiv(lx, TS);
+			int y = Math.floorDiv(ly, TS);
+			int f = flag(b, x, y);
 			if (f == ChartPlotterCollisionCache.UNKNOWN) return null;
 			Hit h = hitTile(f, lx, ly, x, y);
 			if (h != null) return h;
@@ -567,6 +703,36 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return cache == null ? ChartPlotterCollisionCache.UNKNOWN : cache.flag(wv, x, y);
 	}
+	private static int flag(Blocker b, int x, int y) {
+		if (b.memo != null) {
+			if (b.memo.full) return flagRaw(b, x, y);
+			long k = ((long) x << 32) ^ (y & 0xffffffffL);
+			int i = b.memo.slot(k);
+			for (int n = 0; n < b.memo.used.length; n++) {
+				if (!b.memo.used[i]) {
+					int f = flagRaw(b, x, y);
+					b.memo.used[i] = true;
+					b.memo.key[i] = k;
+					b.memo.val[i] = f;
+					if (++b.memo.n == b.memo.used.length) b.memo.full = true;
+					return f;
+				}
+				if (b.memo.key[i] == k) {
+					return b.memo.val[i];
+				}
+				i = i + 1 & b.memo.mask;
+			}
+			b.memo.full = true;
+		}
+		return flagRaw(b, x, y);
+	}
+	private static int flagRaw(Blocker b, int x, int y) {
+		if (safe(b.flags, x, y)) {
+			int f = b.flags[x][y];
+			if (f != VOID) return f;
+		}
+		return b.cache == null ? ChartPlotterCollisionCache.UNKNOWN : b.cache.flag(b.wv, x, y);
+	}
 	private static boolean blocker(int f) {return (f & MOVE) != 0;}
 	private static boolean safe(int[][] flags, int x, int y) {return inside(flags, x, y) && x >= EDGE && y >= EDGE && x < flags.length - EDGE && y < flags[x].length - EDGE;}
 	private static boolean inside(int[][] flags, int x, int y) {return x >= 0 && y >= 0 && x < flags.length && y < flags[x].length;}
@@ -577,12 +743,32 @@ public class ChartPlotterOverlay extends Overlay {
 		int edge = Math.max(Math.max(Math.abs(ax - area.minX), Math.abs(area.maxX - ax)), Math.max(Math.abs(ay - area.minY), Math.abs(area.maxY - ay)));
 		return edge * 8 + 32;
 	}
-	private static Point velocity(double speed, double angle) {
-		double dx = Math.cos(Math.toRadians(angle)) * speed * 128;
-		double dy = Math.sin(Math.toRadians(angle)) * speed * 128;
-		return new Point(ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dx)), ChartPlotterPlugin.snap(ChartPlotterPlugin.round(dy)));
-	}
+	private static int velocityX(double speed, int o) {return ChartPlotterPlugin.snap(ChartPlotterPlugin.round(-Perspective.SINE[o] * speed / 512.0));}
+	private static int velocityY(double speed, int o) {return ChartPlotterPlugin.snap(ChartPlotterPlugin.round(-Perspective.COSINE[o] * speed / 512.0));}
 	private static int side(int x1, int y1, int x2, int y2, int x, int y) {return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);}
+	private static final class AreaSlot {
+		final int baseX;
+		final int baseY;
+		final int plane;
+		final int sizeX;
+		final int sizeY;
+		final boolean top;
+		final Tile[][] tiles;
+		final SceneArea area;
+		private AreaSlot(WorldView wv, Tile[][] tiles, SceneArea area) {
+			baseX = wv.getBaseX();
+			baseY = wv.getBaseY();
+			plane = wv.getPlane();
+			sizeX = wv.getSizeX();
+			sizeY = wv.getSizeY();
+			top = wv.isTopLevel();
+			this.tiles = tiles;
+			this.area = area;
+		}
+		boolean same(WorldView wv, Tile[][] tiles) {
+			return baseX == wv.getBaseX() && baseY == wv.getBaseY() && plane == wv.getPlane() && sizeX == wv.getSizeX() && sizeY == wv.getSizeY() && top == wv.isTopLevel() && this.tiles == tiles;
+		}
+	}
 	private static final class SceneArea {
 		final Tile[][] tiles;
 		final int baseX;
@@ -643,6 +829,115 @@ public class ChartPlotterOverlay extends Overlay {
 		int minWY() {return baseY + minY;}
 		int maxWX() {return baseX + maxX;}
 		int maxWY() {return baseY + maxY;}
+	}
+	private static final class PathSlot {
+		final PathKey key;
+		final Path path;
+		private PathSlot(PathKey key, Path path) {
+			this.key = key;
+			this.path = path;
+		}
+		boolean same(PathKey k) {return key.same(k);}
+	}
+	private static final class PathKey {
+		final int baseX;
+		final int baseY;
+		final int plane;
+		final int ax;
+		final int ay;
+		final int from;
+		final int target;
+		final int cap;
+		final int turn;
+		final int wid;
+		final int wcat;
+		final int wx;
+		final int wy;
+		final int ww;
+		final int wh;
+		final long speed;
+		final long accel;
+		final long max;
+		final long rev;
+		final long area;
+		final boolean reverse;
+		final boolean stop;
+		final boolean show;
+		final boolean cache;
+		private PathKey(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean stop, boolean show, boolean cache, long rev, long area) {
+			this.baseX = baseX;
+			this.baseY = baseY;
+			this.plane = plane;
+			this.ax = ax;
+			this.ay = ay;
+			this.from = from;
+			this.target = target;
+			this.cap = cap;
+			this.turn = turn;
+			this.wid = wid;
+			this.wcat = wcat;
+			this.wx = wx;
+			this.wy = wy;
+			this.ww = ww;
+			this.wh = wh;
+			this.speed = speed;
+			this.accel = accel;
+			this.max = max;
+			this.reverse = reverse;
+			this.stop = stop;
+			this.show = show;
+			this.cache = cache;
+			this.rev = rev;
+			this.area = area;
+		}
+		boolean same(PathKey k) {
+			return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && stop == k.stop && show == k.show && cache == k.cache && rev == k.rev && area == k.area;
+		}
+	}
+	private static final class Blocker {
+		final WorldView wv;
+		final ChartPlotterCollisionCache cache;
+		final int[][] flags;
+		final Footprint footprint;
+		final FlagMemo memo;
+		private Blocker(WorldView wv, ChartPlotterCollisionCache cache, int[][] flags, Footprint footprint, FlagMemo memo) {
+			this.wv = wv;
+			this.cache = cache;
+			this.flags = flags;
+			this.footprint = footprint;
+			this.memo = memo;
+		}
+	}
+	private static final class FlagMemo {
+		final boolean[] used;
+		final long[] key;
+		final int[] val;
+		final int mask;
+		int n;
+		boolean full;
+		private FlagMemo(int n) {
+			used = new boolean[n];
+			key = new long[n];
+			val = new int[n];
+			mask = n - 1;
+		}
+		int slot(long k) {
+			k ^= k >>> 33;
+			k *= 0xff51afd7ed558ccdL;
+			k ^= k >>> 33;
+			return (int) k & mask;
+		}
+	}
+	private static final class Footprint {
+		final int[] x;
+		final int[] y;
+		final boolean[] corner;
+		int n;
+		private Footprint(int n) {
+			x = new int[n];
+			y = new int[n];
+			corner = new boolean[n];
+		}
 	}
 	static final class Path {
 		final int[] x;

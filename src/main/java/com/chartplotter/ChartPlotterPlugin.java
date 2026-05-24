@@ -20,7 +20,6 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.VarbitID;
-import net.runelite.api.worldmap.WorldMap;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -156,14 +155,14 @@ public class ChartPlotterPlugin extends Plugin {
 	}
 	private void chartCourse(Point m) {
 		if (!isSailing()) return;
-		int[] dst = worldMapOverlay.tile(m);
-		if (dst == null) return;
 		WorldView top = client.getTopLevelWorldView();
 		WorldEntity ship = getShip();
 		if (top == null || ship == null) return;
 		LocalPoint loc = ship.getTargetLocation();
 		if (loc == null) loc = ship.getLocalLocation();
 		if (loc == null) return;
+		int[] dst = worldMapOverlay.tile(m);
+		if (dst == null) return;
 		ChartPlotterRoute old = route;
 		if (old != null && old.target(dst[0], dst[1], config.routeClearRadius())) {
 			clearRoute();
@@ -350,8 +349,6 @@ public class ChartPlotterPlugin extends Plugin {
 		int start = speed == 0 ? -1 : ChartPlotterPlugin.norm(ship.getTargetOrientation());
 		int seq = routeSeq.incrementAndGet();
 		ChartPlotterCollisionData data = collisionCache.snapshot(top);
-		long queued = System.nanoTime();
-		String context = pending ? routeContext(top, ship, loc, sx, sy, tx, ty, shape, effort, wc, start, turnBias, dirs, fast, reverse, data.size()) : null;
 		routeBusy = true;
 		if (pending) route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
 		startRouteExec();
@@ -360,49 +357,8 @@ public class ChartPlotterPlugin extends Plugin {
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				routeBusy = false;
 				route = r;
-				if (pending) System.out.println(routeDebug(context, r, System.nanoTime() - queued));
 			}
 		});
-	}
-	private String routeContext(WorldView top, WorldEntity ship, LocalPoint loc, int sx, int sy, int tx, int ty, ChartPlotterTurnPreference shape, ChartPlotterRouteEffort effort, WorldEntityConfig wc, int start, int turnBias, int dirs, boolean fast, boolean reverse, int chunks) {
-		int lx = Math.floorDiv(loc.getX(), TS);
-		int ly = Math.floorDiv(loc.getY(), TS);
-		int dx = tx - sx;
-		int dy = ty - sy;
-		WorldMap wm = client.getWorldMap();
-		Point pos = wm == null ? null : wm.getWorldMapPosition();
-		String map = wm == null || pos == null ? "none" : wm.getWorldMapZoom() + "," + pos.getX() + "," + pos.getY();
-		return "ChartPlotter route selected from=" + sx + "," + sy + " to=" + tx + "," + ty + " delta=" + dx + "," + dy + " cheb=" + Math.max(Math.abs(dx), Math.abs(dy)) + " local=" + lx + "," + ly + " base=" + top.getBaseX() + "," + top.getBaseY() + " plane=" + top.getPlane() + " worldMap=" + map + " targetOrientation=" + ship.getTargetOrientation() + " start=" + start + " speed=" + speed + " accel=" + accel + " maxSpeed=" + maxSpeed() + " reverse=" + reverse + " moveMode=" + moveMode + " lastMoveMode=" + lastMoveMode + " shape=" + shape.name() + " effort=" + effort.name() + " turnBias=" + turnBias + " dirs=" + dirs + " fast=" + fast + " footprint=" + (wc != null) + " bounds=" + bounds(wc) + " cacheChunks=" + chunks + " " + collisionCache.stats();
-	}
-	private String routeDebug(String context, ChartPlotterRoute r, long elapsed) {
-		return context + " result=" + status(r.status) + " waypoints=" + r.n + " route=" + waypoints(r) + " elapsedMs=" + ms(elapsed) + " " + (r.debug == null ? "" : r.debug);
-	}
-	private static String bounds(WorldEntityConfig wc) {
-		if (wc == null) return "none";
-		return wc.getId() + "," + wc.getCategory() + "," + wc.getBoundsX() + "," + wc.getBoundsY() + "," + wc.getBoundsWidth() + "," + wc.getBoundsHeight();
-	}
-	private static String status(int s) {
-		if (s == ChartPlotterRoute.OK) return "OK";
-		if (s == ChartPlotterRoute.UNCHARTED) return "UNCHARTED";
-		if (s == ChartPlotterRoute.BLOCKED) return "BLOCKED";
-		if (s == ChartPlotterRoute.NO_ROUTE) return "NO_ROUTE";
-		if (s == ChartPlotterRoute.COMPLEX) return "COMPLEX";
-		return "PENDING";
-	}
-	private static String waypoints(ChartPlotterRoute r) {
-		if (r.n == 0) return "none";
-		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < r.n; i++) {
-			if (i != 0) sb.append(';');
-			sb.append(r.x[i]).append(',').append(r.y[i]);
-		}
-		return sb.toString();
-	}
-	private static String ms(long ns) {
-		long us = (ns + 500) / 1000;
-		long a = us / 1000;
-		long b = us % 1000;
-		return a + "." + (b < 100 ? b < 10 ? "00" : "0" : "") + b;
 	}
 	private void startRouteExec() {
 		if (routeExec != null) return;

@@ -21,7 +21,6 @@ final class ChartPlotterCollisionData {
 		ChartPlotterCollisionCache.Chunk c = chunk(x, y);
 		return c == null || c.empty();
 	}
-	int size() {return size;}
 	Iterable<Map.Entry<Long, ChartPlotterCollisionCache.Chunk>> entries() {return base.entrySet();}
 	static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private static int size(Map<Long, ChartPlotterCollisionCache.Chunk> base, Map<Long, ChartPlotterCollisionCache.Chunk> live) {

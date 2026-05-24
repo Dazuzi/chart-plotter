@@ -67,7 +67,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
 		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course);
-		ChartPlotterOverlay.Path pot = mouse >= 0 ? world.path(top, ship.getConfig(), anchor, from, mouse) : null;
+		ChartPlotterOverlay.Path pot = null;
+		if (mouse >= 0) pot = world.path(top, ship.getConfig(), anchor, from, mouse);
 		int skip = pot != null ? ChartPlotterOverlay.match(cur, pot) : 0;
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();

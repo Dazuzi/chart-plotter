@@ -41,8 +41,6 @@ final class ChartPlotterCollisionCache {
 	private long rev;
 	private long savedRev;
 	private long viewRev = -1;
-	private int captures;
-	private int tiles;
 	synchronized void start() {
 		if (io != null) return;
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {}
@@ -81,7 +79,6 @@ final class ChartPlotterCollisionCache {
 		}
 		putObjects(data, chunks, wv);
 		merge(data);
-		captures++;
 	}
 	synchronized int flag(WorldView wv, int sx, int sy) {
 		int wx = wv.getBaseX() + sx;
@@ -102,7 +99,7 @@ final class ChartPlotterCollisionCache {
 		Map<Long, Chunk> live = live(wv, base.base);
 		return live.isEmpty() ? base : new ChartPlotterCollisionData(base.base, live);
 	}
-	synchronized String stats() {return "cacheCaptures=" + captures + " cacheChunks=" + chunks.size() + " cacheTiles=" + tiles;}
+	synchronized long rev() {return rev;}
 	private static Map<Long, Chunk> live(WorldView wv, Map<Long, Chunk> base) {
 		Map<Long, Builder> data = new HashMap<>();
 		if (wv == null || wv.isInstance() || wv.getPlane() != 0) return new HashMap<>();
@@ -162,7 +159,6 @@ final class ChartPlotterCollisionCache {
 			Chunk old = chunks.get(e.getKey());
 			Chunk c = e.getValue().chunk();
 			if (same(old, c)) continue;
-			tiles += Long.bitCount(c.known & ~(old == null ? 0 : old.known));
 			chunks.put(e.getKey(), c);
 			rev++;
 		}
@@ -182,11 +178,7 @@ final class ChartPlotterCollisionCache {
 	private void load() {
 		Map<Long, Chunk> data = read();
 		chunks.clear();
-		tiles = 0;
-		for (Map.Entry<Long, Chunk> e : data.entrySet()) {
-			chunks.put(e.getKey(), e.getValue());
-			tiles += e.getValue().known();
-		}
+		chunks.putAll(data);
 		rev = 0;
 		savedRev = 0;
 		viewRev = -1;
@@ -285,7 +277,6 @@ final class ChartPlotterCollisionCache {
 			long b = 1L << i;
 			return (known & b) == 0 ? UNKNOWN : (blocked & b) == 0 ? OPEN : BLOCKED;
 		}
-		int known() {return Long.bitCount(known);}
 		boolean empty() {return known == 0;}
 	}
 	private static final class Builder {

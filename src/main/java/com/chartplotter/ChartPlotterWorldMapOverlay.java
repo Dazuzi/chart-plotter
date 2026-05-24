@@ -21,6 +21,7 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.worldmap.WorldMap;
+import net.runelite.api.worldmap.WorldMapData;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -82,12 +83,13 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int mouse = hoverHeading(top, center, map, clip);
 		int cap = pathCap(top, anchor, map, wm);
 		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course, cap);
-		ChartPlotterOverlay.Path pot = mouse >= 0 ? world.path(top, ship.getConfig(), anchor, from, mouse, cap) : null;
+		ChartPlotterOverlay.Path pot = null;
+		if (mouse >= 0) pot = world.path(top, ship.getConfig(), anchor, from, mouse, cap);
 		int skip = pot != null ? ChartPlotterOverlay.match(cur, pot) : 0;
 		g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 		drawRoute(g, map, wm, plugin.route());
-		draw(g, top, map, cur, config.worldMapLineColor(), skip);
-		if (pot != null) draw(g, top, map, pot, config.worldMapPotentialColor(), 0);
+		draw(g, top, map, wm, cur, config.worldMapLineColor(), skip);
+		if (pot != null) draw(g, top, map, wm, pot, config.worldMapPotentialColor(), 0);
 		g.setStroke(oldStroke);
 		g.setClip(oldClip);
 		return null;
@@ -107,41 +109,49 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int wy = (int) Math.floor(p[1]);
 		return wm.getWorldMapData().surfaceContainsPosition(wx, wy) ? new int[]{wx, wy} : null;
 	}
-	private void draw(Graphics2D g, WorldView wv, Widget map, ChartPlotterOverlay.Path p, Color color, int skip) {
+	private void draw(Graphics2D g, WorldView wv, Widget map, WorldMap wm, ChartPlotterOverlay.Path p, Color color, int skip) {
+		MapState s = state(wv, map, wm);
+		if (s == null) return;
 		if (p.n < 2 || skip >= p.n) {
-			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, map, p, color);
+			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, p, color);
 			return;
 		}
 		int start = skip > 0 ? skip - 1 : 0;
 		int mid = Math.min(p.blockedAt, p.n);
-		segment(g, wv, map, p, color, start, mid);
-		if (mid < p.n) segment(g, wv, map, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+		segment(g, s, p, color, start, mid);
+		if (mid < p.n) segment(g, s, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
 	}
-	private void segment(Graphics2D g, WorldView wv, Widget map, ChartPlotterOverlay.Path p, Color color, int from, int to) {
+	private void segment(Graphics2D g, MapState s, ChartPlotterOverlay.Path p, Color color, int from, int to) {
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
 		for (int i = from; i < to; i++) {
-			Point q = mapPoint(wv, p.x[i], p.y[i], map);
-			if (q == null) {
+			int sx = Math.floorDiv(p.x[i], TS);
+			int sy = Math.floorDiv(p.y[i], TS);
+			if (!s.data.surfaceContainsPosition(s.baseX + sx, s.baseY + sy)) {
 				have = false;
 				continue;
 			}
-			if (have) line.lineTo(q.getX(), q.getY());
+			int x = mapX(s, p.x[i]);
+			int y = mapY(s, p.y[i]);
+			if (have) line.lineTo(x, y);
 			else {
-				line.moveTo(q.getX(), q.getY());
+				line.moveTo(x, y);
 				have = true;
 			}
 		}
 		g.setColor(color);
 		g.draw(line);
 	}
-	private void drawBlock(Graphics2D g, WorldView wv, Widget map, ChartPlotterOverlay.Path p, Color color) {
-		Point q = mapPoint(wv, p.x[0], p.y[0], map);
-		if (q == null) return;
+	private void drawBlock(Graphics2D g, MapState s, ChartPlotterOverlay.Path p, Color color) {
+		int sx = Math.floorDiv(p.x[0], TS);
+		int sy = Math.floorDiv(p.y[0], TS);
+		if (!s.data.surfaceContainsPosition(s.baseX + sx, s.baseY + sy)) return;
+		int x = mapX(s, p.x[0]);
+		int y = mapY(s, p.y[0]);
 		int r = 5;
 		g.setColor(color);
-		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
-		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
+		g.drawLine(x - r, y - r, x + r, y + r);
+		g.drawLine(x + r, y - r, x - r, y + r);
 	}
 	private void drawRoute(Graphics2D g, Widget map, WorldMap wm, ChartPlotterRoute r) {
 		if (r == null) return;
@@ -171,26 +181,6 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
 		String s = r.text();
 		if (s != null) tip(g, map.getBounds(), t, s);
-	}
-	private Point mapPoint(WorldView wv, int lx, int ly, Widget map) {
-		WorldMap wm = client.getWorldMap();
-		float z = wm.getWorldMapZoom();
-		if (z <= 0) return null;
-		int sx = Math.floorDiv(lx, TS);
-		int sy = Math.floorDiv(ly, TS);
-		int wx = wv.getBaseX() + sx;
-		int wy = wv.getBaseY() + sy;
-		if (!wm.getWorldMapData().surfaceContainsPosition(wx, wy)) return null;
-		Rectangle r = map.getBounds();
-		int wt = (int) Math.ceil(r.getWidth() / z);
-		int ht = (int) Math.ceil(r.getHeight() / z);
-		Point pos = wm.getWorldMapPosition();
-		double fx = (lx - sx * TS) / (double) TS;
-		double fy = (ly - sy * TS) / (double) TS;
-		double c = z - Math.ceil(z / 2.0);
-		double x = r.getX() + (wx + wt / 2.0 - pos.getX()) * z + c + (fx - 0.5) * z;
-		double y = r.getY() + r.getHeight() - ((pos.getY() - ht / 2.0 - wy - 1) * -1 * z - c) - (fy - 0.5) * z;
-		return new Point((int) Math.round(x), (int) Math.round(y));
 	}
 	private void drawCache(Graphics2D g, Widget map, WorldMap wm) {
 		Stroke old = g.getStroke();
@@ -242,6 +232,25 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		double wx = (m.getX() - r.getX() - c) / z - wt / 2.0 + pos.getX() + 0.5;
 		double wy = (r.getY() + r.getHeight() + c - m.getY()) / z - 0.5 + pos.getY() - ht / 2.0;
 		return new double[]{wx, wy};
+	}
+	private MapState state(WorldView wv, Widget map, WorldMap wm) {
+		WorldMapData data = wm.getWorldMapData();
+		float z = wm.getWorldMapZoom();
+		Point pos = wm.getWorldMapPosition();
+		if (data == null || z <= 0 || pos == null) return null;
+		Rectangle r = map.getBounds();
+		int wt = (int) Math.ceil(r.getWidth() / z);
+		int ht = (int) Math.ceil(r.getHeight() / z);
+		double c = z - Math.ceil(z / 2.0);
+		return new MapState(data, z, r, wt, ht, pos, c, wv.getBaseX(), wv.getBaseY());
+	}
+	private static int mapX(MapState s, int lx) {
+		double x = s.baseX + lx / (double) TS;
+		return (int) Math.round(s.r.getX() + (x + s.wt / 2.0 - s.pos.getX() - 0.5) * s.z + s.c);
+	}
+	private static int mapY(MapState s, int ly) {
+		double y = s.baseY + ly / (double) TS;
+		return (int) Math.round(s.r.getY() + s.r.getHeight() - (y + s.ht / 2.0 - s.pos.getY() + 0.5) * s.z + s.c);
 	}
 	private void tip(Graphics2D g, Rectangle r, Point p, String s) {
 		FontMetrics fm = g.getFontMetrics();
@@ -307,5 +316,27 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			cut = true;
 		}
 		return cut ? a : r;
+	}
+	private static final class MapState {
+		final WorldMapData data;
+		final float z;
+		final Rectangle r;
+		final int wt;
+		final int ht;
+		final Point pos;
+		final double c;
+		final int baseX;
+		final int baseY;
+		private MapState(WorldMapData data, float z, Rectangle r, int wt, int ht, Point pos, double c, int baseX, int baseY) {
+			this.data = data;
+			this.z = z;
+			this.r = r;
+			this.wt = wt;
+			this.ht = ht;
+			this.pos = pos;
+			this.c = c;
+			this.baseX = baseX;
+			this.baseY = baseY;
+		}
 	}
 }
