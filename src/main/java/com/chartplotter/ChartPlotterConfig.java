@@ -28,7 +28,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldChartColor", name = "Chart color", description = "Color of charted world routes.", section = worldSection, position = 3)
-	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(246, 101, 255), 185);}
+	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(255, 101, 255), 185);}
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 1;}
@@ -44,7 +44,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color minimapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "minimapChartColor", name = "Chart color", description = "Color of charted minimap routes.", section = minimapSection, position = 3)
-	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(246, 101, 255), 185);}
+	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(255, 101, 255), 185);}
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 1;}
@@ -60,7 +60,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldMapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldMapChartColor", name = "Chart color", description = "Color of charted world map routes.", section = worldMapSection, position = 3)
-	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(246, 101, 255), 185);}
+	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(255, 101, 255), 185);}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
@@ -70,6 +70,8 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
 	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining precise, footprint-aware routes; lower effort returns quicker.", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
+	@ConfigItem(keyName = "sparsePathing", name = "Sparse pathing", description = "Use sparse nodes to limit charted-route search area.", section = chartingSection, position = 2)
+	default boolean sparsePathing() {return false;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 4)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)
@@ -79,4 +81,9 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "routeClearRadius", name = "Destination radius", description = "World tiles from the destination before clearing a charted route.", section = tweaksSection, position = 4)
 	@Range(min = 1, max = 20)
 	default int routeClearRadius() {return 10;}
+	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map.", section = tweaksSection, position = 5)
+	default boolean nodeEditor() {return false;}
+	@ConfigItem(keyName = "sparseCorridor", name = "Sparse corridor", description = "Tile width around sparse pathing legs.", section = tweaksSection, position = 6)
+	@Range(min = 20, max = 200)
+	default int sparseCorridor() {return 80;}
 }

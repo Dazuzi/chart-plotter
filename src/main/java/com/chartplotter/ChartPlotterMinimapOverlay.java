@@ -161,6 +161,12 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 				have = true;
 			}
 		}
+		if (have && (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty)) {
+			int lx = (r.tx - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+			int ly = (r.ty - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+			Point q = Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
+			if (q != null) line.lineTo(q.getX(), q.getY());
+		}
 		g.setColor(config.minimapChartColor());
 		g.draw(line);
 	}

@@ -242,6 +242,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
 		for (int i = 1; i < r.n; i++) have = routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], have);
+		if (have && (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty)) have = routeSegment(line, wv, area, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, have);
 		g.setColor(config.worldChartColor());
 		g.draw(line);
 	}

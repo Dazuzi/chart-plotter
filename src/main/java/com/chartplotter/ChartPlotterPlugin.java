@@ -38,8 +38,9 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class ChartPlotterPlugin extends Plugin {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
-	private static final int ROUTE_LEEWAY = 6;
-	private static final int ROUTE_PRUNE = 4;
+	private static final int ROUTE_PRUNE_RADIUS = 8;
+	private static final int ROUTE_FOLLOW_RADIUS = 24;
+	private static final int ROUTE_PRUNE = 12;
 	private static final int MOTION_HOLD = 2;
 	private static final int COURSE_STALL = 2;
 	@Inject private Client client;
@@ -51,6 +52,7 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private MouseManager mouseManager;
 	@Inject private ChartPlotterConfig config;
 	@Inject private ChartPlotterCollisionCache collisionCache;
+	@Inject private ChartPlotterSparseNodes sparseNodes;
 	private boolean boarded;
 	private double baseSpeed;
 	private double accel;
@@ -70,19 +72,43 @@ public class ChartPlotterPlugin extends Plugin {
 	private int potentialY;
 	private LocalPoint lastLoc;
 	private boolean collisionActive;
+	private boolean editorCacheActive;
 	private boolean mouseRegistered;
 	private boolean potentialBlocked;
 	private volatile ChartPlotterRoute route;
 	private final AtomicInteger routeSeq = new AtomicInteger();
 	private volatile boolean routeBusy;
+	private volatile boolean routeSparse;
 	private volatile long routeRev;
 	private ExecutorService routeExec;
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
+			worldMapOverlay.nodeAlt(e.isAltDown());
 			Point m = new Point(e.getX(), e.getY());
-			if (e.getButton() == MouseEvent.BUTTON1 && e.isControlDown()) clientThread.invoke(() -> chartCourse(m));
+			if (e.getButton() == MouseEvent.BUTTON1 && e.isAltDown() && config.nodeEditor()) clientThread.invoke(() -> worldMapOverlay.addNode(m));
+			else if (e.getButton() == MouseEvent.BUTTON1 && e.isControlDown()) clientThread.invoke(() -> chartCourse(m));
 			else if (e.getButton() == MouseEvent.BUTTON1 && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> setCourse(m));
+			return e;
+		}
+		@Override
+		public MouseEvent mouseReleased(MouseEvent e) {
+			worldMapOverlay.nodeAlt(e.isAltDown());
+			return e;
+		}
+		@Override
+		public MouseEvent mouseMoved(MouseEvent e) {
+			worldMapOverlay.nodeAlt(e.isAltDown());
+			return e;
+		}
+		@Override
+		public MouseEvent mouseDragged(MouseEvent e) {
+			worldMapOverlay.nodeAlt(e.isAltDown());
+			return e;
+		}
+		@Override
+		public MouseEvent mouseExited(MouseEvent e) {
+			worldMapOverlay.nodeAlt(false);
 			return e;
 		}
 	};
@@ -101,6 +127,7 @@ public class ChartPlotterPlugin extends Plugin {
 			mouseRegistered = false;
 		}
 		collisionActive = false;
+		editorCacheActive = false;
 		collisionCache.stop();
 		stopRouteExec();
 		reset();
@@ -116,19 +143,27 @@ public class ChartPlotterPlugin extends Plugin {
 		else overlayManager.remove(overlay);
 		if (config.minimapEnabled()) overlayManager.add(minimapOverlay);
 		else overlayManager.remove(minimapOverlay);
-		if (config.worldMapEnabled() || cacheOverlay.worldMap) overlayManager.add(worldMapOverlay);
+		if (config.worldMapEnabled() || cacheOverlay.worldMap || config.nodeEditor()) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
-		boolean any = config.worldEnabled() || config.minimapEnabled() || config.worldMapEnabled();
-		if (!any) {
+		boolean routeAny = config.worldEnabled() || config.minimapEnabled() || config.worldMapEnabled();
+		boolean inputAny = routeAny || config.nodeEditor();
+		if (!routeAny) {
 			clearRoute();
 			stopRouteExec();
 		}
-		if (any && !mouseRegistered) {
+		if (inputAny && !mouseRegistered) {
 			mouseManager.registerMouseListener(mouse);
 			mouseRegistered = true;
-		} else if (!any && mouseRegistered) {
+		} else if (!inputAny && mouseRegistered) {
 			mouseManager.unregisterMouseListener(mouse);
 			mouseRegistered = false;
+		}
+		if (config.nodeEditor() && !editorCacheActive) {
+			collisionCache.start();
+			editorCacheActive = true;
+		} else if (!config.nodeEditor() && editorCacheActive) {
+			editorCacheActive = false;
+			if (!collisionActive) collisionCache.stop();
 		}
 	}
 	@SuppressWarnings("unused")
@@ -302,6 +337,7 @@ public class ChartPlotterPlugin extends Plugin {
 	}
 	private void reset() {
 		collisionActive = false;
+		editorCacheActive = false;
 		boarded = false;
 		course = -1;
 		clearRoute();
@@ -323,7 +359,7 @@ public class ChartPlotterPlugin extends Plugin {
 			capture(top);
 			return true;
 		}
-		collisionCache.stop();
+		if (!editorCacheActive) collisionCache.stop();
 		return false;
 	}
 	private void resetMotion() {
@@ -360,7 +396,8 @@ public class ChartPlotterPlugin extends Plugin {
 		if (routeBusy || r.status == ChartPlotterRoute.PENDING) return;
 		int turnBias = config.routeShape().bias;
 		ChartPlotterRouteEffort effort = config.routeEffort();
-		if (r.turnBias != turnBias || r.effort != effort) {
+		boolean sparsePath = config.sparsePathing();
+		if (r.turnBias != turnBias || r.effort != effort || routeSparse != sparsePath) {
 			routeTo(top, ship, loc, r.tx, r.ty, false);
 			return;
 		}
@@ -369,10 +406,11 @@ public class ChartPlotterPlugin extends Plugin {
 			return;
 		}
 		if (r.status == ChartPlotterRoute.OK) {
+			if (speed == 0) return;
 			LocalPoint front = routeLoc(top, ship, loc);
 			int fx = top.getBaseX() + Math.floorDiv(front.getX(), TS);
 			int fy = top.getBaseY() + Math.floorDiv(front.getY(), TS);
-			ChartPlotterRoute nr = r.advance(fx, fy, ROUTE_LEEWAY, ROUTE_PRUNE);
+			ChartPlotterRoute nr = r.advance(fx, fy, ROUTE_PRUNE_RADIUS, ROUTE_FOLLOW_RADIUS, ROUTE_PRUNE);
 			if (nr == r) return;
 			if (nr != null) {
 				route = nr;
@@ -405,18 +443,22 @@ public class ChartPlotterPlugin extends Plugin {
 		int start = speed == 0 ? -1 : heading(ship);
 		int seq = routeSeq.incrementAndGet();
 		ChartPlotterCollisionData data = collisionData();
+		boolean sparsePath = config.sparsePathing();
+		ChartPlotterSparseNodes.Snapshot sparse = sparsePath ? sparseNodes.snapshot() : null;
 		long rev = data.rev;
 		routeBusy = true;
 		if (pending) {
 			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
 			routeRev = rev;
+			routeSparse = sparsePath;
 		}
 		startRouteExec();
 		routeExec.execute(() -> {
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, config.routeClearRadius(), () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, config.routeClearRadius(), sparse, pending, config.sparseCorridor(), () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;
+				routeSparse = sparsePath;
 				routeBusy = false;
 			}
 		});
@@ -452,6 +494,7 @@ public class ChartPlotterPlugin extends Plugin {
 		routeSeq.incrementAndGet();
 		route = null;
 		routeRev = 0;
+		routeSparse = false;
 		routeBusy = false;
 	}
 }

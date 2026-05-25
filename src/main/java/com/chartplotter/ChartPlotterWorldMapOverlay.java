@@ -27,18 +27,24 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int NODE_LINK = 128;
+	private static final int NODE_HIT = 2;
+	private static final int NODE_DOT = 5;
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterOverlay world;
 	private final ChartPlotterCollisionCache collisionCache;
+	private final ChartPlotterSparseNodes sparseNodes;
+	private boolean nodeAlt;
 	@Inject
-	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterOverlay world, ChartPlotterCollisionCache collisionCache) {
+	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterOverlay world, ChartPlotterCollisionCache collisionCache, ChartPlotterSparseNodes sparseNodes) {
 		this.client = client;
 		this.plugin = plugin;
 		this.config = config;
 		this.world = world;
 		this.collisionCache = collisionCache;
+		this.sparseNodes = sparseNodes;
 		setLayer(OverlayLayer.MANUAL);
 		setPosition(OverlayPosition.DYNAMIC);
 		setPriority(Overlay.PRIORITY_LOW);
@@ -46,10 +52,11 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	@Override
 	public Dimension render(Graphics2D g) {
-		if (!plugin.isSailing()) return null;
+		boolean edit = config.nodeEditor();
+		if (!plugin.isSailing() && !edit) return null;
 		boolean showWorldMap = config.worldMapEnabled();
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
-		if (!showWorldMap && !cacheOverlay.worldMap) return null;
+		if (!showWorldMap && !cacheOverlay.worldMap && !edit) return null;
 		Widget map = map();
 		WorldMap wm = client.getWorldMap();
 		if (map == null || wm == null || wm.getWorldMapData() == null) return null;
@@ -58,6 +65,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Stroke oldStroke = g.getStroke();
 		g.setClip(clip);
 		if (cacheOverlay.worldMap) drawCache(g, map, wm);
+		if (edit) drawNodes(g, map, wm);
+		if (!plugin.isSailing()) {
+			g.setStroke(oldStroke);
+			g.setClip(oldClip);
+			return null;
+		}
 		if (!showWorldMap) {
 			g.setStroke(oldStroke);
 			g.setClip(oldClip);
@@ -109,6 +122,92 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int wy = (int) Math.floor(p[1]);
 		return wm.getWorldMapData().surfaceContainsPosition(wx, wy) ? new int[]{wx, wy} : null;
 	}
+	void addNode(Point m) {
+		if (!config.nodeEditor()) return;
+		int[] t = tile(m);
+		if (t == null) return;
+		int i = sparseNodes.nodeAt(t[0], t[1], NODE_HIT);
+		if (i >= 0) {
+			sparseNodes.remove(i);
+			printNodes("remove");
+			return;
+		}
+		sparseNodes.add(t[0], t[1]);
+		printNodes("add");
+	}
+	void nodeAlt(boolean on) {nodeAlt = on;}
+	private void drawNodes(Graphics2D g, Widget map, WorldMap wm) {
+		Stroke old = g.getStroke();
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		ChartPlotterSparseNodes.Snapshot nodes = sparseNodes.snapshot();
+		g.setStroke(new BasicStroke(1, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.setColor(new Color(80, 210, 255, 90));
+		for (int i = 0; i < nodes.n; i++) {
+			for (int j = i + 1; j < nodes.n; j++) {
+				if (dist(nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]) > NODE_LINK || !clear(data, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j])) continue;
+				line(g, map, wm, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]);
+			}
+		}
+		if (nodeMode()) {
+			int[] t = tile(client.getMouseCanvasPosition());
+			if (t != null) {
+				g.setColor(new Color(255, 210, 70, 210));
+				for (int i = 0; i < nodes.n; i++) {
+					if (dist(t[0], t[1], nodes.x[i], nodes.y[i]) <= NODE_LINK && clear(data, t[0], t[1], nodes.x[i], nodes.y[i])) line(g, map, wm, t[0], t[1], nodes.x[i], nodes.y[i]);
+				}
+				dot(g, map, wm, t[0], t[1], new Color(255, 210, 70, 230), NODE_DOT + 2);
+			}
+		}
+		for (int i = 0; i < nodes.n; i++) dot(g, map, wm, nodes.x[i], nodes.y[i], new Color(230, 250, 255, 230), NODE_DOT);
+		g.setStroke(old);
+	}
+	private void line(Graphics2D g, Widget map, WorldMap wm, int ax, int ay, int bx, int by) {
+		if (!wm.getWorldMapData().surfaceContainsPosition(ax, ay) || !wm.getWorldMapData().surfaceContainsPosition(bx, by)) return;
+		Point a = mapPoint(map, wm, ax, ay, 0.5, 0.5);
+		Point b = mapPoint(map, wm, bx, by, 0.5, 0.5);
+		if (a == null || b == null) return;
+		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+	}
+	private void dot(Graphics2D g, Widget map, WorldMap wm, int wx, int wy, Color c, int r) {
+		if (!wm.getWorldMapData().surfaceContainsPosition(wx, wy)) return;
+		Point p = mapPoint(map, wm, wx, wy, 0.5, 0.5);
+		if (p == null) return;
+		g.setColor(new Color(10, 20, 25, 210));
+		g.fill(new Ellipse2D.Double(p.getX() - r / 2.0 - 1, p.getY() - r / 2.0 - 1, r + 2, r + 2));
+		g.setColor(c);
+		g.fill(new Ellipse2D.Double(p.getX() - r / 2.0, p.getY() - r / 2.0, r, r));
+		int cr = Math.max(3, r - 2);
+		g.setColor(Color.RED);
+		g.fill(new Ellipse2D.Double(p.getX() - cr / 2.0, p.getY() - cr / 2.0, cr, cr));
+	}
+	private boolean clear(ChartPlotterCollisionData data, int ax, int ay, int bx, int by) {
+		int lax = ax * TS + TS / 2;
+		int lay = ay * TS + TS / 2;
+		int lbx = bx * TS + TS / 2;
+		int lby = by * TS + TS / 2;
+		int dx = lbx - lax;
+		int dy = lby - lay;
+		int steps = Math.max(Math.abs(dx), Math.abs(dy)) / 32;
+		if (steps < 1) steps = 1;
+		int px = Integer.MIN_VALUE;
+		int py = Integer.MIN_VALUE;
+		for (int i = 0; i <= steps; i++) {
+			int x = Math.floorDiv(lax + dx * i / steps, TS);
+			int y = Math.floorDiv(lay + dy * i / steps, TS);
+			if (x == px && y == py) continue;
+			px = x;
+			py = y;
+			if (flag(data, x, y) != ChartPlotterCollisionCache.OPEN) return false;
+		}
+		return true;
+	}
+	private int flag(ChartPlotterCollisionData data, int x, int y) {
+		ChartPlotterCollisionCache.Chunk c = data.chunk(x >> 3, y >> 3);
+		return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((x & 7) + ((y & 7) << 3));
+	}
+	private boolean nodeMode() {return config.nodeEditor() && nodeAlt && !client.isMenuOpen();}
+	private void printNodes(String op) {System.out.println(sparseNodes.text(op));}
+	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
 	private void draw(Graphics2D g, WorldView wv, Widget map, WorldMap wm, ChartPlotterOverlay.Path p, Color color, int skip) {
 		MapState s = state(wv, map, wm);
 		if (s == null) return;
@@ -156,6 +255,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private void drawRoute(Graphics2D g, Widget map, WorldMap wm, ChartPlotterRoute r) {
 		if (r == null) return;
 		Color c = r.status == ChartPlotterRoute.OK ? config.worldMapChartColor() : r.status == ChartPlotterRoute.UNCHARTED ? new Color(255, 80, 60, 220) : r.status == ChartPlotterRoute.BLOCKED ? new Color(170, 170, 170, 220) : new Color(255, 190, 40, 220);
+		Point t = mapPoint(map, wm, r.tx, r.ty, 0.5, 0.5);
+		if (r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, map, wm, r);
 		if (r.status == ChartPlotterRoute.OK && r.n > 1) {
 			Path2D.Double line = new Path2D.Double();
 			boolean have = false;
@@ -171,16 +272,63 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 					have = true;
 				}
 			}
+			if (t != null && have && (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty)) line.lineTo(t.getX(), t.getY());
 			g.setColor(c);
 			g.draw(line);
 		}
-		Point t = mapPoint(map, wm, r.tx, r.ty, 0.5, 0.5);
 		if (t == null) return;
 		g.setColor(c);
 		g.fill(new Ellipse2D.Double(t.getX() - 3.5, t.getY() - 3.5, 7, 7));
 		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
 		String s = r.text();
 		if (s != null) tip(g, map.getBounds(), t, s);
+	}
+	private void drawSparseRoute(Graphics2D g, Widget map, WorldMap wm, ChartPlotterRoute r) {
+		Path2D.Double line = sparsePath(map, wm, r);
+		if (line == null) return;
+		Stroke old = g.getStroke();
+		g.setStroke(new BasicStroke(sparseWidth(wm, r.sparseBand), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.setColor(new Color(255, 0, 200, 90));
+		g.draw(line);
+		g.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.setColor(new Color(255, 70, 230, 240));
+		g.draw(line);
+		for (int i = 0; i < r.sparseN; i++) sparseDot(g, map, wm, r.sparseX[i], r.sparseY[i]);
+		g.setStroke(old);
+	}
+	private Path2D.Double sparsePath(Widget map, WorldMap wm, ChartPlotterRoute r) {
+		Path2D.Double line = new Path2D.Double();
+		boolean have = false;
+		boolean any = false;
+		for (int i = 0; i < r.sparseN; i++) {
+			Point q = mapPoint(map, wm, r.sparseX[i], r.sparseY[i], 0.5, 0.5);
+			if (q == null) {
+				have = false;
+				continue;
+			}
+			if (have) line.lineTo(q.getX(), q.getY());
+			else {
+				line.moveTo(q.getX(), q.getY());
+				have = true;
+			}
+			any = true;
+		}
+		return any ? line : null;
+	}
+	private void sparseDot(Graphics2D g, Widget map, WorldMap wm, int wx, int wy) {
+		Point p = mapPoint(map, wm, wx, wy, 0.5, 0.5);
+		if (p == null) return;
+		g.setColor(new Color(20, 20, 20, 190));
+		g.fill(new Ellipse2D.Double(p.getX() - 4, p.getY() - 4, 8, 8));
+		g.setColor(new Color(255, 80, 220, 240));
+		g.fill(new Ellipse2D.Double(p.getX() - 3, p.getY() - 3, 6, 6));
+		g.setColor(Color.RED);
+		g.fill(new Ellipse2D.Double(p.getX() - 1.5, p.getY() - 1.5, 3, 3));
+	}
+	private static float sparseWidth(WorldMap wm, int band) {
+		float z = wm.getWorldMapZoom();
+		if (z <= 0) return 1;
+		return Math.max(1, band * 2f * z);
 	}
 	private void drawCache(Graphics2D g, Widget map, WorldMap wm) {
 		Stroke old = g.getStroke();
