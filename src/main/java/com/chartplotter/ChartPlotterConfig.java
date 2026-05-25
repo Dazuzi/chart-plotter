@@ -28,7 +28,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldChartColor", name = "Chart color", description = "Color of charted world routes.", section = worldSection, position = 3)
-	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(100, 255, 185), 185);}
+	default Color worldChartColor() {return ColorUtil.colorWithAlpha(new Color(246, 101, 255), 185);}
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 1;}
@@ -44,7 +44,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color minimapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "minimapChartColor", name = "Chart color", description = "Color of charted minimap routes.", section = minimapSection, position = 3)
-	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(100, 255, 185), 185);}
+	default Color minimapChartColor() {return ColorUtil.colorWithAlpha(new Color(246, 101, 255), 185);}
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 1;}
@@ -60,7 +60,7 @@ public interface ChartPlotterConfig extends Config {
 	default Color worldMapPotentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
 	@ConfigItem(keyName = "worldMapChartColor", name = "Chart color", description = "Color of charted world map routes.", section = worldMapSection, position = 3)
-	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(100, 255, 185), 185);}
+	default Color worldMapChartColor() {return ColorUtil.colorWithAlpha(new Color(246, 101, 255), 185);}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 4)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
