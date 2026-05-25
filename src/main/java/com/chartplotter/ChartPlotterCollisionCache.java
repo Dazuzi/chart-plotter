@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
@@ -38,6 +39,7 @@ final class ChartPlotterCollisionCache {
 	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, Chunk> chunks = new HashMap<>();
+	@Inject private ChartPlotterSparseNodes sparseNodes;
 	private ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private boolean loaded;
 	private ScheduledExecutorService io;
@@ -95,24 +97,27 @@ final class ChartPlotterCollisionCache {
 	synchronized long rev() {return rev;}
 	private void mergeQuiet(Scan scan) {
 		try {
-			merge(scan);
+			if (merge(scan)) sparseNodes.invalidate(snapshot());
 		} catch (Exception ignored) {
 		}
 	}
-	private synchronized void merge(Scan scan) {
-		if (!loaded) return;
-		Map<Long, Builder> data = new HashMap<>();
-		int sx1 = scan.width - EDGE;
-		int sy1 = scan.height - EDGE;
-		for (int sx = EDGE; sx < sx1; sx++) {
-			for (int sy = EDGE; sy < sy1; sy++) {
-				int f = scan.flags[sx * scan.height + sy];
-				if (f == VOID) continue;
-				put(data, chunks, scan.baseX + sx, scan.baseY + sy, f);
+	private boolean merge(Scan scan) {
+		synchronized (this) {
+			if (!loaded) return false;
+			Map<Long, Builder> data = new HashMap<>();
+			int sx1 = scan.width - EDGE;
+			int sy1 = scan.height - EDGE;
+			for (int sx = EDGE; sx < sx1; sx++) {
+				for (int sy = EDGE; sy < sy1; sy++) {
+					int f = scan.flags[sx * scan.height + sy];
+					if (f == VOID) continue;
+					put(data, chunks, scan.baseX + sx, scan.baseY + sy, f);
+				}
 			}
+			for (int i = 0; i < scan.objects.length; i += 4) putObject(data, chunks, scan, i);
+			merge(data);
+			return true;
 		}
-		for (int i = 0; i < scan.objects.length; i += 4) putObject(data, chunks, scan, i);
-		merge(data);
 	}
 	private static Scan scan(WorldView wv) {
 		if (wv == null || wv.isInstance() || wv.getPlane() != 0) return null;

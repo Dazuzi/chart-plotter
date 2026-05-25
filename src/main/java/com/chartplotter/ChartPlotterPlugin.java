@@ -86,9 +86,13 @@ public class ChartPlotterPlugin extends Plugin {
 		public MouseEvent mousePressed(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
 			Point m = new Point(e.getX(), e.getY());
-			if (e.getButton() == MouseEvent.BUTTON1 && e.isAltDown() && config.nodeEditor()) clientThread.invoke(() -> worldMapOverlay.addNode(m));
-			else if (e.getButton() == MouseEvent.BUTTON1 && e.isControlDown()) clientThread.invoke(() -> chartCourse(m));
-			else if (e.getButton() == MouseEvent.BUTTON1 && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> setCourse(m));
+			if (e.getButton() != MouseEvent.BUTTON1) return e;
+			boolean mod = e.isAltDown() || e.isShiftDown() || e.isControlDown();
+			if (config.nodeEditor() && worldMapOverlay.movingNode()) clientThread.invoke(() -> worldMapOverlay.placeNode(m));
+			else if (e.isShiftDown() && config.nodeEditor()) clientThread.invoke(() -> worldMapOverlay.startNodeMove(m));
+			else if (e.isAltDown() && config.nodeEditor()) clientThread.invoke(() -> worldMapOverlay.addNode(m));
+			else if (e.isControlDown()) clientThread.invoke(() -> chartCourse(m));
+			if (!mod && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> setCourse(m));
 			return e;
 		}
 		@Override

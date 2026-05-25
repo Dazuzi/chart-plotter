@@ -37,6 +37,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterSparseNodes sparseNodes;
 	private boolean nodeAlt;
+	private volatile boolean moving;
+	private int moveX;
+	private int moveY;
+	private int moveN;
+	private int[] moveLinkX = new int[0];
+	private int[] moveLinkY = new int[0];
 	@Inject
 	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterOverlay world, ChartPlotterCollisionCache collisionCache, ChartPlotterSparseNodes sparseNodes) {
 		this.client = client;
@@ -132,9 +138,51 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			printNodes("remove");
 			return;
 		}
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		if (blocked(data, t[0], t[1])) return;
 		sparseNodes.add(t[0], t[1]);
 		printNodes("add");
 	}
+	void startNodeMove(Point m) {
+		if (!config.nodeEditor()) return;
+		int[] t = tile(m);
+		if (t == null) return;
+		ChartPlotterSparseNodes.Snapshot nodes = sparseNodes.snapshot();
+		int i = nodeAt(nodes, t[0], t[1]);
+		if (i < 0) return;
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		moving = true;
+		moveX = nodes.x[i];
+		moveY = nodes.y[i];
+		moveN = 0;
+		ensureMove(nodes.n);
+		for (int j = 0; j < nodes.n; j++) {
+			if (j == i) continue;
+			if (dist(nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]) > NODE_LINK || !clear(data, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j])) continue;
+			moveLinkX[moveN] = nodes.x[j];
+			moveLinkY[moveN++] = nodes.y[j];
+		}
+	}
+	void placeNode(Point m) {
+		if (!moving) return;
+		int[] t = tile(m);
+		if (t == null) return;
+		if (t[0] == moveX && t[1] == moveY) {
+			clearMove();
+			return;
+		}
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		ChartPlotterSparseNodes.Snapshot nodes = sparseNodes.snapshot();
+		if (!canMove(data, nodes, t[0], t[1])) return;
+		if (!sparseNodes.move(moveX, moveY, t[0], t[1])) {
+			clearMove();
+			return;
+		}
+		sparseNodes.save();
+		printNodes("move");
+		clearMove();
+	}
+	boolean movingNode() {return moving;}
 	void nodeAlt(boolean on) {nodeAlt = on;}
 	private void drawNodes(Graphics2D g, Widget map, WorldMap wm) {
 		Stroke old = g.getStroke();
@@ -144,11 +192,13 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(new Color(80, 210, 255, 90));
 		for (int i = 0; i < nodes.n; i++) {
 			for (int j = i + 1; j < nodes.n; j++) {
+				if (selected(nodes.x[i], nodes.y[i]) || selected(nodes.x[j], nodes.y[j])) continue;
 				if (dist(nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]) > NODE_LINK || !clear(data, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j])) continue;
 				line(g, map, wm, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]);
 			}
 		}
-		if (nodeMode()) {
+		if (moving) drawMove(g, map, wm, data, nodes);
+		else if (nodeMode()) {
 			int[] t = tile(client.getMouseCanvasPosition());
 			if (t != null) {
 				g.setColor(new Color(255, 210, 70, 210));
@@ -158,8 +208,22 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 				dot(g, map, wm, t[0], t[1], new Color(255, 210, 70, 230), NODE_DOT + 2);
 			}
 		}
-		for (int i = 0; i < nodes.n; i++) dot(g, map, wm, nodes.x[i], nodes.y[i], new Color(230, 250, 255, 230), NODE_DOT);
+		for (int i = 0; i < nodes.n; i++) {
+			if (!selected(nodes.x[i], nodes.y[i])) dot(g, map, wm, nodes.x[i], nodes.y[i], new Color(230, 250, 255, 230), NODE_DOT);
+		}
 		g.setStroke(old);
+	}
+	private void drawMove(Graphics2D g, Widget map, WorldMap wm, ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes) {
+		int[] t = tile(client.getMouseCanvasPosition());
+		if (t == null) return;
+		boolean ok = canMove(data, nodes, t[0], t[1]);
+		g.setColor(ok ? new Color(255, 210, 70, 210) : new Color(255, 80, 60, 210));
+		if (ok) {
+			for (int i = 0; i < moveN; i++) {
+				if (has(nodes, moveLinkX[i], moveLinkY[i])) line(g, map, wm, t[0], t[1], moveLinkX[i], moveLinkY[i]);
+			}
+		}
+		dot(g, map, wm, t[0], t[1], ok ? new Color(255, 210, 70, 230) : new Color(255, 80, 60, 230), NODE_DOT + 2);
 	}
 	private void line(Graphics2D g, Widget map, WorldMap wm, int ax, int ay, int bx, int by) {
 		if (!wm.getWorldMapData().surfaceContainsPosition(ax, ay) || !wm.getWorldMapData().surfaceContainsPosition(bx, by)) return;
@@ -205,8 +269,46 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		ChartPlotterCollisionCache.Chunk c = data.chunk(x >> 3, y >> 3);
 		return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((x & 7) + ((y & 7) << 3));
 	}
+	private boolean canMove(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
+		if (blocked(data, wx, wy) || occupied(nodes, wx, wy)) return false;
+		for (int i = 0; i < moveN; i++) {
+			if (!has(nodes, moveLinkX[i], moveLinkY[i])) continue;
+			if (dist(wx, wy, moveLinkX[i], moveLinkY[i]) > NODE_LINK || !clear(data, wx, wy, moveLinkX[i], moveLinkY[i])) return false;
+		}
+		return true;
+	}
+	private boolean occupied(ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
+		for (int i = 0; i < nodes.n; i++) {
+			if (selected(nodes.x[i], nodes.y[i])) continue;
+			if (dist(wx, wy, nodes.x[i], nodes.y[i]) <= NODE_HIT) return true;
+		}
+		return false;
+	}
+	private boolean has(ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
+		for (int i = 0; i < nodes.n; i++) {
+			if (nodes.x[i] == wx && nodes.y[i] == wy) return true;
+		}
+		return false;
+	}
+	private boolean blocked(ChartPlotterCollisionData data, int wx, int wy) {return flag(data, wx, wy) == ChartPlotterCollisionCache.BLOCKED;}
+	private boolean selected(int wx, int wy) {return moving && wx == moveX && wy == moveY;}
+	private void ensureMove(int c) {
+		if (moveLinkX.length >= c) return;
+		moveLinkX = new int[c];
+		moveLinkY = new int[c];
+	}
+	private void clearMove() {
+		moving = false;
+		moveN = 0;
+	}
 	private boolean nodeMode() {return config.nodeEditor() && nodeAlt && !client.isMenuOpen();}
 	private void printNodes(String op) {System.out.println(sparseNodes.text(op));}
+	private static int nodeAt(ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
+		for (int i = 0; i < nodes.n; i++) {
+			if (dist(wx, wy, nodes.x[i], nodes.y[i]) <= ChartPlotterWorldMapOverlay.NODE_HIT) return i;
+		}
+		return -1;
+	}
 	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
 	private void draw(Graphics2D g, WorldView wv, Widget map, WorldMap wm, ChartPlotterOverlay.Path p, Color color, int skip) {
 		MapState s = state(wv, map, wm);

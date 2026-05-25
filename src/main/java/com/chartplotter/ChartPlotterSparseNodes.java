@@ -42,6 +42,17 @@ final class ChartPlotterSparseNodes {
 		n++;
 		flushQuiet();
 	}
+	synchronized boolean move(int ox, int oy, int wx, int wy) {
+		load();
+		for (int i = 0; i < n; i++) {
+			if (x[i] != ox || y[i] != oy) continue;
+			if (x[i] == wx && y[i] == wy) return false;
+			x[i] = wx;
+			y[i] = wy;
+			return true;
+		}
+		return false;
+	}
 	synchronized void remove(int i) {
 		load();
 		if (i < 0 || i >= n) return;
@@ -51,6 +62,23 @@ final class ChartPlotterSparseNodes {
 			System.arraycopy(y, i + 1, y, i, m);
 		}
 		n--;
+		flushQuiet();
+	}
+	synchronized void invalidate(ChartPlotterCollisionData data) {
+		load();
+		int w = 0;
+		for (int i = 0; i < n; i++) {
+			if (blocked(data, x[i], y[i])) continue;
+			x[w] = x[i];
+			y[w++] = y[i];
+		}
+		int r = n - w;
+		if (r == 0) return;
+		n = w;
+		flushQuiet();
+	}
+	synchronized void save() {
+		load();
 		flushQuiet();
 	}
 	synchronized String text(String op) {
@@ -122,19 +150,19 @@ final class ChartPlotterSparseNodes {
 		} catch (Exception ignored) {
 		}
 	}
-	private boolean write() {
+	private void write() {
 		File tmp = new File(dir, "sparse.bin.tmp");
-		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
+		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return;}
 		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmp)))) {
 			out.writeByte(VERSION);
 			out.writeInt(n);
 			for (int i = 0; i < n; i++) {
-				if (x[i] < 0 || x[i] > USHORT || y[i] < 0 || y[i] > USHORT) return false;
+				if (x[i] < 0 || x[i] > USHORT || y[i] < 0 || y[i] > USHORT) return;
 				out.writeShort(x[i]);
 				out.writeShort(y[i]);
 			}
 		} catch (Exception ignored) {
-			return false;
+			return;
 		}
 		try {
 			Files.move(tmp.toPath(), file().toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -142,12 +170,9 @@ final class ChartPlotterSparseNodes {
 			try {
 				Files.move(tmp.toPath(), file().toPath(), StandardCopyOption.REPLACE_EXISTING);
 			} catch (Exception ignored) {
-				return false;
 			}
 		} catch (Exception ignored) {
-			return false;
 		}
-		return true;
 	}
 	private File file() {return new File(dir, "sparse.bin");}
 	private void ensure(int c) {
@@ -156,6 +181,10 @@ final class ChartPlotterSparseNodes {
 	private void grow() {
 		x = Arrays.copyOf(x, x.length << 1);
 		y = Arrays.copyOf(y, y.length << 1);
+	}
+	private static boolean blocked(ChartPlotterCollisionData data, int wx, int wy) {
+		ChartPlotterCollisionCache.Chunk c = data.chunk(wx >> 3, wy >> 3);
+		return c != null && c.flag((wx & 7) + ((wy & 7) << 3)) == ChartPlotterCollisionCache.BLOCKED;
 	}
 	private static boolean digit(char c) {return c >= '0' && c <= '9';}
 	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
