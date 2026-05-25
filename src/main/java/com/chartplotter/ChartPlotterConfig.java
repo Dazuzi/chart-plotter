@@ -70,8 +70,6 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
 	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining precise, footprint-aware routes; lower effort returns quicker.", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
-	@ConfigItem(keyName = "sparsePathing", name = "Sparse pathing", description = "Use sparse nodes to limit charted-route search area.", section = chartingSection, position = 2)
-	default boolean sparsePathing() {return false;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 4)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "collisionDebug", name = "Collision debug", description = "Draw sampled ship collision points.", section = tweaksSection, position = 1)

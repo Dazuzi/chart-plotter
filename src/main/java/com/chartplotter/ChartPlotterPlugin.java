@@ -4,6 +4,7 @@ import java.awt.event.MouseEvent;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -78,7 +79,6 @@ public class ChartPlotterPlugin extends Plugin {
 	private volatile ChartPlotterRoute route;
 	private final AtomicInteger routeSeq = new AtomicInteger();
 	private volatile boolean routeBusy;
-	private volatile boolean routeSparse;
 	private volatile long routeRev;
 	private ExecutorService routeExec;
 	private final MouseAdapter mouse = new MouseAdapter() {
@@ -396,8 +396,7 @@ public class ChartPlotterPlugin extends Plugin {
 		if (routeBusy || r.status == ChartPlotterRoute.PENDING) return;
 		int turnBias = config.routeShape().bias;
 		ChartPlotterRouteEffort effort = config.routeEffort();
-		boolean sparsePath = config.sparsePathing();
-		if (r.turnBias != turnBias || r.effort != effort || routeSparse != sparsePath) {
+		if (r.turnBias != turnBias || r.effort != effort) {
 			routeTo(top, ship, loc, r.tx, r.ty, false);
 			return;
 		}
@@ -443,24 +442,22 @@ public class ChartPlotterPlugin extends Plugin {
 		int start = speed == 0 ? -1 : heading(ship);
 		int seq = routeSeq.incrementAndGet();
 		ChartPlotterCollisionData data = collisionData();
-		boolean sparsePath = config.sparsePathing();
-		ChartPlotterSparseNodes.Snapshot sparse = sparsePath ? sparseNodes.snapshot() : null;
+		ChartPlotterSparseNodes.Snapshot sparse = sparseNodes.snapshot();
 		long rev = data.rev;
 		routeBusy = true;
 		if (pending) {
 			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
 			routeRev = rev;
-			routeSparse = sparsePath;
 		}
 		startRouteExec();
 		routeExec.execute(() -> {
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, config.routeClearRadius(), sparse, pending, config.sparseCorridor(), () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted()).effort(effort);
+			BooleanSupplier cancel = () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted();
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, config.routeClearRadius(), sparse, pending, config.sparseCorridor(), cancel).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;
-				routeSparse = sparsePath;
-				routeBusy = false;
 			}
+			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) routeBusy = false;
 		});
 	}
 	private ChartPlotterCollisionData collisionData() {
@@ -494,7 +491,6 @@ public class ChartPlotterPlugin extends Plugin {
 		routeSeq.incrementAndGet();
 		route = null;
 		routeRev = 0;
-		routeSparse = false;
 		routeBusy = false;
 	}
 }
