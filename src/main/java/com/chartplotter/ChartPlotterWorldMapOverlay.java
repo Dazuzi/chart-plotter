@@ -257,24 +257,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Color c = r.status == ChartPlotterRoute.OK ? config.worldMapChartColor() : r.status == ChartPlotterRoute.UNCHARTED ? new Color(255, 80, 60, 220) : r.status == ChartPlotterRoute.BLOCKED ? new Color(170, 170, 170, 220) : new Color(255, 190, 40, 220);
 		Point t = mapPoint(map, wm, r.tx, r.ty, 0.5, 0.5);
 		if (r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, map, wm, r);
-		if (r.status == ChartPlotterRoute.OK && r.n > 1) {
-			Path2D.Double line = new Path2D.Double();
-			boolean have = false;
-			for (int i = 0; i < r.n; i++) {
-				Point q = mapPoint(map, wm, r.x[i], r.y[i], 0.5, 0.5);
-				if (q == null) {
-					have = false;
-					continue;
-				}
-				if (have) line.lineTo(q.getX(), q.getY());
-				else {
-					line.moveTo(q.getX(), q.getY());
-					have = true;
-				}
+		if (r.status == ChartPlotterRoute.OK) {
+			drawRoutePath(g, map, wm, r.x, r.y, r.n, r.tx, r.ty, c);
+			if (r.experimentN > 1) {
+				Stroke old = g.getStroke();
+				g.setStroke(new BasicStroke(Math.max(2, config.worldMapLineWidth() + 1), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, new float[]{8, 6}, 0));
+				drawRoutePath(g, map, wm, r.experimentX, r.experimentY, r.experimentN, r.tx, r.ty, new Color(255, 210, 70, 235));
+				g.setStroke(old);
 			}
-			if (t != null && have && (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty)) line.lineTo(t.getX(), t.getY());
-			g.setColor(c);
-			g.draw(line);
 		}
 		if (t == null) return;
 		g.setColor(c);
@@ -282,6 +272,27 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
 		String s = r.text();
 		if (s != null) tip(g, map.getBounds(), t, s);
+	}
+	private void drawRoutePath(Graphics2D g, Widget map, WorldMap wm, int[] x, int[] y, int n, int tx, int ty, Color c) {
+		if (n < 2) return;
+		Path2D.Double line = new Path2D.Double();
+		boolean have = false;
+		for (int i = 0; i < n; i++) {
+			Point q = mapPoint(map, wm, x[i], y[i], 0.5, 0.5);
+			if (q == null) {
+				have = false;
+				continue;
+			}
+			if (have) line.lineTo(q.getX(), q.getY());
+			else {
+				line.moveTo(q.getX(), q.getY());
+				have = true;
+			}
+		}
+		Point t = mapPoint(map, wm, tx, ty, 0.5, 0.5);
+		if (t != null && have && (x[n - 1] != tx || y[n - 1] != ty)) line.lineTo(t.getX(), t.getY());
+		g.setColor(c);
+		g.draw(line);
 	}
 	private void drawSparseRoute(Graphics2D g, Widget map, WorldMap wm, ChartPlotterRoute r) {
 		Path2D.Double line = sparsePath(map, wm, r);

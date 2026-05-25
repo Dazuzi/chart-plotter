@@ -20,10 +20,16 @@ final class ChartPlotterRoute {
 	final int[] sparseY;
 	final int sparseN;
 	final int sparseBand;
+	final int[] experimentX;
+	final int[] experimentY;
+	final int experimentN;
 	final int turnBias;
 	final boolean fast;
 	final ChartPlotterRouteEffort effort;
 	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int[] sparseX, int[] sparseY, int sparseN, int sparseBand, int turnBias, boolean fast, ChartPlotterRouteEffort effort) {
+		this(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, new int[0], new int[0], 0, turnBias, fast, effort);
+	}
+	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int[] sparseX, int[] sparseY, int sparseN, int sparseBand, int[] experimentX, int[] experimentY, int experimentN, int turnBias, boolean fast, ChartPlotterRouteEffort effort) {
 		this.status = status;
 		this.sx = sx;
 		this.sy = sy;
@@ -36,6 +42,9 @@ final class ChartPlotterRoute {
 		this.sparseY = sparseY;
 		this.sparseN = sparseN;
 		this.sparseBand = sparseBand;
+		this.experimentX = experimentX;
+		this.experimentY = experimentY;
+		this.experimentN = experimentN;
 		this.turnBias = turnBias;
 		this.fast = fast;
 		this.effort = effort;
@@ -46,8 +55,8 @@ final class ChartPlotterRoute {
 	static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(COMPLEX, sx, sy, tx, ty, new int[0], new int[0], 0, new int[0], new int[0], 0, 0, turnBias, fast, null);}
 	static ChartPlotterRoute blocked(int sx, int sy, int tx, int ty, int turnBias, boolean fast) {return new ChartPlotterRoute(BLOCKED, sx, sy, tx, ty, new int[0], new int[0], 0, new int[0], new int[0], 0, 0, turnBias, fast, null);}
 	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, new int[0], new int[0], 0, 0, turnBias, fast, null);}
-	ChartPlotterRoute sparse(int[] x, int[] y, int n, int band) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, x, y, n, band, turnBias, fast, effort);}
-	ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, turnBias, fast, effort);}
+	ChartPlotterRoute sparse(int[] x, int[] y, int n, int band) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, x, y, n, band, experimentX, experimentY, experimentN, turnBias, fast, effort);}
+	ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, experimentX, experimentY, experimentN, turnBias, fast, effort);}
 	boolean target(int x, int y, int r) {return Math.max(Math.abs(tx - x), Math.abs(ty - y)) <= r;}
 	boolean start(int x, int y) {return sx == x && sy == y;}
 	ChartPlotterRoute advance(int sx, int sy, int prune, int follow, int lead) {
@@ -107,8 +116,9 @@ final class ChartPlotterRoute {
 			ox[i] = x[skip + i - 1];
 			oy[i] = y[skip + i - 1];
 		}
-		return ok(px, py, tx, ty, ox, oy, nn, turnBias, fast).sparse(sparseX, sparseY, sparseN, sparseBand).effort(effort);
+		return ok(px, py, tx, ty, ox, oy, nn, turnBias, fast).sparse(sparseX, sparseY, sparseN, sparseBand).experimentRaw(experimentX, experimentY, experimentN).effort(effort);
 	}
+	private ChartPlotterRoute experimentRaw(int[] x, int[] y, int n) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, sparseX, sparseY, sparseN, sparseBand, x, y, n, turnBias, fast, effort);}
 	private static int steps(int dx, int dy, int dir) {
 		int ax = Math.abs(DX[dir]);
 		int ay = Math.abs(DY[dir]);
