@@ -57,6 +57,7 @@ final class ChartPlotterRoute {
 	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean fast) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, new int[0], new int[0], 0, 0, turnBias, fast, null);}
 	ChartPlotterRoute sparse(int[] x, int[] y, int n, int band) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, x, y, n, band, experimentX, experimentY, experimentN, turnBias, fast, effort);}
 	ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, experimentX, experimentY, experimentN, turnBias, fast, effort);}
+	ChartPlotterRoute experiment(ChartPlotterRoute r) {return r == null || r.status != OK ? this : experimentRaw(r.x, r.y, r.n);}
 	boolean target(int x, int y, int r) {return Math.max(Math.abs(tx - x), Math.abs(ty - y)) <= r;}
 	boolean start(int x, int y) {return sx == x && sy == y;}
 	ChartPlotterRoute advance(int sx, int sy, int prune, int follow, int lead) {

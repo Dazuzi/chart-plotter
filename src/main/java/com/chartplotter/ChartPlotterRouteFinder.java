@@ -29,7 +29,6 @@ final class ChartPlotterRouteFinder {
 	private static final int[] DY = {10, 9, 7, 5, 0, -4, -7, -9, -10, -11, -7, -4, 0, 5, 7, 11};
 	private static final int[] COST = {100, 98, 98, 120, 100, 98, 98, 98, 100, 120, 98, 98, 100, 120, 98, 120};
 	private static final int[] OR = {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 0, 128, 256, 384, 512, 640, 768, 896};
-	private static final int[][] FAN = fanDirs();
 	private static final int[][] HX = hitOffsets(true);
 	private static final int[][] HY = hitOffsets(false);
 	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
@@ -86,6 +85,9 @@ final class ChartPlotterRouteFinder {
 		}
 		if (corridor == null) return findFull(raw, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, bench, cancel);
 		return searchBucket(data, start, sx, sy, tx, ty, turnBias, corridor.b, corridor.cap, reverse, fast, dirStep, dirFan, targetRadius, corridor, bench, cancel);
+	}
+	private static ChartPlotterRoute findExperiment(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, boolean dirFan, int mode, int targetRadius, Corridor corridor, Bench bench, BooleanSupplier cancel) {
+		return find(raw, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, dirFan, mode, targetRadius, corridor, bench, cancel);
 	}
 	private static ChartPlotterRoute findBase(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, Bench parent, BooleanSupplier cancel) {
 		turnBias = Math.max(0, Math.min(10, turnBias));
@@ -604,6 +606,12 @@ final class ChartPlotterRouteFinder {
 					return r;
 				}
 				if (r.status == ChartPlotterRoute.OK) {
+					if (debug != null) {
+						Bench expBench = new Bench("experimental candidate=" + (i + 1) + "/" + paths.length + " band=" + c.band, sx, sy, tx, ty, reverse, fast, mode, targetRadius, c);
+						ChartPlotterRoute exp = findExperiment(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, dirFan, mode, targetRadius, c, expBench, cancel).sparse(p.x, p.y, p.n, c.band);
+						if (exp.status == ChartPlotterRoute.PENDING) return exp;
+						if (exp.status == ChartPlotterRoute.OK) r = r.experiment(exp);
+					}
 					int score = routeScore(r, turnBias);
 					if (debug != null) debug.candidate(i + 1, paths.length, r, score);
 					return r;
@@ -1232,24 +1240,6 @@ final class ChartPlotterRouteFinder {
 	}
 	private static int wh(int h, boolean fast) {return fast ? h * 5 / 2 : h;}
 	private static int smoothLimit(int turnBias) {return turnBias <= 0 ? 16 : turnBias >= 10 ? 256 : 96;}
-	private static boolean fanDir(int from, int to) {
-		int d = to - from & 15;
-		if (d > 8) d -= 16;
-		int a = Math.abs(d);
-		return a <= 4 || a == 6 || a == 8;
-	}
-	private static int[][] fanDirs() {
-		int[][] r = new int[DX.length][];
-		for (int from = 0; from < DX.length; from++) {
-			int[] d = new int[DX.length];
-			int n = 0;
-			for (int to = 0; to < DX.length; to++) {
-				if (fanDir(from, to)) d[n++] = to;
-			}
-			r[from] = Arrays.copyOf(d, n);
-		}
-		return r;
-	}
 	private static int directSmoothDir(int sx, int sy, int tx, int ty, int dirStep) {
 		int dir = dir(tx - sx, ty - sy);
 		if (dir < 0) return -1;
