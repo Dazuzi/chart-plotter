@@ -5,6 +5,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -42,6 +43,7 @@ public class ChartPlotterPlugin extends Plugin {
 	private static final int ROUTE_PRUNE_RADIUS = 8;
 	private static final int ROUTE_FOLLOW_RADIUS = 24;
 	private static final int ROUTE_PRUNE = 12;
+	private static final int ROUTE_CLEAR_RADIUS = 15;
 	private static final int MOTION_HOLD = 2;
 	private static final int COURSE_STALL = 2;
 	@Inject private Client client;
@@ -226,7 +228,7 @@ public class ChartPlotterPlugin extends Plugin {
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst == null) return;
 		ChartPlotterRoute old = route;
-		if (old != null && old.target(dst[0], dst[1], config.routeClearRadius())) {
+		if (old != null && old.target(dst[0], dst[1], ROUTE_CLEAR_RADIUS)) {
 			clearRoute();
 			return;
 		}
@@ -331,7 +333,7 @@ public class ChartPlotterPlugin extends Plugin {
 	static int round(double v) {return (int) (Math.round(Math.abs(v)) * Math.signum(v));}
 	static int snap(int v) {return round(v / 32.0) * 32;}
 	static double speed(int vx, int vy) {return Math.round(Math.sqrt(Math.pow(vx / 128.0, 2) + Math.pow(vy / 128.0, 2)) / 0.5) * 0.5;}
-	private static boolean near(int ax, int ay, int bx, int by, int r) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= r;}
+	private static boolean near(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= ROUTE_CLEAR_RADIUS;}
 	private void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;
@@ -393,7 +395,7 @@ public class ChartPlotterPlugin extends Plugin {
 		if (r == null) return;
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
 		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
-		if (near(sx, sy, r.tx, r.ty, config.routeClearRadius())) {
+		if (near(sx, sy, r.tx, r.ty)) {
 			clearRoute();
 			return;
 		}
@@ -456,7 +458,13 @@ public class ChartPlotterPlugin extends Plugin {
 		startRouteExec();
 		routeExec.execute(() -> {
 			BooleanSupplier cancel = () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted();
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, config.routeClearRadius(), sparse, pending, config.sparseCorridor(), cancel).effort(effort);
+			Consumer<ChartPlotterRoute> publish = pending ? p -> {
+				if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
+					route = p.effort(effort);
+					routeRev = rev;
+				}
+			} : null;
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, Math.floorMod(loc.getX(), TS), Math.floorMod(loc.getY(), TS), tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, ROUTE_CLEAR_RADIUS, sparse, pending, config.sparseCorridor(), cancel, publish).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;
