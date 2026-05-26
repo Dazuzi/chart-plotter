@@ -66,17 +66,18 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		int from = plugin.heading(ship);
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
-		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course);
+		boolean showExt = config.minimapShowBlockedExtension();
+		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course, showExt);
 		ChartPlotterOverlay.Path pot = null;
-		if (mouse >= 0) pot = world.path(top, ship.getConfig(), anchor, from, mouse);
+		if (mouse >= 0) pot = world.path(top, ship.getConfig(), anchor, from, mouse, showExt);
 		int skip = pot != null ? ChartPlotterOverlay.match(cur, pot) : 0;
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();
 		g.setClip(c);
 		g.setStroke(new BasicStroke(config.minimapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 		drawRoute(g, top, plugin.route());
-		draw(g, top, cur, config.minimapLineColor(), skip);
-		if (pot != null) draw(g, top, pot, config.minimapPotentialColor(), 0);
+		draw(g, top, cur, config.lineColor(), skip);
+		if (pot != null) draw(g, top, pot, config.potentialColor(), 0);
 		g.setStroke(oldStroke);
 		g.setClip(oldClip);
 		return null;
@@ -167,7 +168,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 			Point q = Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
 			if (q != null) line.lineTo(q.getX(), q.getY());
 		}
-		g.setColor(config.minimapChartColor());
+		g.setColor(config.chartColor());
 		g.draw(line);
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor) {

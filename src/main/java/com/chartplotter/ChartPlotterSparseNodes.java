@@ -81,17 +81,6 @@ final class ChartPlotterSparseNodes {
 		load();
 		flushQuiet();
 	}
-	synchronized String text(String op) {
-		load();
-		StringBuilder s = new StringBuilder("chart-plotter nodes ");
-		s.append(op).append(" [");
-		for (int i = 0; i < n; i++) {
-			if (i > 0) s.append(' ');
-			s.append(x[i]).append(',').append(y[i]);
-		}
-		s.append(']');
-		return s.toString();
-	}
 	private void load() {
 		if (loaded) return;
 		if (!read(file())) defaults();
