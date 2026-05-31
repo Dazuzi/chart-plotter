@@ -26,11 +26,15 @@ public final class ChartPlotterRouteBenchmark {
 		int phaseY = a.i("phaseY", TS / 2);
 		int start = a.i("start", -1);
 		int corridor = a.i("corridor", 80);
+		String exp = a.str("exp", null);
+		if (exp != null) System.setProperty("chartplotter.exp", exp);
+		String sparseExp = a.str("sparse", null);
+		if ("ctx".equalsIgnoreCase(sparseExp)) System.setProperty("chartplotter.sparsectx", "true");
 		boolean reverse = Boolean.parseBoolean(a.str("reverse", "false"));
 		ChartPlotterRouteEffort effort = ChartPlotterRouteEffort.VERY_HIGH;
 		WorldEntityConfig wc = new Wc(a.i("boundsX", -832), a.i("boundsY", -768), a.i("boundsWidth", 128), a.i("boundsHeight", 128));
 		int turnBias = shape(a.str("shape", "balanced"));
-		System.out.println("bench local chunks=" + data.size + " nodes=" + sparse.n + " effort=" + effort + " shape=" + shapeName(turnBias) + " from=" + sx + "," + sy + " phase=" + phaseX + "," + phaseY + " start=" + start + " reverse=" + reverse + " corridor=" + corridor);
+		System.out.println("bench local chunks=" + data.size + " nodes=" + sparse.n + " effort=" + effort + " shape=" + shapeName(turnBias) + " from=" + sx + "," + sy + " phase=" + phaseX + "," + phaseY + " start=" + start + " reverse=" + reverse + " corridor=" + corridor + " exp=" + (exp == null ? "default" : exp) + " sparse=" + (sparseExp == null ? "default" : sparseExp));
 		long t = System.nanoTime();
 		ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, phaseX, phaseY, TX[0], TY[0], turnBias, reverse, effort.fast, effort.dirs, effort.adaptive, TARGET_RADIUS, sparse, true, corridor, () -> false, null).effort(effort);
 		System.out.println("bench local result=" + result(r) + " pts=" + r.n + " ms=" + (System.nanoTime() - t) / 1000000);
