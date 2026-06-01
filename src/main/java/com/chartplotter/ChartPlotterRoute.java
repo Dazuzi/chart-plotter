@@ -6,8 +6,8 @@ final class ChartPlotterRoute {
 	static final int NO_ROUTE = 3;
 	static final int COMPLEX = 4;
 	static final int BLOCKED = 5;
-	private static final int[] DX = {0, 4, 7, 11, 10, 9, 7, 4, 0, -5, -7, -9, -10, -11, -7, -5};
-	private static final int[] DY = {10, 9, 7, 5, 0, -4, -7, -9, -10, -11, -7, -4, 0, 5, 7, 11};
+	private static final int[] DX = ChartPlotterRouteMoves.DX;
+	private static final int[] DY = ChartPlotterRouteMoves.DY;
 	final int status;
 	final int sx;
 	final int sy;
@@ -85,7 +85,7 @@ final class ChartPlotterRoute {
 		int px;
 		int py;
 		if (dir >= 0) {
-			int steps = steps(dx, dy, dir);
+			int steps = ChartPlotterRouteMoves.steps(dx, dy, dir);
 			int step = (int) Math.round(bt * steps + lead / (double) Math.max(Math.abs(DX[dir]), Math.abs(DY[dir])));
 			if (step < 0) step = 0;
 			else if (step > steps) step = steps;
@@ -110,19 +110,7 @@ final class ChartPlotterRoute {
 		}
 		return ok(px, py, tx, ty, ox, oy, nn, turnBias, weight).sparse(sparseX, sparseY, sparseN, sparseBand).effort(effort);
 	}
-	private static int steps(int dx, int dy, int dir) {
-		int ax = Math.abs(DX[dir]);
-		int ay = Math.abs(DY[dir]);
-		if (ax != 0) return Math.abs(dx) / ax;
-		return Math.abs(dy) / ay;
-	}
-	private static int dir(int dx, int dy) {
-		if (dx == 0 && dy == 0) return -1;
-		for (int i = 0; i < DX.length; i++) {
-			if ((long) dx * DY[i] == (long) dy * DX[i] && dx * DX[i] + dy * DY[i] > 0) return i;
-		}
-		return -1;
-	}
+	private static int dir(int dx, int dy) {return ChartPlotterRouteMoves.dir(dx, dy);}
 	String text() {
 		if (status == PENDING) return "Charting course";
 		if (status == UNCHARTED) return "Uncharted waters";

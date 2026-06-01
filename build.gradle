@@ -30,6 +30,13 @@ tasks.register('run', JavaExec) {
 	jvmArgs "-ea"
 	args "--developer-mode"
 }
+tasks.register('characterize', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.chartplotter.ChartPlotterChecks'
+}
+tasks.named('check') {
+	dependsOn tasks.named('characterize')
+}
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {

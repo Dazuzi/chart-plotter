@@ -1,21 +1,12 @@
 package com.chartplotter;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.Arrays;
 import javax.inject.Singleton;
 import net.runelite.client.RuneLite;
 @Singleton
 final class ChartPlotterSparseNodes {
-	private static final byte VERSION = 1;
-	private static final int USHORT = 0xffff;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private int[] x = new int[64];
 	private int[] y = new int[64];
@@ -76,7 +67,14 @@ final class ChartPlotterSparseNodes {
 	}
 	private void load() {
 		if (loaded) return;
-		if (!read(file())) defaults();
+		ChartPlotterSparseNodes.Snapshot nodes = ChartPlotterSparseCodec.read(file());
+		if (nodes == null) defaults();
+		else {
+			ensure(nodes.x.length);
+			System.arraycopy(nodes.x, 0, x, 0, nodes.x.length);
+			System.arraycopy(nodes.y, 0, y, 0, nodes.y.length);
+			n = nodes.x.length;
+		}
 		loaded = true;
 	}
 	private void defaults() {
@@ -108,24 +106,6 @@ final class ChartPlotterSparseNodes {
 			n++;
 		}
 	}
-	private boolean read(File file) {
-		if (!file.isFile()) return false;
-		try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
-			if (in.readByte() != VERSION) return false;
-			int c = in.readInt();
-			if (c < 0) return false;
-			n = 0;
-			ensure(c);
-			for (int i = 0; i < c; i++) {
-				x[n] = in.readUnsignedShort();
-				y[n] = in.readUnsignedShort();
-				n++;
-			}
-			return true;
-		} catch (Exception ignored) {
-			return false;
-		}
-	}
 	private void flushQuiet() {
 		try {
 			write();
@@ -133,20 +113,7 @@ final class ChartPlotterSparseNodes {
 		}
 	}
 	private void write() {
-		File tmp = new File(dir, "sparse.bin.tmp");
-		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return;}
-		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmp)))) {
-			out.writeByte(VERSION);
-			out.writeInt(n);
-			for (int i = 0; i < n; i++) {
-				if (x[i] < 0 || x[i] > USHORT || y[i] < 0 || y[i] > USHORT) return;
-				out.writeShort(x[i]);
-				out.writeShort(y[i]);
-			}
-		} catch (Exception ignored) {
-			return;
-		}
-		ChartPlotterFiles.replace(tmp, file());
+		ChartPlotterSparseCodec.write(dir, file(), new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n)));
 	}
 	private File file() {return new File(dir, "sparse.bin");}
 	private void ensure(int c) {
@@ -164,7 +131,7 @@ final class ChartPlotterSparseNodes {
 	static final class Snapshot {
 		final int[] x;
 		final int[] y;
-		private Snapshot(int[] x, int[] y) {
+		Snapshot(int[] x, int[] y) {
 			this.x = x;
 			this.y = y;
 		}

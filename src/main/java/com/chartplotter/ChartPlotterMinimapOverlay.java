@@ -27,14 +27,14 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
-	private final ChartPlotterOverlay world;
+	private final ChartPlotterProjection projection;
 	private volatile Shape clip;
 	@Inject
-	ChartPlotterMinimapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterOverlay world) {
+	ChartPlotterMinimapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection) {
 		this.client = client;
 		this.plugin = plugin;
 		this.config = config;
-		this.world = world;
+		this.projection = projection;
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPosition(OverlayPosition.DYNAMIC);
 		setPriority(Overlay.PRIORITY_LOW);
@@ -64,10 +64,10 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
 		boolean showExt = config.minimapShowBlockedExtension();
-		ChartPlotterOverlay.Path cur = world.path(top, ship.getConfig(), anchor, from, course, showExt);
-		ChartPlotterOverlay.Path pot = null;
-		if (mouse >= 0) pot = world.path(top, ship.getConfig(), anchor, from, mouse, showExt);
-		int skip = pot != null ? ChartPlotterOverlay.match(cur, pot) : 0;
+		ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, showExt);
+		ChartPlotterProjection.Path pot = null;
+		if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, showExt);
+		int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();
 		g.setClip(c);
@@ -96,7 +96,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		int x = Perspective.COSINE[a] * sx + Perspective.SINE[a] * sy >> 16;
 		int y = Perspective.SINE[a] * sx - Perspective.COSINE[a] * sy >> 16;
 		double d = Math.toDegrees(Math.atan2(y, x));
-		return ChartPlotterPlugin.norm((int) Math.round((270 - d) / 360 * 16) * 128);
+		return ChartPlotterMath.norm((int) Math.round((270 - d) / 360 * 16) * 128);
 	}
 	static Widget minimap(Client client) {
 		if (client.isResized()) {
@@ -105,7 +105,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		return client.getWidget(InterfaceID.Toplevel.MINIMAP);
 	}
-	private void draw(Graphics2D g, WorldView wv, ChartPlotterOverlay.Path p, Color color, int skip) {
+	private void draw(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, color);
 			return;
@@ -115,7 +115,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		segment(g, wv, p, color, start, mid);
 		if (mid < p.n) segment(g, wv, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
 	}
-	private void segment(Graphics2D g, WorldView wv, ChartPlotterOverlay.Path p, Color color, int from, int to) {
+	private void segment(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color, int from, int to) {
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
 		for (int i = from; i < to; i++) {
@@ -133,7 +133,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.setColor(color);
 		g.draw(line);
 	}
-	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterOverlay.Path p, Color color) {
+	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color) {
 		Point q = Perspective.localToMinimap(client, new LocalPoint(p.x[0], p.y[0], wv), DIST);
 		if (q == null) return;
 		int r = 5;
