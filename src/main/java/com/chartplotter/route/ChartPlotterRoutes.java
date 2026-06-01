@@ -24,7 +24,8 @@ public final class ChartPlotterRoutes {
 	private static final int PRUNE_RADIUS = 8;
 	private static final int FOLLOW_RADIUS = 24;
 	private static final int PRUNE = 12;
-	private static final int CLEAR_RADIUS = 15;
+	private static final int CLEAR_RADIUS = 10;
+	private static final int MODE_TILE = 1;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterSparseNodes sparseNodes;
@@ -54,6 +55,11 @@ public final class ChartPlotterRoutes {
 			clear();
 			return;
 		}
+		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
+		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		long t = target(collisionCache.snapshot(), ship.getConfig(), tx, ty, sx, sy);
+		tx = (int) (t >> 32);
+		ty = (int) t;
 		request(top, ship, loc, tx, ty, true);
 	}
 	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
@@ -114,6 +120,39 @@ public final class ChartPlotterRoutes {
 		int y = Math.round(wc.getBoundsY() - wc.getBoundsHeight() / 2f);
 		return new LocalPoint(rotateX(loc.getX(), o, x, y), rotateY(loc.getY(), o, x, y), top);
 	}
+	static long target(ChartPlotterCollisionData data, WorldEntityConfig wc, int tx, int ty, int sx, int sy) {return target(grid(data, wc), tx, ty, sx, sy);}
+	static long target(ChartPlotterRouteGrid data, int tx, int ty, int sx, int sy) {
+		int f = data.flag(tx, ty);
+		if (f == ChartPlotterCollisionCache.UNKNOWN || !blocker(f)) return key(tx, ty);
+		int bx = tx;
+		int by = ty;
+		long bs = Long.MAX_VALUE;
+		for (int r = 1; r <= CLEAR_RADIUS; r++) {
+			for (int y = ty - r; y <= ty + r; y++) {
+				for (int x = tx - r; x <= tx + r; x++) {
+					if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) != r || data.flag(x, y) != ChartPlotterCollisionCache.OPEN) continue;
+					long dx = x - sx;
+					long dy = y - sy;
+					long s = dx * dx + dy * dy;
+					if (s >= bs) continue;
+					bx = x;
+					by = y;
+					bs = s;
+				}
+			}
+			if (bs != Long.MAX_VALUE) return key(bx, by);
+		}
+		return key(tx, ty);
+	}
+	private static ChartPlotterRouteGrid grid(ChartPlotterCollisionData data, WorldEntityConfig wc) {
+		if (wc == null) return new ChartPlotterRouteGrid(data);
+		ChartPlotterRouteGrid.Footprint fp = new ChartPlotterRouteGrid.Footprint(wc);
+		return ChartPlotterRouteGrid.lazy(data, fp, radius(fp), MODE_TILE);
+	}
+	private static int radius(ChartPlotterRouteGrid.Footprint fp) {
+		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
+		return Math.max(1, (r + TS - 1) / TS);
+	}
 	private void request(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty, boolean pending) {
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
 		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
@@ -152,4 +191,6 @@ public final class ChartPlotterRoutes {
 		});
 	}
 	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= CLEAR_RADIUS;}
+	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
+	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 }

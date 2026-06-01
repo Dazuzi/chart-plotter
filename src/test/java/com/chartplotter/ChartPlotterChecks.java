@@ -3,6 +3,7 @@ import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionCodec;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRouteChecks;
 import com.chartplotter.route.ChartPlotterRouteFinder;
 import com.chartplotter.route.ChartPlotterSparseCodec;
 import com.chartplotter.route.ChartPlotterSparseNodes;
@@ -25,6 +26,7 @@ public final class ChartPlotterChecks {
 	public static void main(String[] args) throws Exception {
 		math();
 		route();
+		ChartPlotterRouteChecks.run();
 		routeFinderProbe();
 		projection();
 		collision();

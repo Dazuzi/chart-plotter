@@ -102,6 +102,7 @@ public final class ChartPlotterRuntime {
 			sailing.sync();
 			return;
 		}
+		if (e.getGameState() == GameState.LOADING) return;
 		sailing.reset();
 		routes.clear();
 		collision(false, null);
@@ -119,7 +120,7 @@ public final class ChartPlotterRuntime {
 		sailing.setCourse(client.getMouseCanvasPosition());
 	}
 	public void tick() {
-		if (!features.tracking || !sailing.boarded()) return;
+		if (!features.tracking || !sailing.boarded() || client.getGameState() != GameState.LOGGED_IN) return;
 		WorldEntity ship = sailing.ship();
 		if (ship == null) {
 			sailing.clear();

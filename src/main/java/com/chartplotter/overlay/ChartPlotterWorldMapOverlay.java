@@ -159,9 +159,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		if (r == null) return;
 		Color c = r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
 		Point t = map.point(s, r.tx, r.ty, 0.5, 0.5);
-		if (r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
+		if (config.nodeEditor() && r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
 		if (r.status == ChartPlotterRoute.OK) {
-			drawRoutePath(g, s, r.x, r.y, r.n, r.tx, r.ty, c);
+			drawRoutePath(g, s, r.x, r.y, r.n, c);
 		}
 		g.setColor(c);
 		g.fill(new Ellipse2D.Double(t.getX() - 3.5, t.getY() - 3.5, 7, 7));
@@ -169,7 +169,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		String text = r.text();
 		if (text != null) tip(g, s.r, t, text);
 	}
-	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, int[] x, int[] y, int n, int tx, int ty, Color c) {
+	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, int[] x, int[] y, int n, Color c) {
 		if (n < 2) return;
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
@@ -181,8 +181,6 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 				have = true;
 			}
 		}
-		Point t = map.point(s, tx, ty, 0.5, 0.5);
-		if (x[n - 1] != tx || y[n - 1] != ty) line.lineTo(t.getX(), t.getY());
 		g.setColor(c);
 		g.draw(line);
 	}
