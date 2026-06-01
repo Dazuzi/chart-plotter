@@ -1,21 +1,16 @@
 package com.chartplotter;
 public enum ChartPlotterRouteEffort {
-	VERY_HIGH("Very high", 16, false, true, false),
-	HIGH("High", 16, false, true, true),
-	MEDIUM("Medium", 16, true, true, false),
-	LOW("Low", 8, true, true, false),
-	VERY_LOW("Very low", 8, true, false, false);
-	final int dirs;
-	final boolean fast;
-	final boolean footprint;
-	final boolean adaptive;
+	VERY_HIGH("Very high", 100, 120),
+	HIGH("High", 125, 100),
+	BALANCED("Balanced", 175, 80),
+	FAST("Fast", 250, 60);
+	final int weight;
+	final int corridor;
 	private final String name;
-	ChartPlotterRouteEffort(String name, int dirs, boolean fast, boolean footprint, boolean adaptive) {
+	ChartPlotterRouteEffort(String name, int weight, int corridor) {
 		this.name = name;
-		this.dirs = dirs;
-		this.fast = fast;
-		this.footprint = footprint;
-		this.adaptive = adaptive;
+		this.weight = weight;
+		this.corridor = corridor;
 	}
 	@Override
 	public String toString() {return name;}

@@ -44,7 +44,6 @@ public class ChartPlotterPlugin extends Plugin {
 	private static final int ROUTE_FOLLOW_RADIUS = 24;
 	private static final int ROUTE_PRUNE = 12;
 	private static final int ROUTE_CLEAR_RADIUS = 15;
-	private static final int ROUTE_SPARSE_CORRIDOR = 120;
 	private static final int MOTION_HOLD = 2;
 	private static final int COURSE_STALL = 2;
 	@Inject private Client client;
@@ -462,11 +461,10 @@ public class ChartPlotterPlugin extends Plugin {
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
 		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
 		ChartPlotterRouteEffort effort = config.routeEffort();
-		WorldEntityConfig wc = effort.footprint ? ship.getConfig() : null;
+		WorldEntityConfig wc = ship.getConfig();
 		ChartPlotterTurnPreference shape = config.routeShape();
 		int turnBias = shape.bias;
-		int dirs = effort.dirs;
-		boolean fast = effort.fast;
+		int weight = effort.weight;
 		boolean reverse = reversing();
 		int start = speed == 0 ? -1 : heading(ship);
 		int seq = routeSeq.incrementAndGet();
@@ -475,13 +473,13 @@ public class ChartPlotterPlugin extends Plugin {
 		long rev = data.rev;
 		routeBusy = true;
 		if (pending) {
-			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast).effort(effort);
+			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight).effort(effort);
 			routeRev = rev;
 		}
 		startRouteExec();
 		routeExec.execute(() -> {
 			BooleanSupplier cancel = () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted();
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, ROUTE_CLEAR_RADIUS, sparse, ROUTE_SPARSE_CORRIDOR, cancel).effort(effort);
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, weight, ROUTE_CLEAR_RADIUS, sparse, effort.corridor, cancel).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;

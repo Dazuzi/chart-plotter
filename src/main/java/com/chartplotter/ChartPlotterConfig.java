@@ -37,9 +37,9 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 2)
 	String minimapSection = "minimapSection";
 	@ConfigItem(keyName = "minimapEnabled", name = "Enabled", description = "Draw course lines on the minimap.", section = minimapSection, position = 0)
-	default boolean minimapEnabled() {return true;}
+	default boolean minimapEnabled() {return false;}
 	@ConfigItem(keyName = "minimapShowBlockedExtension", name = "Show blocked extension", description = "Continue drawing minimap projected paths past collisions.", section = minimapSection, position = 1)
-	default boolean minimapShowBlockedExtension() {return true;}
+	default boolean minimapShowBlockedExtension() {return false;}
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 2)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 1;}
@@ -48,7 +48,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "worldMapEnabled", name = "Enabled", description = "Draw course lines on the world map.", section = worldMapSection, position = 0)
 	default boolean worldMapEnabled() {return true;}
 	@ConfigItem(keyName = "worldMapShowBlockedExtension", name = "Show blocked extension", description = "Continue drawing world map projected paths past collisions.", section = worldMapSection, position = 1)
-	default boolean worldMapShowBlockedExtension() {return true;}
+	default boolean worldMapShowBlockedExtension() {return false;}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 2)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
@@ -56,12 +56,12 @@ public interface ChartPlotterConfig extends Config {
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
-	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining precise, footprint-aware routes; lower effort returns quicker.", section = chartingSection, position = 1)
+	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining routes; lower effort returns quicker.", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 5)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision coverage.", section = tweaksSection, position = 3)
-	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.BOTH;}
+	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
 	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map.", section = tweaksSection, position = 5)
 	default boolean nodeEditor() {return false;}
 }

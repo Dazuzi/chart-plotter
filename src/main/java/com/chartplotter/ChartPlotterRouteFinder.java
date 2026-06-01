@@ -34,39 +34,23 @@ final class ChartPlotterRouteFinder {
 	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
-	static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirs, boolean adaptive, int targetRadius, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
+	static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int targetRadius, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
 		sparseBand = Math.max(20, Math.min(200, sparseBand));
 		Footprint fp = wc == null ? null : new Footprint(wc);
-		int dirStep = dirs == 8 ? 2 : 1;
-		boolean eight = adaptiveEight(fp, sx, sy, tx, ty, dirStep, adaptive);
-		int step = eight ? 2 : dirStep;
 		if (sparse == null) {
-			return findBase(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, step, fp == null ? MODE_BASE : MODE_TILE, targetRadius, cancel);
+			return findBase(data, fp, start, sx, sy, tx, ty, turnBias, reverse, weight, fp == null ? MODE_BASE : MODE_TILE, targetRadius, cancel);
 		}
 		SparsePath sp = sparsePath(data, sparse, sx, sy, tx, ty, targetRadius, sparseBand, cancel);
-		boolean sparseFan = sp != null && adaptive && dirStep == 1;
-		int sparseStep = sparseFan ? 1 : step;
 		if (sp != null && sp.pending) {
-			return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
+			return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
 		}
 		if (sp != null) {
-			ChartPlotterRoute r = sparseRoute(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, sparseStep, fp == null ? MODE_BASE : MODE_TILE, targetRadius, sparseBand, sp, cancel);
+			ChartPlotterRoute r = sparseRoute(data, fp, start, sx, sy, tx, ty, turnBias, reverse, weight, fp == null ? MODE_BASE : MODE_TILE, targetRadius, sparseBand, sp, cancel);
 			if (r.status == ChartPlotterRoute.PENDING || r.status == ChartPlotterRoute.OK) return r;
 		}
-		return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, weight);
 	}
-	private static ChartPlotterRoute find(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, Corridor corridor, BooleanSupplier cancel) {
-		turnBias = Math.max(0, Math.min(10, turnBias));
-		int radius = radius(fp);
-		Grid data = fp == null ? new Grid(raw) : Grid.lazy(raw, fp, radius, mode);
-		int sf = data.flag(sx, sy);
-		int tf = targetFlag(data, tx, ty, targetRadius, corridor != null);
-		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
-		if (blocker(sf) || blocker(tf)) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
-		if (corridor == null) return findFull(raw, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, cancel);
-		return searchBucket(data, start, sx, sy, tx, ty, turnBias, corridor.b, corridor.cap, reverse, fast, dirStep, targetRadius, corridor, cancel);
-	}
-	private static ChartPlotterRoute findBase(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, BooleanSupplier cancel) {
+	private static ChartPlotterRoute findBase(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int mode, int targetRadius, BooleanSupplier cancel) {
 		turnBias = Math.max(0, Math.min(10, turnBias));
 		int radius = radius(fp);
 		Bounds full = bounds(sx, sy, tx, ty, maxMargin(sx, sy, tx, ty, fp));
@@ -74,60 +58,39 @@ final class ChartPlotterRouteFinder {
 		Grid probe = fp == null ? base : Grid.lazy(raw, fp, radius, mode);
 		int sf = probe.flag(sx, sy);
 		int tf = targetFlag(probe, tx, ty, targetRadius, false);
-		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, fast);
-		if (blocker(sf) || blocker(tf)) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
+		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, weight);
+		if (blocker(sf) || blocker(tf)) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, weight);
 		int max = maxMargin(sx, sy, tx, ty, null);
 		int fm = tightMargin(sx, sy, tx, ty);
 		for (int m = fm;; m = Math.min(max, m * 2)) {
 			Bounds b = bounds(sx, sy, tx, ty, m);
 			int cap = cap(sx, sy, tx, ty, m);
 			Grid data = fp == null ? base : Grid.lazy(raw, fp, radius, mode);
-			ChartPlotterRoute r = searchBase(data, start, sx, sy, tx, ty, turnBias, b, cap, reverse, fast, dirStep, targetRadius, cancel);
+			ChartPlotterRoute r = searchBase(data, start, sx, sy, tx, ty, turnBias, b, cap, reverse, weight, targetRadius, cancel);
 			if (r.status == ChartPlotterRoute.PENDING) return r;
 			if (r.status == ChartPlotterRoute.OK) return r;
 			if (m == max) {
 				int c = connected(base, WORK.get().reach, sx, sy, tx, ty, targetRadius, full, cancel);
-				if (c < 0) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
-				if (c == 0) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
+				if (c < 0) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
+				if (c == 0) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, weight);
 				return r;
 			}
 		}
 	}
-	private static ChartPlotterRoute findFull(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, BooleanSupplier cancel) {
-		int radius = radius(fp);
-		Grid base = new Grid(raw);
-		Bounds full = bounds(sx, sy, tx, ty, maxMargin(sx, sy, tx, ty, fp));
-		int max = maxMargin(sx, sy, tx, ty, null);
-		int fm = tightMargin(sx, sy, tx, ty);
-		for (int m = fm;; m = Math.min(max, m * 2)) {
-			Bounds b = bounds(sx, sy, tx, ty, m);
-			int cap = cap(sx, sy, tx, ty, m);
-			Grid data = fp == null ? base : Grid.lazy(raw, fp, radius, mode);
-			ChartPlotterRoute r = search(data, start, sx, sy, tx, ty, turnBias, b, cap, reverse, fast, dirStep, targetRadius, cancel);
-			if (r.status == ChartPlotterRoute.PENDING) return r;
-			if (r.status == ChartPlotterRoute.OK) return r;
-			if (m == max) {
-				int c = connected(base, WORK.get().reach, sx, sy, tx, ty, targetRadius, full, cancel);
-				if (c < 0) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
-				if (c == 0) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, fast);
-				return r;
-			}
-		}
-	}
-	private static ChartPlotterRoute searchBase(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast, int dirStep, int targetRadius, BooleanSupplier cancel) {
+	private static ChartPlotterRoute searchBase(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, int weight, int targetRadius, BooleanSupplier cancel) {
 		Work w = WORK.get();
 		w.clearBase();
 		Nodes nodes = w.ba;
 		SimpleHeap q = w.bq;
 		LongIntMap best = w.bg;
 		BaseMoveCache moves = w.bmoves;
-		moves.reset(b, dirStep);
+		moves.reset(b);
 		data.cache(b, LAZY_MAX);
 		DenseCost dense = w.bbest;
-		dense.reset(b, dirStep);
+		dense.reset(b);
 		boolean db = dense.on;
 		if (!db) best.clear();
-		addStartsBase(q, dense, best, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep, db);
+		addStartsBase(q, dense, best, nodes, sx, sy, tx, ty, turnBias, start, weight, db);
 		boolean capped = false;
 		int seen = 0;
 		int minX = b.minX;
@@ -136,7 +99,7 @@ final class ChartPlotterRouteFinder {
 		int maxY = b.maxY;
 		int turn = turn(turnBias);
 		while (q.hasNext()) {
-			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
+			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
 			int a = q.poll();
 			int ax = nodes.x[a];
 			int ay = nodes.y[a];
@@ -148,14 +111,12 @@ final class ChartPlotterRouteFinder {
 				if (bg == LongIntMap.MISS || ag != bg) continue;
 			}
 			int td = dist(ax, ay, tx, ty);
-			if (td <= targetRadius) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, fast, dirStep);
+			if (td <= targetRadius) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, weight, 1);
 			if (++seen > MAX) {
 				capped = true;
 				break;
 			}
-			int fn = DX.length / dirStep;
-			for (int di = 0; di < fn; di++) {
-				int i = di * dirStep;
+			for (int i = 0; i < DX.length; i++) {
 				int nx = ax + DX[i];
 				int ny = ay + DY[i];
 				if (nx < minX || ny < minY || nx > maxX || ny > maxY) continue;
@@ -184,34 +145,33 @@ final class ChartPlotterRouteFinder {
 				if (db) dense.put(nx, ny, i, ng);
 				else best.put(key, ng);
 				int hh = h(nx, ny, tx, ty, i, turnBias);
-				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a));
+				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, weight), a));
 			}
 		}
-		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, weight) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, weight);
 	}
-	private static ChartPlotterRoute search(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast, int dirStep, int targetRadius, BooleanSupplier cancel) {
+	private static ChartPlotterRoute search(Grid data, int sx, int sy, int tx, int ty, Bounds b, int cap, BooleanSupplier cancel) {
 		Work w = WORK.get();
 		w.clear();
 		Nodes nodes = w.a;
 		Heap q = w.aq;
 		LongIntMap best = w.ag;
 		MoveCache moves = w.moves;
-		moves.reset(b, dirStep);
+		moves.reset(b);
 		data.cache(b);
 		DenseBest dense = w.best;
-		dense.reset(b, dirStep);
+		dense.reset(b);
 		boolean db = dense.on;
 		if (!db) best.clear();
-		addStarts(q, dense, best, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep, db);
+		addStarts(q, dense, best, nodes, sx, sy, tx, ty, db);
 		boolean capped = false;
 		int seen = 0;
 		int minX = b.minX;
 		int minY = b.minY;
 		int maxX = b.maxX;
 		int maxY = b.maxY;
-		int turn = turn(turnBias);
 		while (q.hasNext()) {
-			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
+			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, 0, 250);
 			int a = q.poll();
 			int ax = nodes.x[a];
 			int ay = nodes.y[a];
@@ -227,21 +187,19 @@ final class ChartPlotterRouteFinder {
 				}
 			}
 			int td = dist(ax, ay, tx, ty);
-			if (td <= targetRadius) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, fast, dirStep);
+			if (td <= 2) return route(data, -1, nodes, a, sx, sy, tx, ty, 0, false, 250, 2);
 			if (++seen > MAX) {
 				capped = true;
 				break;
 			}
-			int fn = DX.length / dirStep;
-			for (int di = 0; di < fn; di++) {
-				int i = di * dirStep;
+			for (int i = 0; i < DX.length; i += 2) {
 				int nx = ax + DX[i];
 				int ny = ay + DY[i];
 				if (nx < minX || ny < minY || nx > maxX || ny > maxY) continue;
 				int step = COST[i];
 				int nd = dist + step;
 				if (nd > cap) continue;
-				int ng = ag + step + (ad != i ? turn : 0);
+				int ng = ag + step;
 				long key = 0;
 				int oldNode = -1;
 				if (db) {
@@ -257,12 +215,11 @@ final class ChartPlotterRouteFinder {
 					p = moves.get(ax, ay, i);
 				}
 				if (p == LongIntMap.MISS) {
-					p = move(data, ax, ay, nx, ny, i, reverse);
+					p = move(data, ax, ay, nx, ny, i, false);
 					if (moves.on) moves.put(ax, ay, i, p);
 				}
 				if (p != 1) continue;
-				int hh = h(nx, ny, tx, ty, i, turnBias);
-				int nf = ng + wh(hh, fast);
+				int nf = ng + wh(h(nx, ny, tx, ty), 250);
 				if (db) {
 					if (oldNode < 0 || !q.update(oldNode, ng, nd, nf, a)) {
 						int nn = nodes.add(nx, ny, i, ng, nd, nf, a);
@@ -275,32 +232,32 @@ final class ChartPlotterRouteFinder {
 				}
 			}
 		}
-		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, 0, 250) : ChartPlotterRoute.none(sx, sy, tx, ty, 0, 250);
 	}
-	private static ChartPlotterRoute searchBucket(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast, int dirStep, int targetRadius, Corridor corridor, BooleanSupplier cancel) {
+	private static ChartPlotterRoute searchBucket(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, int weight, int targetRadius, Corridor corridor, BooleanSupplier cancel) {
 		Work w = WORK.get();
 		BucketHeap q = w.bucket;
 		q.sentinel = true;
-		q.base = fast ? 0 : h(sx, sy, tx, ty);
+		q.base = weight > 100 ? 0 : h(sx, sy, tx, ty);
 		w.clearBase();
 		Nodes nodes = w.ba;
 		LongIntMap best = w.bg;
 		BaseMoveCache moves = w.bmoves;
-		moves.reset(b, dirStep, true, corridor);
+		moves.reset(b, true, corridor);
 		data.cache(b, LAZY_MAX);
 		DenseCost dense = w.bbest;
 		int turn = turn(turnBias);
-		dense.reset(b, dirStep, turn > 0);
+		dense.reset(b, turn > 0);
 		boolean db = dense.on;
 		CompactCost compact = w.cbest;
 		boolean cb = !db && moves.mode == MC_COMPACT;
-		if (cb) compact.reset(corridor, dirStep, turn > 0, moves.index);
+		if (cb) compact.reset(corridor, turn > 0, moves.index);
 		else compact.dom = false;
 		if (!db && !cb) best.clear();
 		DomCost dom = !db && !cb && turn > 0 ? w.dom : null;
-		if (dom != null) dom.reset(b, dirStep);
+		if (dom != null) dom.reset(b);
 		boolean dstBlock = moves.mode == MC_SPARSE;
-		addStartsBucket(q, dense, compact, best, nodes, sx, sy, tx, ty, turnBias, start, fast, dirStep, db, cb);
+		addStartsBucket(q, dense, compact, best, nodes, sx, sy, tx, ty, turnBias, start, weight, db, cb);
 		boolean capped = false;
 		int seen = 0;
 		int minX = b.minX;
@@ -316,14 +273,14 @@ final class ChartPlotterRouteFinder {
 		boolean moveCompact = moves.mode == MC_COMPACT;
 		for (int i = 0; i < DX.length; i++) {
 			tileDelta[i] = DX[i] + DY[i] * width;
-			if (db) bestDelta[i] = tileDelta[i] + i / dirStep * dense.area;
-			else if (cb) bestDelta[i] = i / dirStep * compact.area;
-			if (moveDense) moveDelta[i] = i / dirStep * moves.area;
+			if (db) bestDelta[i] = tileDelta[i] + i * dense.area;
+			else if (cb) bestDelta[i] = i * compact.area;
+			if (moveDense) moveDelta[i] = i * moves.area;
 		}
 		boolean domFirst = dense.dom || compact.dom;
 		if (dom != null) domFirst = true;
 		while (q.hasNext()) {
-			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
+			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
 			int a = q.poll();
 			int ax = nodes.x[a];
 			int ay = nodes.y[a];
@@ -332,11 +289,11 @@ final class ChartPlotterRouteFinder {
 			int dist = nodes.d[a];
 			int pos = ax - minX + (ay - minY) * width;
 			if (nodes.prev[a] >= 0) {
-				int bg = db ? dense.v[pos + ad / dirStep * dense.area] : cb ? compact.v[moves.index[pos] - 1 + bestDelta[ad]] : best.get(state(ax, ay, ad));
+				int bg = db ? dense.v[pos + ad * dense.area] : cb ? compact.v[moves.index[pos] - 1 + bestDelta[ad]] : best.get(state(ax, ay, ad));
 				if (bg == LongIntMap.MISS || ag != bg) continue;
 			}
 			int td = dist(ax, ay, tx, ty);
-			if (td <= targetRadius) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, fast, dirStep);
+			if (td <= targetRadius) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, weight, 1);
 			if (db && turn > 0) {
 				if (dense.dominated(pos, ad, ag, turn)) continue;
 			} else if (cb && turn > 0) {
@@ -348,9 +305,7 @@ final class ChartPlotterRouteFinder {
 				capped = true;
 				break;
 			}
-			int fn = DX.length / dirStep;
-			for (int di = 0; di < fn; di++) {
-				int i = di * dirStep;
+			for (int i = 0; i < DX.length; i++) {
 				if (circDist(ad, i) > PRUNE) continue;
 				int nx = ax + DX[i];
 				int ny = ay + DY[i];
@@ -373,7 +328,7 @@ final class ChartPlotterRouteFinder {
 				long key = 0;
 				int bestPos = 0;
 				if (domFirst) {
-					boolean dominated = db ? dense.dominated(np, i, ng, turn) : cb ? compact.dominatedAtIndex(cp, di, ng, turn) : dom != null && dom.dominated(np, i, ng, turn);
+					boolean dominated = db ? dense.dominated(np, i, ng, turn) : cb ? compact.dominatedAtIndex(cp, i, ng, turn) : dom != null && dom.dominated(np, i, ng, turn);
 					if (dominated) continue;
 				}
 				if (db) {
@@ -401,7 +356,7 @@ final class ChartPlotterRouteFinder {
 						p = v - 2;
 					}
 				} else if (moveCompact) {
-					movePos = cb ? bestPos : cp + i / dirStep * moves.area;
+					movePos = cb ? bestPos : cp + i * moves.area;
 					int v = moves.v[movePos];
 					if (v != 0) {
 						p = v - 2;
@@ -421,24 +376,30 @@ final class ChartPlotterRouteFinder {
 				if (p != 1) continue;
 				if (db) {
 					dense.v[bestPos] = ng;
-					if (dense.dom) dense.domPut(np, i / dirStep, ng);
+					if (dense.dom) dense.domPut(np, i, ng);
 				} else if (cb) {
 					compact.v[bestPos] = ng;
-					if (compact.dom) compact.domPutAt(cp, di, ng);
+					if (compact.dom) compact.domPutAt(cp, i, ng);
 				} else {
 					best.put(key, ng);
 					if (dom != null) dom.put(np, i, ng);
 				}
 				int hh = h(nx, ny, tx, ty, i, turnBias);
-				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a));
+				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, weight), a));
 			}
 		}
-		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
+		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, weight) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, weight);
 	}
-	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, int sparseBand, SparsePath p, BooleanSupplier cancel) {
-		p = simplifySparse(data, p);
+	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int mode, int targetRadius, int sparseBand, SparsePath p, BooleanSupplier cancel) {
+		p = simplifySparse(raw, p);
 		Corridor c = corridor(p, sparseBand);
-		return find(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, c, cancel).sparse(p.x, p.y, p.n, c.band);
+		turnBias = Math.max(0, Math.min(10, turnBias));
+		Grid data = fp == null ? new Grid(raw) : Grid.lazy(raw, fp, radius(fp), mode);
+		int sf = data.flag(sx, sy);
+		int tf = targetFlag(data, tx, ty, targetRadius, true);
+		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, weight);
+		if (blocker(sf) || blocker(tf)) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, weight);
+		return searchBucket(data, start, sx, sy, tx, ty, turnBias, c.b, c.cap, reverse, weight, targetRadius, c, cancel).sparse(p.x, p.y, p.n, c.band);
 	}
 	private static SparsePath sparsePath(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int targetRadius, int sparseBand, BooleanSupplier cancel) {
 		if (nodes == null) return null;
@@ -559,7 +520,7 @@ final class ChartPlotterRouteFinder {
 	private static ChartPlotterRoute localConnect(ChartPlotterCollisionData data, int sx, int sy, int tx, int ty, int band, BooleanSupplier cancel) {
 		int m = Math.max(32, band);
 		Bounds b = bounds(sx, sy, tx, ty, m);
-		return search(new Grid(data), -1, sx, sy, tx, ty, 0, b, cap(sx, sy, tx, ty, m), false, true, 2, 2, cancel);
+		return search(new Grid(data), sx, sy, tx, ty, b, cap(sx, sy, tx, ty, m), cancel);
 	}
 	private static void insertClosest(int[] ci, int[] cd, int i, int d) {
 		for (int p = 0; p < ci.length; p++) {
@@ -643,7 +604,7 @@ final class ChartPlotterRouteFinder {
 		}
 		return 0;
 	}
-	private static ChartPlotterRoute route(Grid data, int start, Nodes nodes, int end, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep) {
+	private static ChartPlotterRoute route(Grid data, int start, Nodes nodes, int end, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int dirStep) {
 		int n = 0;
 		for (int a = end; a >= 0; a = nodes.prev[a]) n++;
 		int[] x = new int[n];
@@ -654,10 +615,10 @@ final class ChartPlotterRouteFinder {
 			x[i] = nodes.x[a];
 			y[i] = nodes.y[a];
 		}
-		return smooth(data, start, sx, sy, tx, ty, x, y, n, turnBias, reverse, fast, dirStep);
+		return smooth(data, start, sx, sy, tx, ty, x, y, n, turnBias, reverse, weight, dirStep);
 	}
-	private static ChartPlotterRoute smooth(Grid data, int start, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean reverse, boolean fast, int dirStep) {
-		if (n < 3) return ChartPlotterRoute.ok(sx, sy, tx, ty, x, y, n, turnBias, fast);
+	private static ChartPlotterRoute smooth(Grid data, int start, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, boolean reverse, int weight, int dirStep) {
+		if (n < 3) return ChartPlotterRoute.ok(sx, sy, tx, ty, x, y, n, turnBias, weight);
 		int[] ox = new int[n];
 		int[] oy = new int[n];
 		int on = 0;
@@ -687,7 +648,7 @@ final class ChartPlotterRouteFinder {
 			oy[on++] = y[best];
 			i = best;
 		}
-		return ChartPlotterRoute.ok(sx, sy, tx, ty, ox, oy, on, turnBias, fast);
+		return ChartPlotterRoute.ok(sx, sy, tx, ty, ox, oy, on, turnBias, weight);
 	}
 	private static boolean smoothClear(Grid data, Grid raw, Footprint fp, int start, int sx, int sy, int tx, int ty, int d, boolean reverse) {
 		if (!clear(data, sx, sy, tx, ty, d, reverse)) return false;
@@ -709,48 +670,41 @@ final class ChartPlotterRouteFinder {
 		if (pass(data, x, y, dir) != 0) return false;
 		return !reverse || data.fp == null || pass(data, x, y, revDir(dir)) == 0;
 	}
-	private static void addStarts(Heap q, DenseBest dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast, int dirStep, boolean db) {
+	private static void addStarts(Heap q, DenseBest dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, boolean db) {
+		for (int i = 0; i < DX.length; i++) addStart(q, dense, best, nodes, sx, sy, tx, ty, i, db);
+	}
+	private static void addStartsBase(SimpleHeap q, DenseCost dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, int weight, boolean db) {
 		if (start >= 0) {
-			addStart(q, dense, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, 1), fast, dirStep, db);
+			addStartBase(q, dense, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, 1), weight, db);
 			return;
 		}
-		for (int i = 0; i < DX.length; i++) addStart(q, dense, best, nodes, sx, sy, tx, ty, turnBias, i, fast, dirStep, db);
+		for (int i = 0; i < DX.length; i++) addStartBase(q, dense, best, nodes, sx, sy, tx, ty, turnBias, i, weight, db);
 	}
-	private static void addStartsBase(SimpleHeap q, DenseCost dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast, int dirStep, boolean db) {
+	private static void addStartsBucket(BucketHeap q, DenseCost dense, CompactCost compact, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, int weight, boolean db, boolean cb) {
 		if (start >= 0) {
-			addStartBase(q, dense, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, 1), fast, dirStep, db);
+			addStartBucket(q, dense, compact, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, 1), weight, db, cb);
 			return;
 		}
-		for (int i = 0; i < DX.length; i++) addStartBase(q, dense, best, nodes, sx, sy, tx, ty, turnBias, i, fast, dirStep, db);
+		for (int i = 0; i < DX.length; i++) addStartBucket(q, dense, compact, best, nodes, sx, sy, tx, ty, turnBias, i, weight, db, cb);
 	}
-	private static void addStartsBucket(BucketHeap q, DenseCost dense, CompactCost compact, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int start, boolean fast, int dirStep, boolean db, boolean cb) {
-		if (start >= 0) {
-			addStartBucket(q, dense, compact, best, nodes, sx, sy, tx, ty, turnBias, snapDir(start, 1), fast, dirStep, db, cb);
-			return;
-		}
-		for (int i = 0; i < DX.length; i++) addStartBucket(q, dense, compact, best, nodes, sx, sy, tx, ty, turnBias, i, fast, dirStep, db, cb);
-	}
-	private static void addStart(Heap q, DenseBest dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast, int dirStep, boolean db) {
-		int hh = h(sx, sy, tx, ty, dir, turnBias);
-		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
+	private static void addStart(Heap q, DenseBest dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int dir, boolean db) {
+		int n = nodes.add(sx, sy, dir, 0, 0, wh(h(sx, sy, tx, ty), 250), -1);
 		q.add(n);
-		if (dir % dirStep != 0) return;
+		if ((dir & 1) != 0) return;
 		if (db) dense.put(sx, sy, dir, n);
 		else best.put(state(sx, sy, dir), 0);
 	}
-	private static void addStartBase(SimpleHeap q, DenseCost dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast, int dirStep, boolean db) {
+	private static void addStartBase(SimpleHeap q, DenseCost dense, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, int weight, boolean db) {
 		int hh = h(sx, sy, tx, ty, dir, turnBias);
-		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
+		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, weight), -1);
 		q.add(n);
-		if (dir % dirStep != 0) return;
 		if (db) dense.put(sx, sy, dir, 0);
 		else best.put(state(sx, sy, dir), 0);
 	}
-	private static void addStartBucket(BucketHeap q, DenseCost dense, CompactCost compact, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, boolean fast, int dirStep, boolean db, boolean cb) {
+	private static void addStartBucket(BucketHeap q, DenseCost dense, CompactCost compact, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, int weight, boolean db, boolean cb) {
 		int hh = h(sx, sy, tx, ty, dir, turnBias);
-		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, fast), -1);
+		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, weight), -1);
 		q.add(n);
-		if (dir % dirStep != 0) return;
 		if (db) dense.put(sx, sy, dir, 0);
 		else if (cb) compact.putZero(sx, sy, dir);
 		else best.put(state(sx, sy, dir), 0);
@@ -936,7 +890,7 @@ final class ChartPlotterRouteFinder {
 	private static int h(int x, int y, int tx, int ty, int dir, int turnBias) {
 		return h(x, y, tx, ty) + turn(turnBias) * minTurns(dir, tx - x, ty - y);
 	}
-	private static int wh(int h, boolean fast) {return fast ? h * 5 / 2 : h;}
+	private static int wh(int h, int weight) {return h * weight / 100;}
 	private static int smoothLimit(int turnBias) {return turnBias <= 0 ? 16 : turnBias >= 10 ? 192 : 64;}
 	private static int directSmoothDir(int sx, int sy, int tx, int ty, int dirStep) {
 		int dir = dir(tx - sx, ty - sy);
@@ -963,13 +917,6 @@ final class ChartPlotterRouteFinder {
 	private static int tightMargin(int sx, int sy, int tx, int ty) {
 		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
 		return Math.min(maxMargin(sx, sy, tx, ty, null), Math.max(32, d / 8 + 24));
-	}
-	private static boolean adaptiveEight(Footprint fp, int sx, int sy, int tx, int ty, int dirStep, boolean adaptive) {
-		if (!adaptive || fp == null || dirStep != 1) return false;
-		int m = tightMargin(sx, sy, tx, ty);
-		Bounds b = bounds(sx, sy, tx, ty, m);
-		long cells = (long) (b.maxX - b.minX + 1) * (b.maxY - b.minY + 1);
-		return cells * DX.length > EDGE_MAX;
 	}
 	private static int maxMargin(int sx, int sy, int tx, int ty, Footprint fp) {
 		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
@@ -1510,26 +1457,24 @@ final class ChartPlotterRouteFinder {
 		int minY;
 		int width;
 		int area;
-		int step;
 		boolean dom;
 		boolean on;
-		void reset(Bounds b, int dirStep) {
-			reset(b, dirStep, false);
+		void reset(Bounds b) {
+			reset(b, false);
 		}
-		void reset(Bounds b, int dirStep, boolean dom) {
+		void reset(Bounds b, boolean dom) {
 			minX = b.minX;
 			minY = b.minY;
 			width = b.maxX - b.minX + 1;
 			int height = b.maxY - b.minY + 1;
 			long cells = (long) width * height;
-			long n = cells * (DX.length / dirStep);
+			long n = cells * DX.length;
 			if (n <= 0 || n > EDGE_MAX) {
 				on = false;
 				this.dom = false;
 				return;
 			}
 			area = (int) cells;
-			step = dirStep;
 			if (v == null || v.length < n) v = new int[(int) n];
 			Arrays.fill(v, 0, (int) n, LongIntMap.MISS);
 			if (dom) {
@@ -1548,18 +1493,17 @@ final class ChartPlotterRouteFinder {
 			on = true;
 		}
 		int get(int x, int y, int dir) {
-			return v[x - minX + (y - minY) * width + dir / step * area];
+			return v[x - minX + (y - minY) * width + dir * area];
 		}
 		void put(int x, int y, int dir, int val) {
 			int pos = x - minX + (y - minY) * width;
-			v[pos + dir / step * area] = val;
-			if (dom) domPut(pos, dir / step, val);
+			v[pos + dir * area] = val;
+			if (dom) domPut(pos, dir, val);
 		}
 		boolean dominated(int pos, int dir, int g, int turn) {
 			int lim = g - turn;
 			if (lim < 0) return false;
-			int d = dir / step;
-			int m = md[pos] == d ? m2[pos] : m1[pos];
+			int m = md[pos] == dir ? m2[pos] : m1[pos];
 			return m <= lim;
 		}
 		void domPut(int pos, int dir, int val) {
@@ -1588,16 +1532,14 @@ final class ChartPlotterRouteFinder {
 		int minY;
 		int width;
 		int area;
-		int step;
 		boolean dom;
-		void reset(Corridor c, int dirStep, boolean dom, int[] index) {
+		void reset(Corridor c, boolean dom, int[] index) {
 			minX = c.b.minX;
 			minY = c.b.minY;
 			width = c.width;
 			area = c.cells;
-			step = dirStep;
 			this.index = index;
-			int n = area * (DX.length / dirStep);
+			int n = area * DX.length;
 			if (v == null || v.length < n) v = new int[n];
 			Arrays.fill(v, 0, n, LongIntMap.MISS);
 			if (dom) {
@@ -1614,7 +1556,7 @@ final class ChartPlotterRouteFinder {
 				this.dom = false;
 			}
 		}
-		int pos(int p, int dir) {return index[p] - 1 + dir / step * area;}
+		int pos(int p, int dir) {return index[p] - 1 + dir * area;}
 		void putZero(int x, int y, int dir) {
 			int p = x - minX + (y - minY) * width;
 			v[pos(p, dir)] = 0;
@@ -1623,7 +1565,7 @@ final class ChartPlotterRouteFinder {
 			return dominatedAt(index[pos] - 1, dir, g, turn);
 		}
 		boolean dominatedAt(int p, int dir, int g, int turn) {
-			return dominatedAtIndex(p, dir / step, g, turn);
+			return dominatedAtIndex(p, dir, g, turn);
 		}
 		boolean dominatedAtIndex(int p, int d, int g, int turn) {
 			int lim = g - turn;
@@ -1651,12 +1593,10 @@ final class ChartPlotterRouteFinder {
 		int[] m1;
 		int[] m2;
 		byte[] md;
-		int step;
-		void reset(Bounds b, int dirStep) {
+		void reset(Bounds b) {
 			int width = b.maxX - b.minX + 1;
 			int height = b.maxY - b.minY + 1;
 			int area = width * height;
-			step = dirStep;
 			if (m1 == null || m1.length < area) {
 				m1 = new int[area];
 				m2 = new int[area];
@@ -1669,14 +1609,12 @@ final class ChartPlotterRouteFinder {
 		boolean dominated(int pos, int dir, int g, int turn) {
 			int lim = g - turn;
 			if (lim < 0) return false;
-			int d = dir / step;
-			int m = md[pos] == d ? m2[pos] : m1[pos];
+			int m = md[pos] == dir ? m2[pos] : m1[pos];
 			return m <= lim;
 		}
 		void put(int pos, int dir, int val) {
-			int d = dir / step;
 			int old = md[pos];
-			if (old == d) {
+			if (old == dir) {
 				m1[pos] = val;
 				return;
 			}
@@ -1684,7 +1622,7 @@ final class ChartPlotterRouteFinder {
 			if (val < m) {
 				m2[pos] = m;
 				m1[pos] = val;
-				md[pos] = (byte) d;
+				md[pos] = (byte) dir;
 				return;
 			}
 			if (val < m2[pos]) m2[pos] = val;
@@ -1696,30 +1634,28 @@ final class ChartPlotterRouteFinder {
 		int minY;
 		int width;
 		int area;
-		int step;
 		boolean on;
-		void reset(Bounds b, int dirStep) {
+		void reset(Bounds b) {
 			minX = b.minX;
 			minY = b.minY;
 			width = b.maxX - b.minX + 1;
 			int height = b.maxY - b.minY + 1;
 			long cells = (long) width * height;
-			long n = cells * (DX.length / dirStep);
+			long n = cells * (DX.length / 2);
 			if (n <= 0 || n > DENSE_MAX) {
 				on = false;
 				return;
 			}
 			area = (int) cells;
-			step = dirStep;
 			if (v == null || v.length < n) v = new int[(int) n];
 			Arrays.fill(v, 0, (int) n, 0);
 			on = true;
 		}
 		int node(int x, int y, int dir) {
-			return v[x - minX + (y - minY) * width + dir / step * area] - 1;
+			return v[x - minX + (y - minY) * width + dir / 2 * area] - 1;
 		}
 		void put(int x, int y, int dir, int node) {
-			v[x - minX + (y - minY) * width + dir / step * area] = node + 1;
+			v[x - minX + (y - minY) * width + dir / 2 * area] = node + 1;
 		}
 	}
 	private static final class BaseMoveCache {
@@ -1730,21 +1666,19 @@ final class ChartPlotterRouteFinder {
 		int minY;
 		int width;
 		int area;
-		int step;
 		int mode;
 		boolean shortKey;
 		boolean on;
-		void reset(Bounds b, int dirStep) {
-			reset(b, dirStep, false, null);
+		void reset(Bounds b) {
+			reset(b, false, null);
 		}
-		void reset(Bounds b, int dirStep, boolean moveKey, Corridor c) {
+		void reset(Bounds b, boolean moveKey, Corridor c) {
 			minX = b.minX;
 			minY = b.minY;
 			width = b.maxX - b.minX + 1;
 			int height = b.maxY - b.minY + 1;
 			long cells = (long) width * height;
-			long n = cells * (DX.length / dirStep);
-			step = dirStep;
+			long n = cells * DX.length;
 			this.shortKey = moveKey;
 			if (n <= 0) {
 				on = false;
@@ -1760,7 +1694,7 @@ final class ChartPlotterRouteFinder {
 				return;
 			}
 			if (c != null) {
-				long compact = (long) c.cells * (DX.length / dirStep);
+				long compact = (long) c.cells * DX.length;
 				if (compact > 0 && compact <= EDGE_MAX) {
 					area = c.cells;
 					if (v == null || v.length < compact) v = new byte[(int) compact];
@@ -1783,7 +1717,7 @@ final class ChartPlotterRouteFinder {
 		}
 		int get(int x, int y, int odir, int dir) {
 			if (mode == MC_SPARSE) return sparse.get(key(x, y, odir, dir));
-			int p = v[x - minX + (y - minY) * width + dir / step * area];
+			int p = v[x - minX + (y - minY) * width + dir * area];
 			return p == 0 ? LongIntMap.MISS : p - 2;
 		}
 		void put(int x, int y, int odir, int dir, int p) {
@@ -1791,7 +1725,7 @@ final class ChartPlotterRouteFinder {
 				if (sparse.n < SPARSE_MOVE_MAX) sparse.put(key(x, y, odir, dir), p);
 				return;
 			}
-			v[x - minX + (y - minY) * width + dir / step * area] = (byte) (p + 2);
+			v[x - minX + (y - minY) * width + dir * area] = (byte) (p + 2);
 		}
 		private long key(int x, int y, int odir, int dir) {return shortKey ? state(x, y, dir) : moveKey(x, y, odir, dir);}
 		private static long moveKey(int x, int y, int odir, int dir) {return ((long) x & 0xfffffL) << 44 | ((long) y & 0xfffffL) << 8 | (long) odir << 4 | dir;}
@@ -1803,17 +1737,15 @@ final class ChartPlotterRouteFinder {
 		int minY;
 		int width;
 		int area;
-		int step;
 		int mode;
 		boolean on;
-		void reset(Bounds b, int dirStep) {
+		void reset(Bounds b) {
 			minX = b.minX;
 			minY = b.minY;
 			width = b.maxX - b.minX + 1;
 			int height = b.maxY - b.minY + 1;
 			long cells = (long) width * height;
-			long n = cells * (DX.length / dirStep);
-			step = dirStep;
+			long n = cells * (DX.length / 2);
 			if (n <= 0) {
 				on = false;
 				mode = MC_OFF;
@@ -1834,7 +1766,7 @@ final class ChartPlotterRouteFinder {
 		}
 		int get(int x, int y, int dir) {
 			if (mode == MC_SPARSE) return sparse.get(state(x, y, dir));
-			int p = v[x - minX + (y - minY) * width + dir / step * area];
+			int p = v[x - minX + (y - minY) * width + dir / 2 * area];
 			return p == 0 ? LongIntMap.MISS : p - 2;
 		}
 		void put(int x, int y, int dir, int p) {
@@ -1842,7 +1774,7 @@ final class ChartPlotterRouteFinder {
 				if (sparse.n < SPARSE_MOVE_MAX) sparse.put(state(x, y, dir), p);
 				return;
 			}
-			v[x - minX + (y - minY) * width + dir / step * area] = (byte) (p + 2);
+			v[x - minX + (y - minY) * width + dir / 2 * area] = (byte) (p + 2);
 		}
 	}
 	private static final class Nodes {
