@@ -1,11 +1,11 @@
-package com.chartplotter;
+package com.chartplotter.util;
 import java.io.File;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-final class ChartPlotterFiles {
+public final class ChartPlotterFiles {
 	private ChartPlotterFiles() {}
-	static boolean replace(File tmp, File dst) {
+	public static boolean replace(File tmp, File dst) {
 		try {
 			Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
 			return true;

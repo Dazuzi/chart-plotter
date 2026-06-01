@@ -1,5 +1,5 @@
-package com.chartplotter;
-final class ChartPlotterRouteMoves {
+package com.chartplotter.route;
+public final class ChartPlotterRouteMoves {
 	static final int[] DX = {0, 4, 7, 11, 10, 9, 7, 4, 0, -5, -7, -9, -10, -11, -7, -5};
 	static final int[] DY = {10, 9, 7, 5, 0, -4, -7, -9, -10, -11, -7, -4, 0, 5, 7, 11};
 	static final int[] COST = {100, 98, 98, 120, 100, 98, 98, 98, 100, 120, 98, 98, 100, 120, 98, 120};

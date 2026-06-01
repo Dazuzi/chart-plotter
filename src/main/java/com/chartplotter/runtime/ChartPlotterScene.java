@@ -1,13 +1,13 @@
-package com.chartplotter;
+package com.chartplotter.runtime;
 import javax.inject.Singleton;
 import net.runelite.api.Perspective;
 import net.runelite.api.Tile;
 import net.runelite.api.WorldView;
 @Singleton
-final class ChartPlotterScene {
+public final class ChartPlotterScene {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private Slot cache;
-	Area area(WorldView wv) {
+	public Area area(WorldView wv) {
 		Tile[][] tiles = tiles(wv);
 		Slot s = cache;
 		if (s != null && s.same(wv, tiles)) return s.area;
@@ -86,13 +86,13 @@ final class ChartPlotterScene {
 		return all[plane];
 	}
 	private static final class Slot {
-		final int baseX;
-		final int baseY;
+		public final int baseX;
+		public final int baseY;
 		final int plane;
 		final int sizeX;
 		final int sizeY;
 		final boolean top;
-		final Tile[][] tiles;
+		public final Tile[][] tiles;
 		final Area area;
 		private Slot(WorldView wv, Tile[][] tiles, Area area) {
 			baseX = wv.getBaseX();
@@ -106,24 +106,24 @@ final class ChartPlotterScene {
 		}
 		boolean same(WorldView wv, Tile[][] tiles) {return baseX == wv.getBaseX() && baseY == wv.getBaseY() && plane == wv.getPlane() && sizeX == wv.getSizeX() && sizeY == wv.getSizeY() && top == wv.isTopLevel() && this.tiles == tiles;}
 	}
-	static final class Area {
-		final Tile[][] tiles;
-		final int baseX;
-		final int baseY;
-		final int offX;
-		final int offY;
-		final int minX;
-		final int minY;
-		final int maxX;
-		final int maxY;
-		final int minCX;
-		final int minCY;
-		final int cw;
-		final int ch;
-		final boolean[] chunks;
-		final int[] cx;
-		final int[] cy;
-		final int n;
+	public static final class Area {
+		public final Tile[][] tiles;
+		public final int baseX;
+		public final int baseY;
+		public final int offX;
+		public final int offY;
+		public final int minX;
+		public final int minY;
+		public final int maxX;
+		public final int maxY;
+		public final int minCX;
+		public final int minCY;
+		public final int cw;
+		public final int ch;
+		public final boolean[] chunks;
+		public final int[] cx;
+		public final int[] cy;
+		public final int n;
 		private Area(Tile[][] tiles, int baseX, int baseY, int offX, int offY, int minX, int minY, int maxX, int maxY, int minCX, int minCY, int cw, int ch, boolean[] chunks, int n) {
 			this.tiles = tiles;
 			this.baseX = baseX;
@@ -152,19 +152,19 @@ final class ChartPlotterScene {
 				}
 			}
 		}
-		boolean missing(int lx, int ly) {
+		public boolean missing(int lx, int ly) {
 			int x = Math.floorDiv(lx, TS) + offX;
 			int y = Math.floorDiv(ly, TS) + offY;
 			return x < 0 || y < 0 || x >= tiles.length || tiles[x] == null || y >= tiles[x].length || tiles[x][y] == null;
 		}
-		boolean chunk(int x, int y) {
+		public boolean chunk(int x, int y) {
 			x -= minCX;
 			y -= minCY;
 			return x >= 0 && y >= 0 && x < cw && y < ch && chunks[x * ch + y];
 		}
-		int minWX() {return baseX + minX;}
-		int minWY() {return baseY + minY;}
-		int maxWX() {return baseX + maxX;}
-		int maxWY() {return baseY + maxY;}
+		public int minWX() {return baseX + minX;}
+		public int minWY() {return baseY + minY;}
+		public int maxWX() {return baseX + maxX;}
+		public int maxWY() {return baseY + maxY;}
 	}
 }

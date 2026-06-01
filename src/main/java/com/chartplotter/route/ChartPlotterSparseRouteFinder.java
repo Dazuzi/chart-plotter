@@ -1,8 +1,11 @@
-package com.chartplotter;
+package com.chartplotter.route;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.util.ChartPlotterMath;
 import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 import net.runelite.api.Perspective;
-final class ChartPlotterSparseRouteFinder {
+public final class ChartPlotterSparseRouteFinder {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int SPARSE_LINK = 128;
 	private static final int SPARSE_CONNECT = 192;

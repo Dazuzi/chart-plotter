@@ -1,10 +1,12 @@
-package com.chartplotter;
-import static com.chartplotter.ChartPlotterMath.rotateX;
-import static com.chartplotter.ChartPlotterMath.rotateY;
+package com.chartplotter.route;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
 import java.util.Arrays;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
-final class ChartPlotterRouteGrid {
+import static com.chartplotter.util.ChartPlotterMath.rotateX;
+import static com.chartplotter.util.ChartPlotterMath.rotateY;
+public final class ChartPlotterRouteGrid {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int DENSE_MAX = 24 << 20;
 	private static final int STEP = 32;

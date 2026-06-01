@@ -1,4 +1,7 @@
-package com.chartplotter;
+package com.chartplotter.route;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.util.ChartPlotterMath;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -6,24 +9,24 @@ import java.util.Arrays;
 import javax.inject.Singleton;
 import net.runelite.client.RuneLite;
 @Singleton
-final class ChartPlotterSparseNodes {
+public final class ChartPlotterSparseNodes {
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private int[] x = new int[64];
 	private int[] y = new int[64];
 	private int n;
 	private boolean loaded;
-	synchronized Snapshot snapshot() {
+	public synchronized Snapshot snapshot() {
 		load();
 		return new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n));
 	}
-	synchronized int nodeAt(int wx, int wy, int r) {
+	public synchronized int nodeAt(int wx, int wy, int r) {
 		load();
 		for (int i = 0; i < n; i++) {
 			if (dist(wx, wy, x[i], y[i]) <= r) return i;
 		}
 		return -1;
 	}
-	synchronized void add(int wx, int wy) {
+	public synchronized void add(int wx, int wy) {
 		load();
 		if (n == x.length) grow();
 		x[n] = wx;
@@ -31,7 +34,7 @@ final class ChartPlotterSparseNodes {
 		n++;
 		flushQuiet();
 	}
-	synchronized void move(int ox, int oy, int wx, int wy) {
+	public synchronized void move(int ox, int oy, int wx, int wy) {
 		load();
 		for (int i = 0; i < n; i++) {
 			if (x[i] != ox || y[i] != oy) continue;
@@ -42,7 +45,7 @@ final class ChartPlotterSparseNodes {
 			return;
 		}
 	}
-	synchronized void remove(int i) {
+	public synchronized void remove(int i) {
 		load();
 		if (i < 0 || i >= n) return;
 		int m = n - i - 1;
@@ -53,7 +56,7 @@ final class ChartPlotterSparseNodes {
 		n--;
 		flushQuiet();
 	}
-	synchronized void invalidate(ChartPlotterCollisionData data) {
+	public synchronized void invalidate(ChartPlotterCollisionData data) {
 		load();
 		int w = 0;
 		for (int i = 0; i < n; i++) {
@@ -128,10 +131,10 @@ final class ChartPlotterSparseNodes {
 	}
 	private static boolean digit(char c) {return c >= '0' && c <= '9';}
 	private static int dist(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by);}
-	static final class Snapshot {
-		final int[] x;
-		final int[] y;
-		Snapshot(int[] x, int[] y) {
+	public static final class Snapshot {
+		public final int[] x;
+		public final int[] y;
+		public Snapshot(int[] x, int[] y) {
 			this.x = x;
 			this.y = y;
 		}

@@ -1,28 +1,30 @@
-package com.chartplotter;
-final class ChartPlotterRoute {
-	static final int PENDING = 0;
-	static final int OK = 1;
-	static final int UNCHARTED = 2;
-	static final int NO_ROUTE = 3;
-	static final int COMPLEX = 4;
-	static final int BLOCKED = 5;
+package com.chartplotter.route;
+import com.chartplotter.ChartPlotterRouteEffort;
+import com.chartplotter.util.ChartPlotterMath;
+public final class ChartPlotterRoute {
+	public static final int PENDING = 0;
+	public static final int OK = 1;
+	public static final int UNCHARTED = 2;
+	public static final int NO_ROUTE = 3;
+	public static final int COMPLEX = 4;
+	public static final int BLOCKED = 5;
 	private static final int[] DX = ChartPlotterRouteMoves.DX;
 	private static final int[] DY = ChartPlotterRouteMoves.DY;
-	final int status;
-	final int sx;
-	final int sy;
-	final int tx;
-	final int ty;
-	final int[] x;
-	final int[] y;
-	final int n;
-	final int[] sparseX;
-	final int[] sparseY;
-	final int sparseN;
-	final int sparseBand;
-	final int turnBias;
-	final int weight;
-	final ChartPlotterRouteEffort effort;
+	public final int status;
+	public final int sx;
+	public final int sy;
+	public final int tx;
+	public final int ty;
+	public final int[] x;
+	public final int[] y;
+	public final int n;
+	public final int[] sparseX;
+	public final int[] sparseY;
+	public final int sparseN;
+	public final int sparseBand;
+	public final int turnBias;
+	public final int weight;
+	public final ChartPlotterRouteEffort effort;
 	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int[] sparseX, int[] sparseY, int sparseN, int sparseBand, int turnBias, int weight, ChartPlotterRouteEffort effort) {
 		this.status = status;
 		this.sx = sx;
@@ -41,17 +43,17 @@ final class ChartPlotterRoute {
 		this.effort = effort;
 	}
 	private static ChartPlotterRoute empty(int status, int sx, int sy, int tx, int ty, int turnBias, int weight) {return new ChartPlotterRoute(status, sx, sy, tx, ty, new int[0], new int[0], 0, new int[0], new int[0], 0, 0, turnBias, weight, null);}
-	static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(PENDING, sx, sy, tx, ty, turnBias, weight);}
-	static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(UNCHARTED, sx, sy, tx, ty, turnBias, weight);}
-	static ChartPlotterRoute none(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(NO_ROUTE, sx, sy, tx, ty, turnBias, weight);}
-	static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(COMPLEX, sx, sy, tx, ty, turnBias, weight);}
-	static ChartPlotterRoute blocked(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(BLOCKED, sx, sy, tx, ty, turnBias, weight);}
-	static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, int weight) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, new int[0], new int[0], 0, 0, turnBias, weight, null);}
-	ChartPlotterRoute sparse(int[] x, int[] y, int n, int band) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, x, y, n, band, turnBias, weight, effort);}
-	ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, turnBias, weight, effort);}
-	boolean target(int x, int y, int r) {return ChartPlotterMath.chebyshev(x, y, tx, ty) <= r;}
-	boolean start(int x, int y) {return sx == x && sy == y;}
-	ChartPlotterRoute advance(int sx, int sy, int prune, int follow, int lead) {
+	public static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(PENDING, sx, sy, tx, ty, turnBias, weight);}
+	public static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(UNCHARTED, sx, sy, tx, ty, turnBias, weight);}
+	public static ChartPlotterRoute none(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(NO_ROUTE, sx, sy, tx, ty, turnBias, weight);}
+	public static ChartPlotterRoute complex(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(COMPLEX, sx, sy, tx, ty, turnBias, weight);}
+	public static ChartPlotterRoute blocked(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(BLOCKED, sx, sy, tx, ty, turnBias, weight);}
+	public static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, int weight) {return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, new int[0], new int[0], 0, 0, turnBias, weight, null);}
+	public ChartPlotterRoute sparse(int[] x, int[] y, int n, int band) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, x, y, n, band, turnBias, weight, effort);}
+	public ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, turnBias, weight, effort);}
+	public boolean target(int x, int y, int r) {return ChartPlotterMath.chebyshev(x, y, tx, ty) <= r;}
+	public boolean start(int x, int y) {return sx == x && sy == y;}
+	public ChartPlotterRoute advance(int sx, int sy, int prune, int follow, int lead) {
 		if (status != OK || n < 2) return null;
 		if (start(sx, sy)) return this;
 		int bi = -1;
@@ -111,7 +113,7 @@ final class ChartPlotterRoute {
 		return ok(px, py, tx, ty, ox, oy, nn, turnBias, weight).sparse(sparseX, sparseY, sparseN, sparseBand).effort(effort);
 	}
 	private static int dir(int dx, int dy) {return ChartPlotterRouteMoves.dir(dx, dy);}
-	String text() {
+	public String text() {
 		if (status == PENDING) return "Charting course";
 		if (status == UNCHARTED) return "Uncharted waters";
 		if (status == BLOCKED) return "Not sailable";

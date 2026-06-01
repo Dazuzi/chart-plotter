@@ -1,18 +1,20 @@
-package com.chartplotter;
+package com.chartplotter.runtime;
+import com.chartplotter.overlay.ChartPlotterOverlay;
+import com.chartplotter.util.ChartPlotterMath;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.GameState;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
-import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.events.VarbitChanged;
-import net.runelite.api.gameval.VarbitID;
-import javax.inject.Inject;
-import javax.inject.Singleton;
 @Singleton
-final class ChartPlotterSailing {
+public final class ChartPlotterSailing {
 	private static final int MOTION_HOLD = 2;
 	private static final int COURSE_STALL = 2;
 	private final Client client;
@@ -40,7 +42,7 @@ final class ChartPlotterSailing {
 	private ChartPlotterSailing(Client client) {
 		this.client = client;
 	}
-	void sync() {
+	public void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;
 		if (boarded) syncTop();
@@ -48,7 +50,7 @@ final class ChartPlotterSailing {
 		accel = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION) / 128.0;
 		moveMode = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE);
 	}
-	void varbit(VarbitChanged e) {
+	public void varbit(VarbitChanged e) {
 		int id = e.getVarbitId();
 		if (id == VarbitID.SAILING_BOARDED_BOAT) {
 			boarded = e.getValue() == 1;
@@ -61,10 +63,10 @@ final class ChartPlotterSailing {
 			moveMode = e.getValue();
 		}
 	}
-	void loaded(WorldView wv) {
+	public void loaded(WorldView wv) {
 		if (wv != null && wv.isTopLevel()) top = wv;
 	}
-	void reset() {
+	public void reset() {
 		top = null;
 		boarded = false;
 		course = -1;
@@ -78,18 +80,18 @@ final class ChartPlotterSailing {
 		lastPlane = Integer.MIN_VALUE;
 		resetMotion();
 	}
-	void clear() {
+	public void clear() {
 		course = -1;
 		potentialBlocked = false;
 		resetMotion();
 	}
-	void scene(WorldEntity ship, LocalPoint loc) {
+	public void scene(WorldEntity ship, LocalPoint loc) {
 		course = -1;
 		motionHold = MOTION_HOLD;
 		lastLoc = loc;
 		lastAngle = heading(ship);
 	}
-	void motion(WorldEntity ship, LocalPoint loc, boolean skip) {
+	public void motion(WorldEntity ship, LocalPoint loc, boolean skip) {
 		if (!skip && lastLoc != null) {
 			int vx = loc.getX() - lastLoc.getX();
 			int vy = loc.getY() - lastLoc.getY();
@@ -111,7 +113,7 @@ final class ChartPlotterSailing {
 		} else if (!skip) lastAngle = heading(ship);
 		lastLoc = loc;
 	}
-	void setCourse(Point m) {
+	public void setCourse(Point m) {
 		if (!boarded) return;
 		WorldEntity ship = ship();
 		if (ship == null || top == null || top.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return;
@@ -123,7 +125,7 @@ final class ChartPlotterSailing {
 		stillTicks = 0;
 		block(m);
 	}
-	boolean sceneChanged(WorldView wv) {
+	public boolean sceneChanged(WorldView wv) {
 		int x = wv.getBaseX();
 		int y = wv.getBaseY();
 		int p = wv.getPlane();
@@ -133,23 +135,23 @@ final class ChartPlotterSailing {
 		lastPlane = p;
 		return changed;
 	}
-	WorldView top() {return top;}
-	WorldEntity ship() {return playerShip(client.getLocalPlayer(), top);}
-	boolean boarded() {return boarded;}
-	boolean suppress(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
-	int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
-	int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
-	double speed() {return speed;}
-	double accel() {return accel;}
-	int turnDir() {return turnDir;}
-	boolean reversing() {return moveMode == 3;}
-	double maxSpeed() {
+	public WorldView top() {return top;}
+	public WorldEntity ship() {return playerShip(client.getLocalPlayer(), top);}
+	public boolean boarded() {return boarded;}
+	public boolean suppress(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
+	public int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
+	public int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
+	public double speed() {return speed;}
+	public double accel() {return accel;}
+	public int turnDir() {return turnDir;}
+	public boolean reversing() {return moveMode == 3;}
+	public double maxSpeed() {
 		if (reversing()) return 0.5;
 		double cap = 1.0;
 		if (moveMode == 2 || moveMode == 4 || moveMode == 0 && lastMoveMode == 4) cap = baseSpeed;
 		return cap;
 	}
-	int actualHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getOrientation());}
+	public int actualHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getOrientation());}
 	private int targetHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getTargetOrientation());}
 	private boolean stalled() {return speed == 0 && stillTicks >= COURSE_STALL;}
 	private void syncTop() {if (top == null) top = client.getTopLevelWorldView();}
@@ -167,7 +169,7 @@ final class ChartPlotterSailing {
 		potentialX = m.getX();
 		potentialY = m.getY();
 	}
-	static WorldEntity playerShip(Player player, WorldView top) {
+	public static WorldEntity playerShip(Player player, WorldView top) {
 		if (player == null || top == null) return null;
 		WorldView pv = player.getWorldView();
 		if (pv == null) return null;

@@ -1,5 +1,5 @@
-package com.chartplotter;
-final class ChartPlotterRouteBounds {
+package com.chartplotter.route;
+public final class ChartPlotterRouteBounds {
 	final int minX;
 	final int minY;
 	final int maxX;

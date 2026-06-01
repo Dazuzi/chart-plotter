@@ -1,6 +1,6 @@
-package com.chartplotter;
+package com.chartplotter.route;
 import java.util.Arrays;
-final class ChartPlotterRouteWork {
+public final class ChartPlotterRouteWork {
 	private static final int EDGE_MAX = 1 << 24;
 	private static final int DENSE_MAX = 24 << 20;
 	private static final int SPARSE_MOVE_MAX = 1 << 22;

@@ -4,8 +4,8 @@ public enum ChartPlotterRouteEffort {
 	HIGH("High", 125, 100),
 	BALANCED("Balanced", 175, 80),
 	FAST("Fast", 250, 60);
-	final int weight;
-	final int corridor;
+	public final int weight;
+	public final int corridor;
 	private final String name;
 	ChartPlotterRouteEffort(String name, int weight, int corridor) {
 		this.name = name;

@@ -1,4 +1,4 @@
-package com.chartplotter;
+package com.chartplotter.collision;
 import java.util.Arrays;
 import net.runelite.api.CollisionData;
 import net.runelite.api.GameObject;
@@ -6,7 +6,7 @@ import net.runelite.api.Point;
 import net.runelite.api.Scene;
 import net.runelite.api.Tile;
 import net.runelite.api.WorldView;
-final class ChartPlotterCollisionScan {
+public final class ChartPlotterCollisionScan {
 	private static final int EDGE = 8;
 	final int baseX;
 	final int baseY;

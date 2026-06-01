@@ -1,13 +1,22 @@
-package com.chartplotter;
+package com.chartplotter.overlay;
+import com.chartplotter.ChartPlotterCacheOverlay;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterPlugin;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.runtime.ChartPlotterProjection;
+import com.chartplotter.runtime.ChartPlotterScene;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.geom.Path2D;
 import java.awt.Graphics2D;
 import java.awt.Stroke;
-import java.awt.geom.Path2D;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Perspective;
@@ -15,7 +24,6 @@ import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -282,17 +290,17 @@ public class ChartPlotterOverlay extends Overlay {
 		if (outsideViewport(client, m) || headingInactive(client, wv)) return -1;
 		return sceneHeading(client, wv, anchor, m);
 	}
-	static boolean headingInactive(Client client, WorldView wv) {
+	public static boolean headingInactive(Client client, WorldView wv) {
 		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return true;
 		MenuEntry[] es = client.getMenu().getMenuEntries();
 		return es.length == 0 || es[es.length - 1].getType() != MenuAction.SET_HEADING;
 	}
-	static boolean outsideViewport(Client client, Point m) {
+	public static boolean outsideViewport(Client client, Point m) {
 		int x = client.getViewportXOffset();
 		int y = client.getViewportYOffset();
 		return m.getX() < x || m.getY() < y || m.getX() >= x + client.getViewportWidth() || m.getY() >= y + client.getViewportHeight();
 	}
-	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
+	public static int mouseHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, mouse);
 		if (mini >= 0) return mini;
 		return sceneHeading(client, wv, anchor, mouse);

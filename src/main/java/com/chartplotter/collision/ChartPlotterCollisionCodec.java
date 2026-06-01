@@ -1,5 +1,6 @@
-package com.chartplotter;
-import com.chartplotter.ChartPlotterCollisionData.Chunk;
+package com.chartplotter.collision;
+import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
+import com.chartplotter.util.ChartPlotterFiles;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -12,11 +13,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-final class ChartPlotterCollisionCodec {
+public final class ChartPlotterCollisionCodec {
 	private static final byte VERSION = 1;
 	private static final int USHORT = 0xffff;
 	private ChartPlotterCollisionCodec() {}
-	static Map<Long, Chunk> read(File file) {
+	public static Map<Long, Chunk> read(File file) {
 		Map<Long, Chunk> data = new HashMap<>();
 		if (!file.isFile()) return data;
 		try (DataInputStream in = new DataInputStream(new GZIPInputStream(new BufferedInputStream(new FileInputStream(file))))) {
@@ -33,7 +34,7 @@ final class ChartPlotterCollisionCodec {
 		}
 		return data;
 	}
-	static boolean write(File dir, File file, Map<Long, Chunk> data) {
+	public static boolean write(File dir, File file, Map<Long, Chunk> data) {
 		File tmp = new File(dir, "collision.bin.tmp");
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
 		try (DataOutputStream out = new DataOutputStream(new GZIPOutputStream(new BufferedOutputStream(new FileOutputStream(tmp))))) {

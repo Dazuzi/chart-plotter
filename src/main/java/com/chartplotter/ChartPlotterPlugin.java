@@ -1,14 +1,18 @@
 package com.chartplotter;
+import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRoutes;
+import com.chartplotter.runtime.ChartPlotterRuntime;
+import com.chartplotter.runtime.ChartPlotterSailing;
 import com.google.inject.Provides;
 import javax.inject.Inject;
-import net.runelite.api.Point;
-import net.runelite.api.WorldEntity;
-import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WorldViewLoaded;
+import net.runelite.api.Point;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldView;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -48,13 +52,13 @@ public class ChartPlotterPlugin extends Plugin {
 	public void onGameTick(GameTick e) {runtime.tick();}
 	@SuppressWarnings("unused")
 	@Provides
-	ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
-	WorldView top() {return sailing.top();}
-	WorldEntity getShip() {return sailing.ship();}
+	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
+	public WorldView top() {return sailing.top();}
+	public WorldEntity getShip() {return sailing.ship();}
 	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
-	boolean isSailing() {return sailing.boarded();}
-	ChartPlotterRoute route() {return routes.route();}
-	boolean suppressPotential(Point m) {return sailing.suppress(m);}
-	int heading(WorldEntity ship) {return sailing.heading(ship);}
-	int course(WorldEntity ship) {return sailing.course(ship);}
+	public boolean isSailing() {return sailing.boarded();}
+	public ChartPlotterRoute route() {return routes.route();}
+	public boolean suppressPotential(Point m) {return sailing.suppress(m);}
+	public int heading(WorldEntity ship) {return sailing.heading(ship);}
+	public int course(WorldEntity ship) {return sailing.course(ship);}
 }

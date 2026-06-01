@@ -1,4 +1,13 @@
-package com.chartplotter;
+package com.chartplotter.runtime;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.overlay.ChartPlotterMinimapOverlay;
+import com.chartplotter.overlay.ChartPlotterOverlay;
+import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
+import com.chartplotter.route.ChartPlotterRoutes;
+import java.awt.event.MouseEvent;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.GameStateChanged;
@@ -10,11 +19,8 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.ui.overlay.OverlayManager;
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.awt.event.MouseEvent;
 @Singleton
-final class ChartPlotterRuntime {
+public final class ChartPlotterRuntime {
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -65,8 +71,8 @@ final class ChartPlotterRuntime {
 			return e;
 		}
 	};
-	void start() {apply();}
-	void stop() {
+	public void start() {apply();}
+	public void stop() {
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
@@ -81,8 +87,8 @@ final class ChartPlotterRuntime {
 		routes.stop();
 		sailing.reset();
 	}
-	void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
-	void varbit(VarbitChanged e) {
+	public void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
+	public void varbit(VarbitChanged e) {
 		if (!features.tracking) return;
 		sailing.varbit(e);
 		if (sailing.boarded()) return;
@@ -90,7 +96,7 @@ final class ChartPlotterRuntime {
 		collision(false, null);
 		sailing.clear();
 	}
-	void state(GameStateChanged e) {
+	public void state(GameStateChanged e) {
 		if (!features.tracking) return;
 		if (e.getGameState() == GameState.LOGGED_IN) {
 			sailing.sync();
@@ -100,19 +106,19 @@ final class ChartPlotterRuntime {
 		routes.clear();
 		collision(false, null);
 	}
-	void loaded(WorldViewLoaded e) {
+	public void loaded(WorldViewLoaded e) {
 		if (!features.tracking) return;
 		WorldView wv = e.getWorldView();
 		if (wv == null || !wv.isTopLevel()) return;
 		sailing.loaded(wv);
 		capture(wv);
 	}
-	void menu(MenuOptionClicked e) {
+	public void menu(MenuOptionClicked e) {
 		if (!features.routes) return;
 		if (e.getMenuAction() != MenuAction.SET_HEADING && !minimapOverlay.overMinimap(client.getMouseCanvasPosition())) return;
 		sailing.setCourse(client.getMouseCanvasPosition());
 	}
-	void tick() {
+	public void tick() {
 		if (!features.tracking || !sailing.boarded()) return;
 		WorldEntity ship = sailing.ship();
 		if (ship == null) {

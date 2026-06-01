@@ -1,16 +1,22 @@
-package com.chartplotter;
+package com.chartplotter.overlay;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.route.ChartPlotterSparseNodes;
+import com.chartplotter.runtime.ChartPlotterWorldMap;
+import com.chartplotter.util.ChartPlotterMath;
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.geom.Ellipse2D;
 import java.awt.Graphics2D;
 import java.awt.Stroke;
-import java.awt.geom.Ellipse2D;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 @Singleton
-final class ChartPlotterNodeEditor {
+public final class ChartPlotterNodeEditor {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int LINK_DIST = 128;
 	private static final int HIT = 2;

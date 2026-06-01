@@ -1,14 +1,18 @@
-package com.chartplotter;
-import static com.chartplotter.ChartPlotterMath.rotateX;
-import static com.chartplotter.ChartPlotterMath.rotateY;
+package com.chartplotter.runtime;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.util.ChartPlotterMath;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
-import net.runelite.api.coords.LocalPoint;
+import static com.chartplotter.util.ChartPlotterMath.rotateX;
+import static com.chartplotter.util.ChartPlotterMath.rotateY;
 @Singleton
-final class ChartPlotterProjection {
+public final class ChartPlotterProjection {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int TURN = 128;
 	private static final int STEP = 32;
@@ -39,11 +43,11 @@ final class ChartPlotterProjection {
 			public boolean reversing() {return sailing.reversing();}
 		};
 	}
-	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, boolean showExt) {
+	public Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, boolean showExt) {
 		ChartPlotterScene.Area area = scene.area(wv);
 		return path(wv, wc, anchor, from, target, limit(anchor, area), area, showExt);
 	}
-	Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, boolean showExt) {return path(wv, wc, anchor, from, target, cap, null, showExt);}
+	public Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, boolean showExt) {return path(wv, wc, anchor, from, target, cap, null, showExt);}
 	private Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
 		Key key = key(wv, wc, anchor, from, target, cap, area, showExt);
 		for (Slot s : cache) {
@@ -60,7 +64,7 @@ final class ChartPlotterProjection {
 		boolean stop = config.stopAtCollision();
 		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, stop ? blocker(wv, wc, collisionCache) : null);
 	}
-	static Path fixture(ChartPlotterCollisionData data, int ax, int ay, int from, int target, int cap, int turn, double speed, double accel, double max, boolean reversing, boolean stop, boolean showExt) {
+	public static Path fixture(ChartPlotterCollisionData data, int ax, int ay, int from, int target, int cap, int turn, double speed, double accel, double max, boolean reversing, boolean stop, boolean showExt) {
 		return raw(ax, ay, from, target, cap, null, showExt, new State(turn, speed, accel, max, reversing), stop ? blocker(0, 0, null, data) : null);
 	}
 	private static Path raw(int ax, int ay, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt, Motion motion, Blocker blocker) {
@@ -118,19 +122,19 @@ final class ChartPlotterProjection {
 		}
 		return p;
 	}
-	static int match(Path a, Path b) {
+	public static int match(Path a, Path b) {
 		int n = Math.min(a.n, b.n);
 		for (int i = 0; i < n; i++) {
 			if (a.x[i] != b.x[i] || a.y[i] != b.y[i] || a.o[i] != b.o[i]) return i;
 		}
 		return n;
 	}
-	static float[] rectX(WorldEntityConfig wc) {
+	public static float[] rectX(WorldEntityConfig wc) {
 		float ox = wc != null ? wc.getBoundsX() : 0;
 		float hw = wc != null ? wc.getBoundsWidth() / 2f : TS;
 		return new float[]{ox + hw, ox + hw, ox - hw, ox - hw};
 	}
-	static float[] rectY(WorldEntityConfig wc) {
+	public static float[] rectY(WorldEntityConfig wc) {
 		float oy = wc != null ? wc.getBoundsY() : 0;
 		float hh = wc != null ? wc.getBoundsHeight() / 2f : TS;
 		return new float[]{oy - hh, oy + hh, oy + hh, oy - hh};
@@ -370,7 +374,7 @@ final class ChartPlotterProjection {
 		final long[] key;
 		final int[] val;
 		final int mask;
-		int n;
+		public int n;
 		boolean full;
 		private FlagMemo(int n) {
 			used = new boolean[n];
@@ -386,24 +390,24 @@ final class ChartPlotterProjection {
 		}
 	}
 	private static final class Footprint {
-		final int[] x;
-		final int[] y;
+		public final int[] x;
+		public final int[] y;
 		final boolean[] corner;
-		int n;
+		public int n;
 		private Footprint(int n) {
 			x = new int[n];
 			y = new int[n];
 			corner = new boolean[n];
 		}
 	}
-	static final class Path {
-		final int[] x;
-		final int[] y;
-		final int[] o;
-		int start;
-		int n;
-		boolean blocked;
-		int blockedAt = Integer.MAX_VALUE;
+	public static final class Path {
+		public final int[] x;
+		public final int[] y;
+		public final int[] o;
+		public int start;
+		public int n;
+		public boolean blocked;
+		public int blockedAt = Integer.MAX_VALUE;
 		private Path(int cap) {
 			x = new int[cap];
 			y = new int[cap];

@@ -1,6 +1,6 @@
-package com.chartplotter;
+package com.chartplotter.collision;
 import java.lang.reflect.Field;
-final class ChartPlotterCollisionObjects {
+public final class ChartPlotterCollisionObjects {
 	private static final String[] BLOCKED = {
 		"SAILING_FETID_POOL",
 		"SAILING_FETID_POOL_2X2",

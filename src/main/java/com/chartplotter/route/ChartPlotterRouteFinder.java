@@ -1,24 +1,27 @@
-package com.chartplotter;
-import static com.chartplotter.ChartPlotterMath.rotateX;
-import static com.chartplotter.ChartPlotterMath.rotateY;
-import com.chartplotter.ChartPlotterRouteWork.BaseMoveCache;
-import com.chartplotter.ChartPlotterRouteWork.BucketHeap;
-import com.chartplotter.ChartPlotterRouteWork.CompactCost;
-import com.chartplotter.ChartPlotterRouteWork.DenseBest;
-import com.chartplotter.ChartPlotterRouteWork.DenseCost;
-import com.chartplotter.ChartPlotterRouteWork.DomCost;
-import com.chartplotter.ChartPlotterRouteWork.Heap;
-import com.chartplotter.ChartPlotterRouteWork.LongIntMap;
-import com.chartplotter.ChartPlotterRouteWork.MoveCache;
-import com.chartplotter.ChartPlotterRouteWork.Nodes;
-import com.chartplotter.ChartPlotterRouteWork.Work;
-import com.chartplotter.ChartPlotterSparseRouteFinder.Corridor;
-import com.chartplotter.ChartPlotterSparseRouteFinder.Path;
+package com.chartplotter.route;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.route.ChartPlotterRouteWork.BaseMoveCache;
+import com.chartplotter.route.ChartPlotterRouteWork.BucketHeap;
+import com.chartplotter.route.ChartPlotterRouteWork.CompactCost;
+import com.chartplotter.route.ChartPlotterSparseRouteFinder.Corridor;
+import com.chartplotter.route.ChartPlotterRouteWork.DenseBest;
+import com.chartplotter.route.ChartPlotterRouteWork.DenseCost;
+import com.chartplotter.route.ChartPlotterRouteWork.DomCost;
+import com.chartplotter.route.ChartPlotterRouteWork.Heap;
+import com.chartplotter.route.ChartPlotterRouteWork.LongIntMap;
+import com.chartplotter.route.ChartPlotterRouteWork.MoveCache;
+import com.chartplotter.route.ChartPlotterRouteWork.Nodes;
+import com.chartplotter.route.ChartPlotterSparseRouteFinder.Path;
+import com.chartplotter.route.ChartPlotterRouteWork.Work;
+import com.chartplotter.util.ChartPlotterMath;
 import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
-final class ChartPlotterRouteFinder {
+import static com.chartplotter.util.ChartPlotterMath.rotateX;
+import static com.chartplotter.util.ChartPlotterMath.rotateY;
+public final class ChartPlotterRouteFinder {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int MAX = 9000000;
 	private static final int LAZY_MAX = 1 << 27;
@@ -37,7 +40,7 @@ final class ChartPlotterRouteFinder {
 	private static final int[][] HY = hitOffsets(false);
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
-	static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int targetRadius, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
+	public static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int targetRadius, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
 		sparseBand = Math.max(20, Math.min(200, sparseBand));
 		ChartPlotterRouteGrid.Footprint fp = wc == null ? null : new ChartPlotterRouteGrid.Footprint(wc);
 		Path sp = ChartPlotterSparseRouteFinder.path(data, sparse, sx, sy, tx, ty, targetRadius, sparseBand, cancel);

@@ -1,23 +1,32 @@
-package com.chartplotter;
+package com.chartplotter.overlay;
+import com.chartplotter.ChartPlotterCacheOverlay;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterPlugin;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.runtime.ChartPlotterProjection;
+import com.chartplotter.runtime.ChartPlotterWorldMap;
+import com.chartplotter.util.ChartPlotterMath;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.Stroke;
-import java.awt.geom.Ellipse2D;
-import java.awt.geom.Path2D;
 import java.util.Map;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
-import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -98,12 +107,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			g.setClip(oldClip);
 		}
 	}
-	int[] tile(Point m) {return map.tile(m);}
-	void addNode(Point m) {editor.add(m);}
-	void startNodeMove(Point m) {editor.startMove(m);}
-	void placeNode(Point m) {editor.place(m);}
-	boolean movingNode() {return editor.moving();}
-	void nodeAlt(boolean on) {editor.alt(on);}
+	public int[] tile(Point m) {return map.tile(m);}
+	public void addNode(Point m) {editor.add(m);}
+	public void startNodeMove(Point m) {editor.startMove(m);}
+	public void placeNode(Point m) {editor.place(m);}
+	public boolean movingNode() {return editor.moving();}
+	public void nodeAlt(boolean on) {editor.alt(on);}
 	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, p, color);

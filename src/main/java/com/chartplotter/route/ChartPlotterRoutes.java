@@ -1,19 +1,25 @@
-package com.chartplotter;
-import static com.chartplotter.ChartPlotterMath.rotateX;
-import static com.chartplotter.ChartPlotterMath.rotateY;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+package com.chartplotter.route;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterRouteEffort;
+import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.runtime.ChartPlotterSailing;
+import com.chartplotter.util.ChartPlotterMath;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
-import net.runelite.api.coords.LocalPoint;
+import static com.chartplotter.util.ChartPlotterMath.rotateX;
+import static com.chartplotter.util.ChartPlotterMath.rotateY;
 @Singleton
-final class ChartPlotterRoutes {
+public final class ChartPlotterRoutes {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int PRUNE_RADIUS = 8;
 	private static final int FOLLOW_RADIUS = 24;
@@ -35,7 +41,7 @@ final class ChartPlotterRoutes {
 		this.sparseNodes = sparseNodes;
 		this.sailing = sailing;
 	}
-	void chart(int tx, int ty) {
+	public void chart(int tx, int ty) {
 		if (!sailing.boarded()) return;
 		WorldView top = sailing.top();
 		WorldEntity ship = sailing.ship();
@@ -50,7 +56,7 @@ final class ChartPlotterRoutes {
 		}
 		request(top, ship, loc, tx, ty, true);
 	}
-	void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
+	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
 		ChartPlotterRoute r = route;
 		if (r == null) return;
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
@@ -87,19 +93,19 @@ final class ChartPlotterRoutes {
 		}
 		if (!r.start(sx, sy)) request(top, ship, loc, r.tx, r.ty, false);
 	}
-	void clear() {
+	public void clear() {
 		seq.incrementAndGet();
 		route = null;
 		rev = 0;
 		busy = false;
 	}
-	void stop() {
+	public void stop() {
 		clear();
 		if (exec == null) return;
 		exec.shutdownNow();
 		exec = null;
 	}
-	ChartPlotterRoute route() {return route;}
+	public ChartPlotterRoute route() {return route;}
 	private LocalPoint routeLoc(WorldView top, WorldEntity ship, LocalPoint loc) {
 		WorldEntityConfig wc = ship.getConfig();
 		if (wc == null) return loc;

@@ -1,23 +1,24 @@
-package com.chartplotter;
-import com.chartplotter.ChartPlotterCollisionData.Chunk;
+package com.chartplotter.collision;
+import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
+import com.chartplotter.route.ChartPlotterSparseNodes;
 import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.HashMap;
+import java.util.Map;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.WorldView;
 import net.runelite.client.RuneLite;
 @Singleton
-final class ChartPlotterCollisionCache {
-	static final int UNKNOWN = ChartPlotterCollisionData.UNKNOWN;
-	static final int OPEN = ChartPlotterCollisionData.OPEN;
-	static final int BLOCKED = ChartPlotterCollisionData.BLOCKED;
-	static final int VOID = ChartPlotterCollisionData.VOID;
+public final class ChartPlotterCollisionCache {
+	public static final int UNKNOWN = ChartPlotterCollisionData.UNKNOWN;
+	public static final int OPEN = ChartPlotterCollisionData.OPEN;
+	public static final int BLOCKED = ChartPlotterCollisionData.BLOCKED;
+	public static final int VOID = ChartPlotterCollisionData.VOID;
 	private static final int EDGE = 8;
-	static final int MOVE = ChartPlotterCollisionData.MOVE;
+	public static final int MOVE = ChartPlotterCollisionData.MOVE;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, Chunk> chunks = new HashMap<>();
 	@Inject private ChartPlotterSparseNodes sparseNodes;
@@ -27,7 +28,7 @@ final class ChartPlotterCollisionCache {
 	private long rev;
 	private long savedRev;
 	private long viewRev = -1;
-	synchronized void start() {
+	public synchronized void start() {
 		if (io != null) return;
 		io = Executors.newSingleThreadScheduledExecutor(r -> {
 			Thread t = new Thread(r, "chart-plotter-collision");
@@ -37,7 +38,7 @@ final class ChartPlotterCollisionCache {
 		if (!loaded) io.execute(this::loadQuiet);
 		io.scheduleWithFixedDelay(this::flushQuiet, 30, 30, TimeUnit.SECONDS);
 	}
-	void stop() {
+	public void stop() {
 		ScheduledExecutorService ex;
 		synchronized (this) {
 			ex = io;
@@ -47,7 +48,7 @@ final class ChartPlotterCollisionCache {
 		try {ex.execute(this::flushQuiet);} catch (RuntimeException ignored) {}
 		ex.shutdown();
 	}
-	void capture(WorldView wv) {
+	public void capture(WorldView wv) {
 		ScheduledExecutorService ex;
 		synchronized (this) {
 			ex = io;
@@ -60,7 +61,7 @@ final class ChartPlotterCollisionCache {
 			try {io.execute(() -> mergeQuiet(scan));} catch (RuntimeException ignored) {}
 		}
 	}
-	synchronized ChartPlotterCollisionData snapshot() {
+	public synchronized ChartPlotterCollisionData snapshot() {
 		if (!loaded) return view;
 		if (viewRev != rev) {
 			view = new ChartPlotterCollisionData(new HashMap<>(chunks), rev);
@@ -68,7 +69,7 @@ final class ChartPlotterCollisionCache {
 		}
 		return view;
 	}
-	synchronized long rev() {return rev;}
+	public synchronized long rev() {return rev;}
 	private void mergeQuiet(ChartPlotterCollisionScan scan) {
 		try {
 			if (merge(scan)) sparseNodes.invalidate(snapshot());

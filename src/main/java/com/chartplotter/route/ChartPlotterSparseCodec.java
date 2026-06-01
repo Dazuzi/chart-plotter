@@ -1,4 +1,5 @@
-package com.chartplotter;
+package com.chartplotter.route;
+import com.chartplotter.util.ChartPlotterFiles;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -7,11 +8,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
-final class ChartPlotterSparseCodec {
+public final class ChartPlotterSparseCodec {
 	private static final byte VERSION = 1;
 	private static final int USHORT = 0xffff;
 	private ChartPlotterSparseCodec() {}
-	static ChartPlotterSparseNodes.Snapshot read(File file) {
+	public static ChartPlotterSparseNodes.Snapshot read(File file) {
 		if (!file.isFile()) return null;
 		try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
 			if (in.readByte() != VERSION) return null;
@@ -28,7 +29,7 @@ final class ChartPlotterSparseCodec {
 			return null;
 		}
 	}
-	static boolean write(File dir, File file, ChartPlotterSparseNodes.Snapshot nodes) {
+	public static boolean write(File dir, File file, ChartPlotterSparseNodes.Snapshot nodes) {
 		File tmp = new File(dir, "sparse.bin.tmp");
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
 		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmp)))) {

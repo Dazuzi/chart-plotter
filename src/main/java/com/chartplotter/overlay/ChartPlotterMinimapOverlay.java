@@ -1,23 +1,28 @@
-package com.chartplotter;
+package com.chartplotter.overlay;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterPlugin;
+import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.runtime.ChartPlotterProjection;
+import com.chartplotter.util.ChartPlotterMath;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Graphics2D;
-import java.awt.Shape;
-import java.awt.Stroke;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.awt.Graphics2D;
+import java.awt.Shape;
+import java.awt.Stroke;
 import javax.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.Perspective;
-import net.runelite.api.Point;
-import net.runelite.api.WorldEntity;
-import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.Perspective;
+import net.runelite.api.Point;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldView;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -79,8 +84,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.setClip(oldClip);
 		return null;
 	}
-	boolean overMinimap(Point p) {return p != null && clip != null && clip.contains(p.getX(), p.getY());}
-	static int mouseHeading(Client client, LocalPoint anchor, Point mouse) {
+	public boolean overMinimap(Point p) {return p != null && clip != null && clip.contains(p.getX(), p.getY());}
+	public static int mouseHeading(Client client, LocalPoint anchor, Point mouse) {
 		if (mouse == null) return -1;
 		Widget w = minimap(client);
 		if (w == null || w.isHidden() || !clip(client, w).contains(mouse.getX(), mouse.getY())) return -1;
