@@ -3,11 +3,15 @@ import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
 import com.chartplotter.util.ChartPlotterFiles;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,6 +33,23 @@ public final class ChartPlotterCollisionCodec {
 				long mask = in.readLong();
 				long blocked = in.readLong();
 				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(mask, blocked & mask));
+			}
+		} catch (Exception ignored) {
+		}
+		return data;
+	}
+	public static Map<Long, Chunk> readText(InputStream src) {
+		Map<Long, Chunk> data = new HashMap<>();
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(src, StandardCharsets.UTF_8))) {
+			String s;
+			while ((s = in.readLine()) != null) {
+				String[] p = s.trim().split("\\s+");
+				if (p.length != 3) continue;
+				int cx = Integer.parseInt(p[0]);
+				int cy = Integer.parseInt(p[1]);
+				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) continue;
+				long blocked = Long.parseUnsignedLong(p[2], 16);
+				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(-1L, blocked));
 			}
 		} catch (Exception ignored) {
 		}

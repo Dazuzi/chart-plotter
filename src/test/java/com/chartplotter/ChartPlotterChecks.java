@@ -140,8 +140,26 @@ public final class ChartPlotterChecks {
 		Map<Long, ChartPlotterCollisionData.Chunk> read = ChartPlotterCollisionCodec.read(file);
 		eq(1, read.size());
 		eq(ChartPlotterCollisionCache.BLOCKED, read.get(ChartPlotterCollisionData.key(3, 4)).flag(1));
+		try (InputStream in = ChartPlotterChecks.class.getResourceAsStream("/com/chartplotter/collision.txt")) {
+			if (in == null) fail();
+			Map<Long, ChartPlotterCollisionData.Chunk> text = ChartPlotterCollisionCodec.readText(in);
+			File out = new File(dir, "collision-text.bin");
+			yes(!text.isEmpty());
+			yes(ChartPlotterCollisionCodec.write(dir, out, text));
+			same(text, ChartPlotterCollisionCodec.read(out));
+			Files.delete(out.toPath());
+		}
 		Files.delete(file.toPath());
 		Files.delete(dir.toPath());
+	}
+	private static void same(Map<Long, ChartPlotterCollisionData.Chunk> a, Map<Long, ChartPlotterCollisionData.Chunk> b) {
+		eq(a.size(), b.size());
+		for (Map.Entry<Long, ChartPlotterCollisionData.Chunk> e : a.entrySet()) {
+			ChartPlotterCollisionData.Chunk c = b.get(e.getKey());
+			if (c == null) fail();
+			eq(e.getValue().known, c.known);
+			eq(e.getValue().blocked, c.blocked);
+		}
 	}
 	private static void sparse() throws Exception {
 		try (InputStream in = ChartPlotterChecks.class.getResourceAsStream("/com/chartplotter/sparse-nodes.txt")) {
@@ -230,6 +248,7 @@ public final class ChartPlotterChecks {
 		eq(3001, (int) Math.floor(w[0]));
 		eq(3002, (int) Math.floor(w[1]));
 	}
+	private static void eq(long a, long b) {if (a != b) fail();}
 	private static void eq(int a, int b) {if (a != b) fail();}
 	private static void eq(double a, double b) {if (Double.compare(a, b) != 0) fail();}
 	private static void eq(boolean a, boolean b) {if (a != b) fail();}

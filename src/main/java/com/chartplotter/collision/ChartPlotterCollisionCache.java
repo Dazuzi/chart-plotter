@@ -2,6 +2,7 @@ package com.chartplotter.collision;
 import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
 import com.chartplotter.route.ChartPlotterSparseNodes;
 import java.io.File;
+import java.io.InputStream;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -133,14 +134,25 @@ public final class ChartPlotterCollisionCache {
 		}
 	}
 	private void load() {
-		Map<Long, Chunk> data = ChartPlotterCollisionCodec.read(file());
+		File f = file();
+		boolean seed = !f.isFile();
+		Map<Long, Chunk> data = seed ? defaults() : ChartPlotterCollisionCodec.read(f);
 		synchronized (this) {
 			chunks.clear();
 			chunks.putAll(data);
 			rev++;
-			savedRev = rev;
+			savedRev = seed && !data.isEmpty() ? rev - 1 : rev;
 			viewRev = -1;
 			loaded = true;
+		}
+		if (seed && !data.isEmpty()) flush();
+	}
+	private Map<Long, Chunk> defaults() {
+		try (InputStream in = ChartPlotterCollisionCache.class.getResourceAsStream("/com/chartplotter/collision.txt")) {
+			if (in == null) return new HashMap<>();
+			return ChartPlotterCollisionCodec.readText(in);
+		} catch (Exception ignored) {
+			return new HashMap<>();
 		}
 	}
 	private void flushQuiet() {
