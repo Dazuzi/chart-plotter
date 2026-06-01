@@ -51,7 +51,7 @@ public class ChartPlotterOverlay extends Overlay {
 		boolean showWorld = config.worldEnabled();
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
 		if (!showWorld && !cacheOverlay.world) return null;
-		WorldView top = client.getTopLevelWorldView();
+		WorldView top = plugin.top();
 		if (top == null) return null;
 		SceneArea area = sceneArea(top);
 		if (cacheOverlay.world) drawCache(g, top, area);

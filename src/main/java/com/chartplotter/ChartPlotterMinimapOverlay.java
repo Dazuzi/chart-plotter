@@ -56,7 +56,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		Shape c = clip(client, m);
 		clip = c;
 		if (!config.minimapEnabled()) return null;
-		WorldView top = client.getTopLevelWorldView();
+		WorldView top = plugin.top();
 		WorldEntity ship = plugin.getShip();
 		if (ship == null || top == null) return null;
 		LocalPoint anchor = ship.getTargetLocation();

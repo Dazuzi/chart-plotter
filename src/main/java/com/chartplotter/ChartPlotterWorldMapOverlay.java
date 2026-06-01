@@ -82,7 +82,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			g.setClip(oldClip);
 			return null;
 		}
-		WorldView top = client.getTopLevelWorldView();
+		WorldView top = plugin.top();
 		WorldEntity ship = plugin.getShip();
 		if (ship == null || top == null) {
 			g.setStroke(oldStroke);

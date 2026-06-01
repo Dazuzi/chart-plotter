@@ -17,6 +17,7 @@ import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.VarbitChanged;
@@ -55,7 +56,8 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private ChartPlotterConfig config;
 	@Inject private ChartPlotterCollisionCache collisionCache;
 	@Inject private ChartPlotterSparseNodes sparseNodes;
-	private boolean boarded;
+	private volatile WorldView top;
+	private volatile boolean boarded;
 	private double baseSpeed;
 	private double accel;
 	private double moveMode;
@@ -175,7 +177,10 @@ public class ChartPlotterPlugin extends Plugin {
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged e) {
 		int id = e.getVarbitId();
-		if (id == VarbitID.SAILING_BOARDED_BOAT) boarded = e.getValue() == 1;
+		if (id == VarbitID.SAILING_BOARDED_BOAT) {
+			boarded = e.getValue() == 1;
+			if (boarded) syncTop();
+		}
 		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED) baseSpeed = e.getValue() / 128.0;
 		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION) accel = e.getValue() / 128.0;
 		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE) {
@@ -192,9 +197,27 @@ public class ChartPlotterPlugin extends Plugin {
 	}
 	@SuppressWarnings("unused")
 	@Subscribe
+	public void onGameStateChanged(GameStateChanged e) {
+		if (e.getGameState() == GameState.LOGGED_IN) {
+			sync();
+			return;
+		}
+		top = null;
+		boarded = false;
+		course = -1;
+		potentialBlocked = false;
+		clearRoute();
+		collision(false, null);
+		resetMotion();
+	}
+	@SuppressWarnings("unused")
+	@Subscribe
 	public void onWorldViewLoaded(WorldViewLoaded e) {
 		WorldView wv = e.getWorldView();
-		if (wv != null && wv.isTopLevel()) capture(wv);
+		if (wv != null && wv.isTopLevel()) {
+			top = wv;
+			capture(wv);
+		}
 	}
 	@SuppressWarnings("unused")
 	@Subscribe
@@ -203,9 +226,9 @@ public class ChartPlotterPlugin extends Plugin {
 		setCourse(client.getMouseCanvasPosition());
 	}
 	private void setCourse(Point m) {
+		if (!isSailing()) return;
 		WorldEntity ship = getShip();
 		if (ship == null) return;
-		WorldView top = client.getTopLevelWorldView();
 		if (top == null || top.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return;
 		LocalPoint loc = ship.getLocalLocation();
 		if (loc == null) return;
@@ -218,7 +241,6 @@ public class ChartPlotterPlugin extends Plugin {
 	}
 	private void chartCourse(Point m) {
 		if (!isSailing()) return;
-		WorldView top = client.getTopLevelWorldView();
 		WorldEntity ship = getShip();
 		if (top == null || ship == null) return;
 		LocalPoint loc = ship.getTargetLocation();
@@ -236,7 +258,7 @@ public class ChartPlotterPlugin extends Plugin {
 	@SuppressWarnings({"unused", "UnusedParameters"})
 	@Subscribe
 	public void onGameTick(GameTick e) {
-		WorldView top = client.getTopLevelWorldView();
+		if (!isSailing()) return;
 		WorldEntity ship = getShip();
 		if (ship == null) {
 			course = -1;
@@ -288,12 +310,10 @@ public class ChartPlotterPlugin extends Plugin {
 	@SuppressWarnings("unused")
 	@Provides
 	ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
-	WorldEntity getShip() {return getPlayerShip(client.getLocalPlayer(), client.getTopLevelWorldView());}
+	WorldView top() {return top;}
+	WorldEntity getShip() {return getPlayerShip(client.getLocalPlayer(), top);}
 	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
-	boolean isSailing() {
-		WorldView top = client.getTopLevelWorldView();
-		return boarded && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING && getShip() != null;
-	}
+	boolean isSailing() {return boarded;}
 	ChartPlotterRoute route() {return route;}
 	boolean suppressPotential(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
 	int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
@@ -336,13 +356,16 @@ public class ChartPlotterPlugin extends Plugin {
 	private void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;
+		if (boarded) syncTop();
 		baseSpeed = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED) / 128.0;
 		accel = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION) / 128.0;
 		moveMode = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE);
 	}
+	private void syncTop() {if (top == null) top = client.getTopLevelWorldView();}
 	private void reset() {
 		collisionActive = false;
 		editorCacheActive = false;
+		top = null;
 		boarded = false;
 		course = -1;
 		clearRoute();
