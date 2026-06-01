@@ -8,9 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import javax.inject.Singleton;
 import net.runelite.client.RuneLite;
@@ -25,7 +23,7 @@ final class ChartPlotterSparseNodes {
 	private boolean loaded;
 	synchronized Snapshot snapshot() {
 		load();
-		return new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n), n);
+		return new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n));
 	}
 	synchronized int nodeAt(int wx, int wy, int r) {
 		load();
@@ -42,16 +40,16 @@ final class ChartPlotterSparseNodes {
 		n++;
 		flushQuiet();
 	}
-	synchronized boolean move(int ox, int oy, int wx, int wy) {
+	synchronized void move(int ox, int oy, int wx, int wy) {
 		load();
 		for (int i = 0; i < n; i++) {
 			if (x[i] != ox || y[i] != oy) continue;
-			if (x[i] == wx && y[i] == wy) return false;
+			if (x[i] == wx && y[i] == wy) return;
 			x[i] = wx;
 			y[i] = wy;
-			return true;
+			flushQuiet();
+			return;
 		}
-		return false;
 	}
 	synchronized void remove(int i) {
 		load();
@@ -74,10 +72,6 @@ final class ChartPlotterSparseNodes {
 		}
 		if (w == n) return;
 		n = w;
-		flushQuiet();
-	}
-	synchronized void save() {
-		load();
 		flushQuiet();
 	}
 	private void load() {
@@ -152,15 +146,7 @@ final class ChartPlotterSparseNodes {
 		} catch (Exception ignored) {
 			return;
 		}
-		try {
-			Files.move(tmp.toPath(), file().toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		} catch (AtomicMoveNotSupportedException e) {
-			try {
-				Files.move(tmp.toPath(), file().toPath(), StandardCopyOption.REPLACE_EXISTING);
-			} catch (Exception ignored) {
-			}
-		} catch (Exception ignored) {
-		}
+		ChartPlotterFiles.replace(tmp, file());
 	}
 	private File file() {return new File(dir, "sparse.bin");}
 	private void ensure(int c) {
@@ -174,15 +160,13 @@ final class ChartPlotterSparseNodes {
 		return data.flagAt(wx, wy) == ChartPlotterCollisionCache.BLOCKED;
 	}
 	private static boolean digit(char c) {return c >= '0' && c <= '9';}
-	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
+	private static int dist(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by);}
 	static final class Snapshot {
 		final int[] x;
 		final int[] y;
-		final int n;
-		private Snapshot(int[] x, int[] y, int n) {
+		private Snapshot(int[] x, int[] y) {
 			this.x = x;
 			this.y = y;
-			this.n = n;
 		}
 	}
 }

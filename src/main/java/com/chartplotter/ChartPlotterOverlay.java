@@ -370,18 +370,18 @@ public class ChartPlotterOverlay extends Overlay {
 		if (plugin.suppressPotential(m)) return -1;
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, m);
 		if (mini >= 0) return mini;
-		if (!viewport(m) || !activeHeading(wv)) return -1;
+		if (outsideViewport(client, m) || headingInactive(client, wv)) return -1;
 		return sceneHeading(client, wv, anchor, m);
 	}
-	private boolean activeHeading(WorldView wv) {
-		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return false;
+	static boolean headingInactive(Client client, WorldView wv) {
+		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return true;
 		MenuEntry[] es = client.getMenu().getMenuEntries();
-		return es.length > 0 && es[es.length - 1].getType() == MenuAction.SET_HEADING;
+		return es.length == 0 || es[es.length - 1].getType() != MenuAction.SET_HEADING;
 	}
-	private boolean viewport(Point m) {
+	static boolean outsideViewport(Client client, Point m) {
 		int x = client.getViewportXOffset();
 		int y = client.getViewportYOffset();
-		return m.getX() >= x && m.getY() >= y && m.getX() < x + client.getViewportWidth() && m.getY() < y + client.getViewportHeight();
+		return m.getX() < x || m.getY() < y || m.getX() >= x + client.getViewportWidth() || m.getY() >= y + client.getViewportHeight();
 	}
 	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, mouse);
@@ -447,12 +447,11 @@ public class ChartPlotterOverlay extends Overlay {
 		Tile[][] tiles = tiles(wv);
 		AreaSlot s = areaCache;
 		if (s != null && s.same(wv, tiles)) return s.area;
-		SceneArea area = area(wv);
+		SceneArea area = area(wv, tiles);
 		areaCache = new AreaSlot(wv, tiles, area);
 		return area;
 	}
-	private static SceneArea area(WorldView wv) {
-		Tile[][] tiles = tiles(wv);
+	private static SceneArea area(WorldView wv, Tile[][] tiles) {
 		if (tiles == null) return null;
 		int offX = wv.isTopLevel() ? (tiles.length - wv.getSizeX()) / 2 : 0;
 		int offY = 0;

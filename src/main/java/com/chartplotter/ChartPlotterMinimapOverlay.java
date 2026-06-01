@@ -10,9 +10,6 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import javax.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.Constants;
-import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
@@ -176,18 +173,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
 		if (plugin.suppressPotential(m)) return -1;
 		if (overMinimap(m)) return mouseHeading(client, anchor, m);
-		if (!viewport(m) || !activeHeading(wv)) return -1;
+		if (ChartPlotterOverlay.outsideViewport(client, m) || ChartPlotterOverlay.headingInactive(client, wv)) return -1;
 		return ChartPlotterOverlay.mouseHeading(client, wv, anchor, m);
-	}
-	private boolean activeHeading(WorldView wv) {
-		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return false;
-		MenuEntry[] es = client.getMenu().getMenuEntries();
-		return es.length > 0 && es[es.length - 1].getType() == MenuAction.SET_HEADING;
-	}
-	private boolean viewport(Point m) {
-		int x = client.getViewportXOffset();
-		int y = client.getViewportYOffset();
-		return m.getX() >= x && m.getY() >= y && m.getX() < x + client.getViewportWidth() && m.getY() < y + client.getViewportHeight();
 	}
 	private static Shape clip(Client client, Widget minimap) {
 		java.awt.Rectangle b = minimap.getBounds();

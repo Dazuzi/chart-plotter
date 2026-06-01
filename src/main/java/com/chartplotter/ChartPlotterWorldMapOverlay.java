@@ -30,6 +30,22 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final int NODE_LINK = 128;
 	private static final int NODE_HIT = 2;
 	private static final int NODE_DOT = 5;
+	private static final Color WEB = new Color(80, 210, 255, 90);
+	private static final Color LINK = new Color(255, 210, 70, 210);
+	private static final Color LINK_DOT = new Color(255, 210, 70, 230);
+	private static final Color BLOCK_LINK = new Color(255, 80, 60, 210);
+	private static final Color BLOCK_DOT = new Color(255, 80, 60, 230);
+	private static final Color NODE_FILL = new Color(230, 250, 255, 230);
+	private static final Color DOT_RING = new Color(10, 20, 25, 210);
+	private static final Color STATUS_UNCHARTED = new Color(255, 80, 60, 220);
+	private static final Color STATUS_BLOCKED = new Color(170, 170, 170, 220);
+	private static final Color STATUS_WARN = new Color(255, 190, 40, 220);
+	private static final Color SPARSE_GLOW = new Color(255, 0, 200, 90);
+	private static final Color SPARSE_LINE = new Color(255, 70, 230, 240);
+	private static final Color SPARSE_RING = new Color(20, 20, 20, 190);
+	private static final Color SPARSE_DOT = new Color(255, 80, 220, 240);
+	private static final Color CACHE_EDGE = new Color(0, 210, 120, 150);
+	private static final Color TIP_BG = new Color(20, 20, 20, 220);
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -146,8 +162,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		moveX = nodes.x[i];
 		moveY = nodes.y[i];
 		moveN = 0;
-		ensureMove(nodes.n);
-		for (int j = 0; j < nodes.n; j++) {
+		ensureMove(nodes.x.length);
+		for (int j = 0; j < nodes.x.length; j++) {
 			if (j == i) continue;
 			if (dist(nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]) > NODE_LINK || !clear(data, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j])) continue;
 			moveLinkX[moveN] = nodes.x[j];
@@ -171,11 +187,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			clearMove();
 			return;
 		}
-		if (!sparseNodes.move(moveX, moveY, t[0], t[1])) {
-			clearMove();
-			return;
-		}
-		sparseNodes.save();
+		sparseNodes.move(moveX, moveY, t[0], t[1]);
 		clearMove();
 	}
 	boolean movingNode() {return moving;}
@@ -185,9 +197,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		ChartPlotterSparseNodes.Snapshot nodes = sparseNodes.snapshot();
 		g.setStroke(new BasicStroke(1, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		g.setColor(new Color(80, 210, 255, 90));
-		for (int i = 0; i < nodes.n; i++) {
-			for (int j = i + 1; j < nodes.n; j++) {
+		g.setColor(WEB);
+		for (int i = 0; i < nodes.x.length; i++) {
+			for (int j = i + 1; j < nodes.x.length; j++) {
 				if (selected(nodes.x[i], nodes.y[i]) || selected(nodes.x[j], nodes.y[j])) continue;
 				if (dist(nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]) > NODE_LINK || !clear(data, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j])) continue;
 				line(g, s, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]);
@@ -197,15 +209,15 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		else if (nodeMode()) {
 			int[] t = tile(client.getMouseCanvasPosition(), s);
 			if (t != null) {
-				g.setColor(new Color(255, 210, 70, 210));
-				for (int i = 0; i < nodes.n; i++) {
+				g.setColor(LINK);
+				for (int i = 0; i < nodes.x.length; i++) {
 					if (dist(t[0], t[1], nodes.x[i], nodes.y[i]) <= NODE_LINK && clear(data, t[0], t[1], nodes.x[i], nodes.y[i])) line(g, s, t[0], t[1], nodes.x[i], nodes.y[i]);
 				}
-				dot(g, s, t[0], t[1], new Color(255, 210, 70, 230), NODE_DOT + 2);
+				dot(g, s, t[0], t[1], LINK_DOT, NODE_DOT + 2);
 			}
 		}
-		for (int i = 0; i < nodes.n; i++) {
-			if (!selected(nodes.x[i], nodes.y[i])) dot(g, s, nodes.x[i], nodes.y[i], new Color(230, 250, 255, 230), NODE_DOT);
+		for (int i = 0; i < nodes.x.length; i++) {
+			if (!selected(nodes.x[i], nodes.y[i])) dot(g, s, nodes.x[i], nodes.y[i], NODE_FILL, NODE_DOT);
 		}
 		g.setStroke(old);
 	}
@@ -214,11 +226,11 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		boolean ok = t != null && canMove(data, nodes, t[0], t[1]);
 		int wx = ok ? t[0] : moveX;
 		int wy = ok ? t[1] : moveY;
-		g.setColor(ok ? new Color(255, 210, 70, 210) : new Color(255, 80, 60, 210));
+		g.setColor(ok ? LINK : BLOCK_LINK);
 		for (int i = 0; i < moveN; i++) {
 			if (has(nodes, moveLinkX[i], moveLinkY[i])) line(g, s, wx, wy, moveLinkX[i], moveLinkY[i]);
 		}
-		dot(g, s, wx, wy, ok ? new Color(255, 210, 70, 230) : new Color(255, 80, 60, 230), NODE_DOT + 2);
+		dot(g, s, wx, wy, ok ? LINK_DOT : BLOCK_DOT, NODE_DOT + 2);
 	}
 	private void line(Graphics2D g, MapState s, int ax, int ay, int bx, int by) {
 		if (!s.data.surfaceContainsPosition(ax, ay) || !s.data.surfaceContainsPosition(bx, by)) return;
@@ -229,7 +241,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private void dot(Graphics2D g, MapState s, int wx, int wy, Color c, int r) {
 		if (!s.data.surfaceContainsPosition(wx, wy)) return;
 		Point p = mapPoint(s, wx, wy, 0.5, 0.5);
-		g.setColor(new Color(10, 20, 25, 210));
+		g.setColor(DOT_RING);
 		g.fill(new Ellipse2D.Double(p.getX() - r / 2.0 - 1, p.getY() - r / 2.0 - 1, r + 2, r + 2));
 		g.setColor(c);
 		g.fill(new Ellipse2D.Double(p.getX() - r / 2.0, p.getY() - r / 2.0, r, r));
@@ -267,14 +279,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		return true;
 	}
 	private boolean occupied(ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
-		for (int i = 0; i < nodes.n; i++) {
+		for (int i = 0; i < nodes.x.length; i++) {
 			if (selected(nodes.x[i], nodes.y[i])) continue;
 			if (dist(wx, wy, nodes.x[i], nodes.y[i]) <= NODE_HIT) return true;
 		}
 		return false;
 	}
 	private boolean has(ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
-		for (int i = 0; i < nodes.n; i++) {
+		for (int i = 0; i < nodes.x.length; i++) {
 			if (nodes.x[i] == wx && nodes.y[i] == wy) return true;
 		}
 		return false;
@@ -292,12 +304,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private boolean nodeMode() {return config.nodeEditor() && nodeAlt && !client.isMenuOpen();}
 	private static int nodeAt(ChartPlotterSparseNodes.Snapshot nodes, int wx, int wy) {
-		for (int i = 0; i < nodes.n; i++) {
+		for (int i = 0; i < nodes.x.length; i++) {
 			if (dist(wx, wy, nodes.x[i], nodes.y[i]) <= ChartPlotterWorldMapOverlay.NODE_HIT) return i;
 		}
 		return -1;
 	}
-	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
+	private static int dist(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by);}
 	private void draw(Graphics2D g, MapState s, ChartPlotterOverlay.Path p, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, p, color);
@@ -342,7 +354,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private void drawRoute(Graphics2D g, MapState s, ChartPlotterRoute r) {
 		if (r == null) return;
-		Color c = r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? new Color(255, 80, 60, 220) : r.status == ChartPlotterRoute.BLOCKED ? new Color(170, 170, 170, 220) : new Color(255, 190, 40, 220);
+		Color c = r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
 		Point t = mapPoint(s, r.tx, r.ty, 0.5, 0.5);
 		if (r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
 		if (r.status == ChartPlotterRoute.OK) {
@@ -376,10 +388,10 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		if (line == null) return;
 		Stroke old = g.getStroke();
 		g.setStroke(new BasicStroke(sparseWidth(s, r.sparseBand), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		g.setColor(new Color(255, 0, 200, 90));
+		g.setColor(SPARSE_GLOW);
 		g.draw(line);
 		g.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		g.setColor(new Color(255, 70, 230, 240));
+		g.setColor(SPARSE_LINE);
 		g.draw(line);
 		for (int i = 0; i < r.sparseN; i++) sparseDot(g, s, r.sparseX[i], r.sparseY[i]);
 		g.setStroke(old);
@@ -401,9 +413,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private void sparseDot(Graphics2D g, MapState s, int wx, int wy) {
 		Point p = mapPoint(s, wx, wy, 0.5, 0.5);
-		g.setColor(new Color(20, 20, 20, 190));
+		g.setColor(SPARSE_RING);
 		g.fill(new Ellipse2D.Double(p.getX() - 4, p.getY() - 4, 8, 8));
-		g.setColor(new Color(255, 80, 220, 240));
+		g.setColor(SPARSE_DOT);
 		g.fill(new Ellipse2D.Double(p.getX() - 3, p.getY() - 3, 6, 6));
 		g.setColor(Color.RED);
 		g.fill(new Ellipse2D.Double(p.getX() - 1.5, p.getY() - 1.5, 3, 3));
@@ -415,7 +427,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Stroke old = g.getStroke();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
-		g.setColor(new Color(0, 210, 120, 150));
+		g.setColor(CACHE_EDGE);
 		for (Map.Entry<Long, ChartPlotterCollisionCache.Chunk> e : data.entries()) {
 			if (e.getValue().empty()) continue;
 			int cx = (int) (e.getKey() >> 32);
@@ -477,7 +489,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		if (y < r.y) y = p.getY() + 12;
 		x = Math.max(r.x + 4, Math.min(x, r.x + r.width - w - 4));
 		y = Math.max(r.y + 4, Math.min(y, r.y + r.height - h - 4));
-		g.setColor(new Color(20, 20, 20, 220));
+		g.setColor(TIP_BG);
 		g.fillRect(x, y, w, h);
 		g.setColor(Color.WHITE);
 		g.drawString(s, x + 5, y + fm.getAscent() + 3);

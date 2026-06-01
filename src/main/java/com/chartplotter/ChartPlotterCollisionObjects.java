@@ -17,10 +17,9 @@ final class ChartPlotterCollisionObjects {
 	}
 	private static int[] ids() {
 		int[] ids = new int[ChartPlotterCollisionObjects.BLOCKED.length];
-		int n = 0;
 		for (int i = 0; i < ChartPlotterCollisionObjects.BLOCKED.length; i++) {
 			int id = id(ChartPlotterCollisionObjects.BLOCKED[i]);
-			ids[n++] = id >= 0 ? id : FALLBACK[i];
+			ids[i] = id >= 0 ? id : FALLBACK[i];
 		}
 		return ids;
 	}

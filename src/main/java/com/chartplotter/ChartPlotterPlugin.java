@@ -358,7 +358,7 @@ public class ChartPlotterPlugin extends Plugin {
 		double y = vy / 128.0;
 		return Math.round(Math.sqrt(x * x + y * y) / 0.5) * 0.5;
 	}
-	private static boolean near(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= ROUTE_CLEAR_RADIUS;}
+	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= ROUTE_CLEAR_RADIUS;}
 	private void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;

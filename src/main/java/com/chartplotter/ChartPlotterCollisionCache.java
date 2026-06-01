@@ -6,9 +6,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -252,18 +250,7 @@ final class ChartPlotterCollisionCache {
 		} catch (Exception ignored) {
 			return false;
 		}
-		try {
-			Files.move(tmp.toPath(), file().toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		} catch (AtomicMoveNotSupportedException e) {
-			try {
-				Files.move(tmp.toPath(), file().toPath(), StandardCopyOption.REPLACE_EXISTING);
-			} catch (Exception ignored) {
-				return false;
-			}
-		} catch (Exception ignored) {
-			return false;
-		}
-		return true;
+		return ChartPlotterFiles.replace(tmp, file());
 	}
 	private File file() {return new File(dir, "collision.bin");}
 	private static int count(Map<Long, Chunk> data) {
