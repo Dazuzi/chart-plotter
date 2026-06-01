@@ -16,6 +16,7 @@ final class ChartPlotterRouteFinder {
 	private static final int SPARSE_CONNECT = 192;
 	private static final int SPARSE_LOCAL_LINK = 256;
 	private static final int SPARSE_LOCAL_TRIES = 8;
+	private static final int LOOKUP_PAD = 11;
 	private static final int STEP = 32;
 	private static final int MODE_BASE = 0;
 	private static final int MODE_TILE = 1;
@@ -39,8 +40,14 @@ final class ChartPlotterRouteFinder {
 	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST = 9;
 	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID = 10;
 	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST = 11;
-	private static final int EXP_BASE = EXP_MAP_DOM_MOVE_COMPACT_BEST;
-	private static final int EXP_ACTIVE = EXP_MAP_DOM_MOVE_COMPACT_BEST;
+	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX = 12;
+	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE = 13;
+	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET = 14;
+	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_POS = 15;
+	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET = 16;
+	private static final int EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD = 17;
+	private static final int EXP_BASE = EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET;
+	private static final int EXP_ACTIVE = EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;
 	private static final int BUCKET_TIE_8 = 8;
 	private static final int BUCKET_TIE_16 = 16;
 	private static final int REACH_CHECK = 4095;
@@ -492,7 +499,8 @@ final class ChartPlotterRouteFinder {
 		Nodes nodes = w.ba;
 		LongIntMap best = w.bg;
 		BaseMoveCache moves = w.bmoves;
-		moves.reset(b, dirStep, expMoveKey(exp), expMoveCompact(exp) ? corridor : null);
+		moves.reset(b, dirStep, expMoveKey(exp), expMoveCompact(exp) ? corridor : null, expCompactReset(exp));
+		if (expCompactPad(exp) && moves.mode == MC_COMPACT) moves.pad(corridor);
 		data.cache(b, LAZY_MAX);
 		if (expCompactGrid(exp) && moves.mode == MC_COMPACT) data.cacheCompact(corridor, moves.index);
 		DenseCost dense = w.bbest;
@@ -523,13 +531,25 @@ final class ChartPlotterRouteFinder {
 		int[] tileDelta = w.tileDelta;
 		int[] bestDelta = w.bestDelta;
 		int[] moveDelta = w.moveDelta;
+		int[] padDelta = w.padDelta;
 		byte[] corridorMask = corridor == null ? null : corridor.mask;
 		boolean moveDense = moves.mode == MC_DENSE;
 		boolean moveCompact = moves.mode == MC_COMPACT;
+		boolean compactIndex = moveCompact && expCompactIndex(exp);
+		boolean compactOffset = cb && expCompactOffset(exp);
+		boolean compactPos = cb && expCompactPos(exp);
+		boolean compactPad = cb && expCompactPad(exp);
+		int[] nodePos = compactPos ? w.positions(nodes.x.length) : null;
+		if (compactPos) {
+			int p = sx - minX + (sy - minY) * width;
+			Arrays.fill(nodePos, 0, nodes.n, p);
+		}
 		for (int i = 0; i < DX.length; i++) {
 			tileDelta[i] = DX[i] + DY[i] * width;
 			if (db) bestDelta[i] = tileDelta[i] + i / dirStep * dense.area;
+			else if (compactOffset) bestDelta[i] = i / dirStep * compact.area;
 			if (moveDense) moveDelta[i] = i / dirStep * moves.area;
+			if (compactPad) padDelta[i] = DX[i] + DY[i] * moves.padWidth;
 		}
 		boolean domFirst = dense.dom || compact.dom;
 		if (dom != null) domFirst = true;
@@ -547,9 +567,11 @@ final class ChartPlotterRouteFinder {
 			int ad = nodes.dir[a];
 			int ag = nodes.g[a];
 			int dist = nodes.d[a];
-			int pos = ax - minX + (ay - minY) * width;
+			int pos = compactPad ? 0 : compactPos ? nodePos[a] : ax - minX + (ay - minY) * width;
+			int padPos = compactPad ? ax - minX + LOOKUP_PAD + (ay - minY + LOOKUP_PAD) * moves.padWidth : 0;
+			int currentCompact = compactPos ? moves.index[pos] - 1 : 0;
 			if (nodes.prev[a] >= 0) {
-				int bg = db ? dense.v[pos + ad / dirStep * dense.area] : cb ? compact.get(pos, ad) : best.get(state(ax, ay, ad));
+				int bg = db ? dense.v[pos + ad / dirStep * dense.area] : cb ? compactPad ? compact.v[moves.padded[padPos] - 1 + bestDelta[ad]] : compactOffset ? compact.v[(compactPos ? currentCompact : moves.index[pos] - 1) + bestDelta[ad]] : compact.get(pos, ad) : best.get(state(ax, ay, ad));
 				if (bg == LongIntMap.MISS || ag != bg) {
 					stale++;
 					continue;
@@ -574,7 +596,7 @@ final class ChartPlotterRouteFinder {
 				}
 			} else if (cb && turn > 0) {
 				if (bench != null) bench.domCheck++;
-				if (compact.dominated(pos, ad, ag, turn)) {
+				if (compactPad ? compact.dominatedAt(moves.padded[padPos] - 1, ad, ag, turn) : compactPos ? compact.dominatedAt(currentCompact, ad, ag, turn) : compact.dominated(pos, ad, ag, turn)) {
 					if (bench != null) bench.dominated++;
 					continue;
 				}
@@ -595,16 +617,34 @@ final class ChartPlotterRouteFinder {
 				if (bench != null) bench.steps++;
 				int nx = ax + DX[i];
 				int ny = ay + DY[i];
-				if (nx < minX || ny < minY || nx > maxX || ny > maxY) {
-					if (bench != null) bench.boundsSkip++;
-					continue;
+				int np = 0;
+				int cp = 0;
+				if (compactPad) {
+					cp = moves.padded[padPos + padDelta[i]] - 1;
+					if (cp < 0) {
+						if (bench != null) bench.corridorSkip++;
+						continue;
+					}
+				} else {
+					if (nx < minX || ny < minY || nx > maxX || ny > maxY) {
+						if (bench != null) bench.boundsSkip++;
+						continue;
+					}
+					np = pos + tileDelta[i];
+					if (compactIndex) {
+						cp = moves.index[np] - 1;
+						if (cp < 0) {
+							if (bench != null) bench.corridorSkip++;
+							continue;
+						}
+					} else {
+						if (corridorMask != null && corridorMask[np] == 0) {
+							if (bench != null) bench.corridorSkip++;
+							continue;
+						}
+						if (moveCompact) cp = moves.index[np] - 1;
+					}
 				}
-				int np = pos + tileDelta[i];
-				if (corridorMask != null && corridorMask[np] == 0) {
-					if (bench != null) bench.corridorSkip++;
-					continue;
-				}
-				int cp = moveCompact ? moves.index[np] - 1 : 0;
 				int step = COST[i];
 				int nd = dist + step;
 				if (nd > cap) {
@@ -616,7 +656,7 @@ final class ChartPlotterRouteFinder {
 				int bestPos = 0;
 				if (domFirst) {
 					if (bench != null) bench.domCheck++;
-					boolean dominated = db ? dense.dominated(np, i, ng, turn) : cb ? compact.dominatedAt(cp, i, ng, turn) : dom != null && dom.dominated(np, i, ng, turn);
+					boolean dominated = db ? dense.dominated(np, i, ng, turn) : cb ? compactOffset ? compact.dominatedAtIndex(cp, di, ng, turn) : compact.dominatedAt(cp, i, ng, turn) : dom != null && dom.dominated(np, i, ng, turn);
 					if (dominated) {
 						if (bench != null) bench.domSkip++;
 						continue;
@@ -630,7 +670,7 @@ final class ChartPlotterRouteFinder {
 						continue;
 					}
 				} else if (cb) {
-					bestPos = compact.posAt(cp, i);
+					bestPos = compactOffset ? cp + bestDelta[i] : compact.posAt(cp, i);
 					int old = compact.v[bestPos];
 					if (old != LongIntMap.MISS && old <= ng) {
 						if (bench != null) bench.bestSkip++;
@@ -661,7 +701,7 @@ final class ChartPlotterRouteFinder {
 						if (bench != null) bench.moveHit++;
 					}
 				} else if (moveCompact) {
-					movePos = cp + i / dirStep * moves.area;
+					movePos = cb && expCompactReuse(exp) ? bestPos : cp + i / dirStep * moves.area;
 					int v = moves.v[movePos];
 					if (v != 0) {
 						p = v - 2;
@@ -696,13 +736,20 @@ final class ChartPlotterRouteFinder {
 					if (dense.dom) dense.domPut(np, i / dirStep, ng);
 				} else if (cb) {
 					compact.v[bestPos] = ng;
-					if (compact.dom) compact.domPutAt(cp, i / dirStep, ng);
+					if (compact.dom) compact.domPutAt(cp, compactOffset ? di : i / dirStep, ng);
 				} else {
 					best.put(key, ng);
 					if (dom != null) dom.put(np, i, ng);
 				}
 				int hh = h(nx, ny, tx, ty, i, turnBias);
-				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a), tieG);
+				if (compactPos) {
+					int nn = nodes.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a);
+					if (nn >= nodePos.length) nodePos = w.positions(nodes.x.length);
+					nodePos[nn] = np;
+					q.add(nn, tieG);
+				} else {
+					q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, fast), a), tieG);
+				}
 				if (bench != null) bench.queued++;
 				if (q.n > maxQ) maxQ = q.n;
 			}
@@ -1395,20 +1442,32 @@ final class ChartPlotterRouteFinder {
 		if ("map-dom-movecompact-best".equalsIgnoreCase(s) || "best".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST;
 		if ("map-dom-movecompact-best-grid".equalsIgnoreCase(s) || "grid".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID;
 		if ("map-dom-movecompact-best-grid-dst".equalsIgnoreCase(s) || "dst".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;
+		if ("map-dom-movecompact-best-index".equalsIgnoreCase(s) || "index".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX;
+		if ("map-dom-movecompact-best-reuse".equalsIgnoreCase(s) || "reuse".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE;
+		if ("map-dom-movecompact-best-offset".equalsIgnoreCase(s) || "offset".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET;
+		if ("map-dom-movecompact-best-pos".equalsIgnoreCase(s) || "pos".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_POS;
+		if ("map-dom-movecompact-best-reset".equalsIgnoreCase(s) || "reset".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET;
+		if ("map-dom-movecompact-best-pad".equalsIgnoreCase(s) || "pad".equalsIgnoreCase(s)) return EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;
 		return EXP_ACTIVE;
 	}
-	private static int tieG(int exp) {return exp == EXP_TIE_G_16_BASE || exp == EXP_MOVE_KEY || exp == EXP_MAP_DOM || exp == EXP_POINT_FP || exp == EXP_PHASE_FP || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST ? BUCKET_TIE_16 : exp == EXP_TIE_G_8_BASE ? BUCKET_TIE_8 : 0;}
-	private static boolean bucketSentinel(int exp) {return exp == EXP_TIE_G_16_BASE || exp == EXP_TIE_G_8_BASE || exp == EXP_MOVE_KEY || exp == EXP_MAP_DOM || exp == EXP_POINT_FP || exp == EXP_PHASE_FP || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
+	private static int tieG(int exp) {return exp == EXP_TIE_G_16_BASE || exp == EXP_MOVE_KEY || exp == EXP_MAP_DOM || exp == EXP_POINT_FP || exp == EXP_PHASE_FP || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD ? BUCKET_TIE_16 : exp == EXP_TIE_G_8_BASE ? BUCKET_TIE_8 : 0;}
+	private static boolean bucketSentinel(int exp) {return exp == EXP_TIE_G_16_BASE || exp == EXP_TIE_G_8_BASE || exp == EXP_MOVE_KEY || exp == EXP_MAP_DOM || exp == EXP_POINT_FP || exp == EXP_PHASE_FP || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
 	private static int bucketBase(int exp, int sx, int sy, int tx, int ty, boolean fast) {return bucketSentinel(exp) && !fast ? h(sx, sy, tx, ty) : 0;}
-	private static boolean expMoveKey(int exp) {return exp == EXP_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
-	private static boolean expMoveCompact(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
-	private static boolean expCompactBest(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
+	private static boolean expMoveKey(int exp) {return exp == EXP_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
+	private static boolean expMoveCompact(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
+	private static boolean expCompactBest(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
 	private static boolean expCompactGrid(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
 	private static boolean expDstBlock(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
-	private static boolean expMapDom(int exp) {return exp == EXP_MAP_DOM || exp == EXP_POINT_FP || exp == EXP_PHASE_FP || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST;}
+	private static boolean expCompactIndex(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
+	private static boolean expCompactReuse(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
+	private static boolean expCompactOffset(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
+	private static boolean expCompactPos(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS;}
+	private static boolean expCompactReset(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET;}
+	private static boolean expCompactPad(int exp) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
+	private static boolean expMapDom(int exp) {return exp == EXP_MAP_DOM || exp == EXP_POINT_FP || exp == EXP_PHASE_FP || exp == EXP_MAP_DOM_MOVE_KEY || exp == EXP_MAP_DOM_MOVE_COMPACT || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD;}
 	private static int experimentMode(int mode, int exp) {return exp == EXP_PHASE_FP && mode == MODE_TILE ? MODE_PHASE : mode;}
-	private static int activeExp(int exp, int moveMode, boolean compactBest) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST ? compactBest ? exp : activeExp(EXP_MAP_DOM_MOVE_COMPACT, moveMode, false) : exp != EXP_MAP_DOM_MOVE_COMPACT ? exp : moveMode == MC_COMPACT ? exp : moveMode == MC_SPARSE ? EXP_MAP_DOM_MOVE_KEY : EXP_MAP_DOM;}
-	private static String expName(int exp) {return exp == EXP_TIE_G_16_BASE ? "tie-g16-base" : exp == EXP_TIE_G_8_BASE ? "tie-g8-base" : exp == EXP_MOVE_KEY ? "move-key" : exp == EXP_MAP_DOM ? "map-dom" : exp == EXP_POINT_FP ? "point-fp" : exp == EXP_PHASE_FP ? "phase-fp" : exp == EXP_MAP_DOM_MOVE_KEY ? "map-dom-movekey" : exp == EXP_MAP_DOM_MOVE_COMPACT ? "map-dom-movecompact" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST ? "map-dom-movecompact-best" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID ? "map-dom-movecompact-best-grid" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST ? "map-dom-movecompact-best-grid-dst" : "none";}
+	private static int activeExp(int exp, int moveMode, boolean compactBest) {return exp == EXP_MAP_DOM_MOVE_COMPACT_BEST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET || exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD ? compactBest ? exp : activeExp(EXP_MAP_DOM_MOVE_COMPACT, moveMode, false) : exp != EXP_MAP_DOM_MOVE_COMPACT ? exp : moveMode == MC_COMPACT ? exp : moveMode == MC_SPARSE ? EXP_MAP_DOM_MOVE_KEY : EXP_MAP_DOM;}
+	private static String expName(int exp) {return exp == EXP_TIE_G_16_BASE ? "tie-g16-base" : exp == EXP_TIE_G_8_BASE ? "tie-g8-base" : exp == EXP_MOVE_KEY ? "move-key" : exp == EXP_MAP_DOM ? "map-dom" : exp == EXP_POINT_FP ? "point-fp" : exp == EXP_PHASE_FP ? "phase-fp" : exp == EXP_MAP_DOM_MOVE_KEY ? "map-dom-movekey" : exp == EXP_MAP_DOM_MOVE_COMPACT ? "map-dom-movecompact" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST ? "map-dom-movecompact-best" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID ? "map-dom-movecompact-best-grid" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_GRID_DST ? "map-dom-movecompact-best-grid-dst" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_INDEX ? "map-dom-movecompact-best-index" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_REUSE ? "map-dom-movecompact-best-reuse" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_OFFSET ? "map-dom-movecompact-best-offset" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_POS ? "map-dom-movecompact-best-pos" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_RESET ? "map-dom-movecompact-best-reset" : exp == EXP_MAP_DOM_MOVE_COMPACT_BEST_PAD ? "map-dom-movecompact-best-pad" : "none";}
 	private static boolean nearSegment(int x, int y, int ax, int ay, int bx, int by, int band) {
 		long dx = bx - ax;
 		long dy = by - ay;
@@ -2285,6 +2344,8 @@ final class ChartPlotterRouteFinder {
 		final int[] tileDelta = new int[DX.length];
 		final int[] bestDelta = new int[DX.length];
 		final int[] moveDelta = new int[DX.length];
+		final int[] padDelta = new int[DX.length];
+		int[] nodePos;
 		final Nodes a = new Nodes(1 << 15);
 		final Heap aq = new Heap(a, 1 << 15);
 		final LongIntMap ag = new LongIntMap(1 << 15);
@@ -2299,6 +2360,11 @@ final class ChartPlotterRouteFinder {
 			ba.clear();
 			bq.clear();
 			bucket.clear();
+		}
+		int[] positions(int n) {
+			if (nodePos == null) nodePos = new int[n];
+			else if (nodePos.length < n) nodePos = Arrays.copyOf(nodePos, n);
+			return nodePos;
 		}
 	}
 	private static final class Reach {
@@ -2439,9 +2505,11 @@ final class ChartPlotterRouteFinder {
 			return dominatedAt(index[pos] - 1, dir, g, turn);
 		}
 		boolean dominatedAt(int p, int dir, int g, int turn) {
+			return dominatedAtIndex(p, dir / step, g, turn);
+		}
+		boolean dominatedAtIndex(int p, int d, int g, int turn) {
 			int lim = g - turn;
 			if (lim < 0) return false;
-			int d = dir / step;
 			int m = md[p] == d ? m2[p] : m1[p];
 			return m <= lim;
 		}
@@ -2539,6 +2607,8 @@ final class ChartPlotterRouteFinder {
 	private static final class BaseMoveCache {
 		byte[] v;
 		int[] index;
+		int[] padded;
+		int padWidth;
 		LongIntMap sparse;
 		int minX;
 		int minY;
@@ -2548,10 +2618,11 @@ final class ChartPlotterRouteFinder {
 		int mode;
 		boolean shortKey;
 		boolean on;
+		Corridor indexed;
 		void reset(Bounds b, int dirStep) {
-			reset(b, dirStep, false, null);
+			reset(b, dirStep, false, null, false);
 		}
-		void reset(Bounds b, int dirStep, boolean moveKey, Corridor c) {
+		void reset(Bounds b, int dirStep, boolean moveKey, Corridor c, boolean keepIndex) {
 			minX = b.minX;
 			minY = b.minY;
 			width = b.maxX - b.minX + 1;
@@ -2579,11 +2650,14 @@ final class ChartPlotterRouteFinder {
 					area = c.cells;
 					if (v == null || v.length < compact) v = new byte[(int) compact];
 					else Arrays.fill(v, 0, (int) compact, (byte) 0);
-					if (index == null || index.length < c.mask.length) index = new int[c.mask.length];
-					else Arrays.fill(index, 0, c.mask.length, 0);
-					int p = 0;
-					for (int i = 0; i < c.mask.length; i++) {
-						if (c.mask[i] != 0) index[i] = ++p;
+					if (!keepIndex || indexed != c || index == null || index.length < c.mask.length) {
+						if (index == null || index.length < c.mask.length) index = new int[c.mask.length];
+						else Arrays.fill(index, 0, c.mask.length, 0);
+						int p = 0;
+						for (int i = 0; i < c.mask.length; i++) {
+							if (c.mask[i] != 0) index[i] = ++p;
+						}
+						indexed = c;
 					}
 					mode = MC_COMPACT;
 					on = true;
@@ -2594,6 +2668,14 @@ final class ChartPlotterRouteFinder {
 			else sparse.clear();
 			mode = MC_SPARSE;
 			on = true;
+		}
+		void pad(Corridor c) {
+			int height = c.mask.length / c.width;
+			padWidth = c.width + LOOKUP_PAD * 2;
+			int n = padWidth * (height + LOOKUP_PAD * 2);
+			if (padded == null || padded.length < n) padded = new int[n];
+			else Arrays.fill(padded, 0, n, 0);
+			for (int y = 0; y < height; y++) System.arraycopy(index, y * c.width, padded, (y + LOOKUP_PAD) * padWidth + LOOKUP_PAD, c.width);
 		}
 		int get(int x, int y, int odir, int dir) {
 			if (mode == MC_SPARSE) return sparse.get(key(x, y, odir, dir));
