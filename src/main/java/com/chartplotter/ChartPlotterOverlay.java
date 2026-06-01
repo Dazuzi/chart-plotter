@@ -1,4 +1,6 @@
 package com.chartplotter;
+import static com.chartplotter.ChartPlotterMath.rotateX;
+import static com.chartplotter.ChartPlotterMath.rotateY;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -7,7 +9,6 @@ import java.awt.Stroke;
 import java.awt.geom.Path2D;
 import javax.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Constants;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
@@ -28,7 +29,6 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final int STEP = 32;
 	private static final int MEMO = 16384;
 	private static final double FADE = 0.72;
-	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -226,7 +226,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
 		for (int i = 1; i < r.n; i++) have = routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], have);
-		if (have && (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty)) routeSegment(line, wv, area, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, have);
+		if (have && (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty)) routeSegment(line, wv, area, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, true);
 		g.setColor(config.chartColor());
 		g.draw(line);
 	}
@@ -371,7 +371,7 @@ public class ChartPlotterOverlay extends Overlay {
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, m);
 		if (mini >= 0) return mini;
 		if (!viewport(m) || !activeHeading(wv)) return -1;
-		return mouseHeading(client, wv, anchor, m);
+		return sceneHeading(client, wv, anchor, m);
 	}
 	private boolean activeHeading(WorldView wv) {
 		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return false;
@@ -386,6 +386,9 @@ public class ChartPlotterOverlay extends Overlay {
 	static int mouseHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
 		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, mouse);
 		if (mini >= 0) return mini;
+		return sceneHeading(client, wv, anchor, mouse);
+	}
+	private static int sceneHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
 		Point center = Perspective.localToCanvas(client, anchor, 0);
 		if (center == null || mouse == null) return -1;
 		int n = 16;
@@ -626,8 +629,6 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return false;
 	}
-	private static int rotateX(int cx, int o, int x, int y) {return cx + (int) (((long) Perspective.COSINE[o] * x + (long) Perspective.SINE[o] * y) >> 16);}
-	private static int rotateY(int cy, int o, int x, int y) {return cy + (int) (((long) Perspective.COSINE[o] * y - (long) Perspective.SINE[o] * x) >> 16);}
 	private static int min(float[] v) {return (int) Math.floor(Math.min(Math.min(v[0], v[1]), Math.min(v[2], v[3])));}
 	private static int max(float[] v) {return (int) Math.ceil(Math.max(Math.max(v[0], v[1]), Math.max(v[2], v[3])));}
 	private static int next(int v, int max) {return Math.min(v + STEP, max);}
@@ -661,10 +662,9 @@ public class ChartPlotterOverlay extends Overlay {
 	private static int flag(ChartPlotterCollisionData data, WorldView wv, int x, int y) {
 		int wx = wv.getBaseX() + x;
 		int wy = wv.getBaseY() + y;
-		ChartPlotterCollisionCache.Chunk c = data.chunk(wx >> 3, wy >> 3);
-		return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((wx & 7) + ((wy & 7) << 3));
+		return data.flagAt(wx, wy);
 	}
-	private static boolean blocker(int f) {return (f & MOVE) != 0;}
+	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
 	private static int limit(LocalPoint anchor, SceneArea area) {
 		if (area == null) return 512;
 		int ax = Math.floorDiv(anchor.getX(), TS);

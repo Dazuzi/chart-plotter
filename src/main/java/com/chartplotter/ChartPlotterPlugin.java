@@ -1,4 +1,6 @@
 package com.chartplotter;
+import static com.chartplotter.ChartPlotterMath.rotateX;
+import static com.chartplotter.ChartPlotterMath.rotateY;
 import com.google.inject.Provides;
 import java.awt.event.MouseEvent;
 import java.util.concurrent.ExecutorService;
@@ -351,7 +353,11 @@ public class ChartPlotterPlugin extends Plugin {
 	static int norm(int v) {return ((v % 2048) + 2048) % 2048;}
 	static int round(double v) {return (int) (Math.round(Math.abs(v)) * Math.signum(v));}
 	static int snap(int v) {return round(v / 32.0) * 32;}
-	static double speed(int vx, int vy) {return Math.round(Math.sqrt(Math.pow(vx / 128.0, 2) + Math.pow(vy / 128.0, 2)) / 0.5) * 0.5;}
+	static double speed(int vx, int vy) {
+		double x = vx / 128.0;
+		double y = vy / 128.0;
+		return Math.round(Math.sqrt(x * x + y * y) / 0.5) * 0.5;
+	}
 	private static boolean near(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= ROUTE_CLEAR_RADIUS;}
 	private void sync() {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
@@ -499,8 +505,6 @@ public class ChartPlotterPlugin extends Plugin {
 	private boolean stalled() {return speed == 0 && stillTicks >= COURSE_STALL;}
 	private int actualHeading(WorldEntity ship) {return norm(ship.getOrientation());}
 	private int targetHeading(WorldEntity ship) {return norm(ship.getTargetOrientation());}
-	private static int rotateX(int cx, int o, int x, int y) {return cx + (int) (((long) Perspective.COSINE[o] * x + (long) Perspective.SINE[o] * y) >> 16);}
-	private static int rotateY(int cy, int o, int x, int y) {return cy + (int) (((long) Perspective.COSINE[o] * y - (long) Perspective.SINE[o] * x) >> 16);}
 	private void startRouteExec() {
 		if (routeExec != null) return;
 		routeExec = Executors.newSingleThreadExecutor(r -> {

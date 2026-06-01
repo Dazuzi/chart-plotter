@@ -36,7 +36,7 @@ final class ChartPlotterCollisionCache {
 	private static final byte VERSION = 1;
 	private static final int EDGE = 8;
 	private static final int USHORT = 0xffff;
-	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
+	static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, Chunk> chunks = new HashMap<>();
 	@Inject private ChartPlotterSparseNodes sparseNodes;
@@ -78,13 +78,6 @@ final class ChartPlotterCollisionCache {
 			if (io != ex) return;
 			try {io.execute(() -> mergeQuiet(scan));} catch (RuntimeException ignored) {}
 		}
-	}
-	synchronized int flag(WorldView wv, int sx, int sy) {
-		if (!loaded) return UNKNOWN;
-		int wx = wv.getBaseX() + sx;
-		int wy = wv.getBaseY() + sy;
-		Chunk c = chunks.get(key(wx >> 3, wy >> 3));
-		return c == null ? UNKNOWN : c.flag((wx & 7) + ((wy & 7) << 3));
 	}
 	synchronized ChartPlotterCollisionData snapshot() {
 		if (!loaded) return view;

@@ -1,6 +1,5 @@
 package com.chartplotter;
 import java.lang.reflect.Field;
-import java.util.Arrays;
 final class ChartPlotterCollisionObjects {
 	private static final String[] BLOCKED = {
 		"SAILING_FETID_POOL",
@@ -17,14 +16,13 @@ final class ChartPlotterCollisionObjects {
 		return false;
 	}
 	private static int[] ids() {
-		int[] ids = new int[ChartPlotterCollisionObjects.BLOCKED.length + FALLBACK.length];
+		int[] ids = new int[ChartPlotterCollisionObjects.BLOCKED.length];
 		int n = 0;
-		for (String name : ChartPlotterCollisionObjects.BLOCKED) {
-			int id = id(name);
-			if (id >= 0) ids[n++] = id;
+		for (int i = 0; i < ChartPlotterCollisionObjects.BLOCKED.length; i++) {
+			int id = id(ChartPlotterCollisionObjects.BLOCKED[i]);
+			ids[n++] = id >= 0 ? id : FALLBACK[i];
 		}
-		for (int id : FALLBACK) ids[n++] = id;
-		return Arrays.copyOf(ids, n);
+		return ids;
 	}
 	private static int id(String name) {
 		int id = id("net.runelite.api.gameval.ObjectID1", name);

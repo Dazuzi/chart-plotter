@@ -72,8 +72,7 @@ final class ChartPlotterSparseNodes {
 			x[w] = x[i];
 			y[w++] = y[i];
 		}
-		int r = n - w;
-		if (r == 0) return;
+		if (w == n) return;
 		n = w;
 		flushQuiet();
 	}
@@ -172,8 +171,7 @@ final class ChartPlotterSparseNodes {
 		y = Arrays.copyOf(y, y.length << 1);
 	}
 	private static boolean blocked(ChartPlotterCollisionData data, int wx, int wy) {
-		ChartPlotterCollisionCache.Chunk c = data.chunk(wx >> 3, wy >> 3);
-		return c != null && c.flag((wx & 7) + ((wy & 7) << 3)) == ChartPlotterCollisionCache.BLOCKED;
+		return data.flagAt(wx, wy) == ChartPlotterCollisionCache.BLOCKED;
 	}
 	private static boolean digit(char c) {return c >= '0' && c <= '9';}
 	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}

@@ -13,6 +13,10 @@ final class ChartPlotterCollisionData {
 	ChartPlotterCollisionCache.Chunk chunk(int x, int y) {
 		return base.get(key(x, y));
 	}
+	int flagAt(int x, int y) {
+		ChartPlotterCollisionCache.Chunk c = chunk(x >> 3, y >> 3);
+		return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((x & 7) + ((y & 7) << 3));
+	}
 	boolean uncached(int x, int y) {
 		ChartPlotterCollisionCache.Chunk c = chunk(x, y);
 		return c == null || c.empty();

@@ -1,7 +1,8 @@
 package com.chartplotter;
+import static com.chartplotter.ChartPlotterMath.rotateX;
+import static com.chartplotter.ChartPlotterMath.rotateY;
 import java.util.Arrays;
 import java.util.function.BooleanSupplier;
-import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
 final class ChartPlotterRouteFinder {
@@ -31,7 +32,6 @@ final class ChartPlotterRouteFinder {
 	private static final int[] OR = {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 0, 128, 256, 384, 512, 640, 768, 896};
 	private static final int[][] HX = hitOffsets(true);
 	private static final int[][] HY = hitOffsets(false);
-	private static final int MOVE = CollisionDataFlag.BLOCK_MOVEMENT_FULL | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_NORTH | CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH | CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST | CollisionDataFlag.BLOCK_MOVEMENT_WEST | CollisionDataFlag.BLOCK_MOVEMENT_OBJECT | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR_DECORATION | CollisionDataFlag.BLOCK_MOVEMENT_FLOOR;
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
 	static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int targetRadius, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
@@ -577,8 +577,7 @@ final class ChartPlotterRouteFinder {
 		return unknown ? -1 : 1;
 	}
 	private static int rawFlag(ChartPlotterCollisionData data, int x, int y) {
-		ChartPlotterCollisionCache.Chunk c = data.chunk(x >> 3, y >> 3);
-		return c == null ? ChartPlotterCollisionCache.UNKNOWN : c.flag((x & 7) + ((y & 7) << 3));
+		return data.flagAt(x, y);
 	}
 	private static int connected(Grid data, Reach r, int sx, int sy, int tx, int ty, int targetRadius, Bounds b, BooleanSupplier cancel) {
 		if (near(sx, sy, tx, ty, targetRadius)) return 1;
@@ -849,7 +848,7 @@ final class ChartPlotterRouteFinder {
 		}
 		return 1;
 	}
-	private static boolean blocker(int f) {return (f & MOVE) != 0;}
+	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
 	private static boolean near(int ax, int ay, int bx, int by, int r) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= r;}
 	private static int targetFlag(Grid data, int tx, int ty, int r, boolean relaxed) {
 		int f = data.flag(tx, ty);
@@ -961,8 +960,6 @@ final class ChartPlotterRouteFinder {
 		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
 		return Math.max(1, (r + TS - 1) / TS);
 	}
-	private static int rotateX(int cx, int o, int x, int y) {return cx + (int) (((long) Perspective.COSINE[o] * x + (long) Perspective.SINE[o] * y) >> 16);}
-	private static int rotateY(int cy, int o, int x, int y) {return cy + (int) (((long) Perspective.COSINE[o] * y - (long) Perspective.SINE[o] * x) >> 16);}
 	private static int next(int v, int max) {return Math.min(v + STEP, max);}
 	private static boolean edge(int x, int y, int minX, int maxX, int minY, int maxY) {return x == minX || x == maxX || y == minY || y == maxY;}
 	private static int span(int min, int max) {return (max - min + STEP - 1) / STEP + 1;}
