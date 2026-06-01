@@ -46,12 +46,11 @@ final class ChartPlotterRouteFinder {
 		SparsePath sp = sparsePath(data, sparse, sx, sy, tx, ty, targetRadius, sparseBand, cancel);
 		boolean sparseFan = sp != null && adaptive && dirStep == 1;
 		int sparseStep = sparseFan ? 1 : step;
-		int sparseCandidates = sparseCandidates(dirs, fast, adaptive, fp);
 		if (sp != null && sp.pending) {
 			return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
 		}
 		if (sp != null) {
-			ChartPlotterRoute r = sparseRoute(data, sparse, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, sparseStep, fp == null ? MODE_BASE : MODE_TILE, targetRadius, sparseBand, sp, sparseCandidates, cancel);
+			ChartPlotterRoute r = sparseRoute(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, sparseStep, fp == null ? MODE_BASE : MODE_TILE, targetRadius, sparseBand, sp, cancel);
 			if (r.status == ChartPlotterRoute.PENDING || r.status == ChartPlotterRoute.OK) return r;
 		}
 		return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
@@ -436,99 +435,12 @@ final class ChartPlotterRouteFinder {
 		}
 		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, fast) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
 	}
-	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, int sparseBand, SparsePath first, int maxCandidates, BooleanSupplier cancel) {
-		SparsePath[] paths = sparseAlternates(data, nodes, sx, sy, tx, ty, targetRadius, sparseBand, first, maxCandidates, cancel);
-		int n = 0;
-		for (int i = 0; i < paths.length; i++) {
-			if (paths[i].pending) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, fast);
-			SparsePath p = simplifySparse(data, paths[i]);
-			if (sameSparse(paths, n, p)) continue;
-			paths[n++] = p;
-		}
-		paths = Arrays.copyOf(paths, n);
-		sortSparse(paths, turnBias);
-		return sparseRouteFast(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, sparseBand, paths, cancel);
-	}
-	private static ChartPlotterRoute sparseRouteFast(ChartPlotterCollisionData data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, int sparseBand, SparsePath[] paths, BooleanSupplier cancel) {
-		int tries = paths.length > 0 && paths[0].cost >= 12000 ? 2 : 1;
-		for (int t = 0; t < tries; t++) {
-			int band = t == 0 ? sparseBand : sparseRetryBand(sparseBand, paths[0]);
-			if (t > 0 && band == sparseBand) continue;
-			for (SparsePath p : paths) {
-				Corridor c = corridor(p, band);
-				ChartPlotterRoute r = find(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, c, cancel).sparse(p.x, p.y, p.n, c.band);
-				if (r.status == ChartPlotterRoute.PENDING || r.status == ChartPlotterRoute.OK) return r;
-			}
-		}
-		return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, fast);
-	}
-	private static int sparseRetryBand(int sparseBand, SparsePath p) {
-		int band = Math.max(200, sparseBand + p.cost / 100);
-		return Math.min(360, band);
-	}
-	private static void sortSparse(SparsePath[] paths, int turnBias) {
-		for (int i = 1; i < paths.length; i++) {
-			SparsePath p = paths[i];
-			int s = sparseScore(p, turnBias);
-			int j = i - 1;
-			while (j >= 0 && sparseScore(paths[j], turnBias) > s) {
-				paths[j + 1] = paths[j];
-				j--;
-			}
-			paths[j + 1] = p;
-		}
-	}
-	private static int sparseCandidates(int dirs, boolean fast, boolean adaptive, Footprint fp) {
-		if (dirs == 16 && !fast && !adaptive) return 10;
-		if (dirs == 16 && !fast) return 8;
-		if (dirs == 16) return 6;
-		return fp == null ? 2 : 4;
-	}
-	private static SparsePath[] sparseAlternates(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int targetRadius, int sparseBand, SparsePath first, int maxCandidates, BooleanSupplier cancel) {
-		SparsePath[] paths = new SparsePath[maxCandidates];
-		paths[0] = first;
-		int n = 1;
-		int edges = first.n - 1;
-		for (int i = 1; i < maxCandidates && edges > 2; i++) {
-			int edge = sparseBanEdge(edges, i);
-			SparsePath p = sparsePath(data, nodes, sx, sy, tx, ty, targetRadius, sparseBand, first.id[edge - 1], first.id[edge], cancel);
-			if (p == null) continue;
-			if (p.pending) {
-				paths[n++] = p;
-				break;
-			}
-			if (sameSparse(paths, n, p)) continue;
-			paths[n++] = p;
-		}
-		return Arrays.copyOf(paths, n);
-	}
-	private static int sparseBanEdge(int edges, int i) {
-		int slots = edges - 1;
-		int level = 1;
-		while (i > level) {
-			i -= level;
-			level <<= 1;
-		}
-		int edge = 1 + (int) ((long) slots * (i * 2 - 1) / (level << 1));
-		return edge >= edges ? edges - 1 : edge;
-	}
-	private static boolean sameSparse(SparsePath[] paths, int n, SparsePath p) {
-		for (int i = 0; i < n; i++) {
-			if (sameSparse(paths[i], p)) return true;
-		}
-		return false;
-	}
-	private static boolean sameSparse(SparsePath a, SparsePath b) {
-		if (a.n != b.n) return false;
-		for (int i = 0; i < a.n; i++) {
-			if (a.id[i] != b.id[i]) return false;
-		}
-		return true;
+	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData data, Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, int sparseBand, SparsePath p, BooleanSupplier cancel) {
+		p = simplifySparse(data, p);
+		Corridor c = corridor(p, sparseBand);
+		return find(data, fp, start, sx, sy, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, c, cancel).sparse(p.x, p.y, p.n, c.band);
 	}
 	private static SparsePath sparsePath(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int targetRadius, int sparseBand, BooleanSupplier cancel) {
-		return sparsePath(data, nodes, sx, sy, tx, ty, targetRadius, sparseBand, -1, -1, cancel);
-	}
-	private static SparsePath sparsePath(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int targetRadius, int sparseBand, int banA, int banB, BooleanSupplier cancel) {
 		if (nodes == null) return null;
 		if (nodes.n == 0) return null;
 		if (near(sx, sy, tx, ty, targetRadius)) return null;
@@ -561,7 +473,6 @@ final class ChartPlotterRouteFinder {
 			int ag = g[a];
 			for (int b = 1; b < n; b++) {
 				if (b == a || done[b]) continue;
-				if (banned(a, b, banA, banB)) continue;
 				int bx = sparseX(nodes, b, sx, tx);
 				int by = sparseY(nodes, b, sy, ty);
 				int edge = sparseEdge(data, a, b, ax, ay, bx, by, startCon, targetCon);
@@ -575,7 +486,6 @@ final class ChartPlotterRouteFinder {
 		}
 		return null;
 	}
-	private static boolean banned(int a, int b, int banA, int banB) {return banA >= 0 && (a == banA && b == banB || a == banB && b == banA);}
 	private static SparsePath simplifySparse(ChartPlotterCollisionData data, SparsePath p) {
 		if (p.n < 3) return p;
 		int[] x = new int[p.n];
@@ -1003,23 +913,6 @@ final class ChartPlotterRouteFinder {
 	}
 	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
 	private static int circDist(int a, int b) {int d = Math.abs(a - b); return Math.min(d, DX.length - d);}
-	private static int sparseScore(SparsePath p, int turnBias) {
-		int l = p.cost;
-		int t = sparseTurns(p);
-		if (turnBias <= 0) return l * 10 + t * 25;
-		if (turnBias >= 10) return l + t * 6500;
-		return l * 3 + t * 900;
-	}
-	private static int sparseTurns(SparsePath p) {
-		int t = 0;
-		int pd = -1;
-		for (int i = 1; i < p.n; i++) {
-			int d = snapLine(p.x[i] - p.x[i - 1], p.y[i] - p.y[i - 1]);
-			if (pd >= 0 && d != pd) t++;
-			pd = d;
-		}
-		return t;
-	}
 	private static boolean nearSegment(int x, int y, int ax, int ay, int bx, int by, int band) {
 		long dx = bx - ax;
 		long dy = by - ay;
@@ -1049,18 +942,6 @@ final class ChartPlotterRouteFinder {
 		int dir = dir(tx - sx, ty - sy);
 		if (dir < 0) return -1;
 		return orient(snapDir(OR[dir], dirStep), dir);
-	}
-	private static int snapLine(int dx, int dy) {
-		if (dx == 0 && dy == 0) return 0;
-		int best = 0;
-		long bv = Long.MIN_VALUE;
-		for (int i = 0; i < DX.length; i += 1) {
-			long v = (long) dx * DX[i] + (long) dy * DY[i];
-			if (v <= bv) continue;
-			bv = v;
-			best = i;
-		}
-		return best;
 	}
 	private static int minTurns(int dir, int dx, int dy) {
 		if (dx == 0 && dy == 0) return 0;

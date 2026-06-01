@@ -64,7 +64,4 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.BOTH;}
 	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map.", section = tweaksSection, position = 5)
 	default boolean nodeEditor() {return false;}
-	@ConfigItem(keyName = "sparseCorridor", name = "Sparse corridor", description = "Tile width around sparse pathing legs.", section = tweaksSection, position = 6)
-	@Range(min = 20, max = 200)
-	default int sparseCorridor() {return 80;}
 }

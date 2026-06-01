@@ -44,6 +44,7 @@ public class ChartPlotterPlugin extends Plugin {
 	private static final int ROUTE_FOLLOW_RADIUS = 24;
 	private static final int ROUTE_PRUNE = 12;
 	private static final int ROUTE_CLEAR_RADIUS = 15;
+	private static final int ROUTE_SPARSE_CORRIDOR = 120;
 	private static final int MOTION_HOLD = 2;
 	private static final int COURSE_STALL = 2;
 	@Inject private Client client;
@@ -480,7 +481,7 @@ public class ChartPlotterPlugin extends Plugin {
 		startRouteExec();
 		routeExec.execute(() -> {
 			BooleanSupplier cancel = () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted();
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, ROUTE_CLEAR_RADIUS, sparse, config.sparseCorridor(), cancel).effort(effort);
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, ROUTE_CLEAR_RADIUS, sparse, ROUTE_SPARSE_CORRIDOR, cancel).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;
