@@ -363,12 +363,6 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		if (r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, map, wm, r);
 		if (r.status == ChartPlotterRoute.OK) {
 			drawRoutePath(g, map, wm, r.x, r.y, r.n, r.tx, r.ty, c);
-			if (r.experimentN > 1) {
-				Stroke old = g.getStroke();
-				g.setStroke(new BasicStroke(Math.max(2, config.worldMapLineWidth() + 1), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, new float[]{8, 6}, 0));
-				drawRoutePath(g, map, wm, r.experimentX, r.experimentY, r.experimentN, r.tx, r.ty, new Color(255, 210, 70, 235));
-				g.setStroke(old);
-			}
 		}
 		if (t == null) return;
 		g.setColor(c);

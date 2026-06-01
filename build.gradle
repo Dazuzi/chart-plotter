@@ -30,13 +30,8 @@ tasks.withType(JavaCompile).configureEach {
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = runMainClass
-	jvmArgs "-ea", "-Dchartplotter.prune=" + (project.findProperty("prune") ?: "4")
-	args "--developer-mode", "--debug"
-}
-tasks.register('benchRoute', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.chartplotter.ChartPlotterRouteBenchmark'
 	jvmArgs "-ea"
+	args "--developer-mode"
 }
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath

@@ -5,7 +5,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -458,13 +457,7 @@ public class ChartPlotterPlugin extends Plugin {
 		startRouteExec();
 		routeExec.execute(() -> {
 			BooleanSupplier cancel = () -> seq != routeSeq.get() || Thread.currentThread().isInterrupted();
-			Consumer<ChartPlotterRoute> publish = pending ? p -> {
-				if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
-					route = p.effort(effort);
-					routeRev = rev;
-				}
-			} : null;
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, Math.floorMod(loc.getX(), TS), Math.floorMod(loc.getY(), TS), tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, ROUTE_CLEAR_RADIUS, sparse, pending, config.sparseCorridor(), cancel, publish).effort(effort);
+			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, fast, dirs, effort.adaptive, ROUTE_CLEAR_RADIUS, sparse, config.sparseCorridor(), cancel).effort(effort);
 			if (seq == routeSeq.get() && !Thread.currentThread().isInterrupted()) {
 				route = r;
 				routeRev = rev;
