@@ -51,6 +51,8 @@ final class ChartPlotterRouteFinder {
 	private static final int BUCKET_TIE_8 = 8;
 	private static final int BUCKET_TIE_16 = 16;
 	private static final int REACH_CHECK = 4095;
+	private static final int NO_PRUNE = 8;
+	private static final int EXP_PRUNE_DEFAULT = 4;
 	private static final int[] BENCH_TX = {2861, 2390, 1453};
 	private static final int[] BENCH_TY = {3399, 3547, 3459};
 	private static final int[] DX = {0, 4, 7, 11, 10, 9, 7, 4, 0, -5, -7, -9, -10, -11, -7, -5};
@@ -138,7 +140,7 @@ final class ChartPlotterRouteFinder {
 			return r;
 		}
 		if (corridor == null) return findFull(raw, fp, start, sx, sy, phaseX, phaseY, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, bench, cancel);
-		return searchBucket(data, start, sx, sy, tx, ty, turnBias, corridor.b, corridor.cap, reverse, fast, dirStep, dirFan, targetRadius, corridor, EXP_BASE, bench, cancel);
+		return searchBucket(data, start, sx, sy, tx, ty, turnBias, corridor.b, corridor.cap, reverse, fast, dirStep, dirFan, targetRadius, corridor, EXP_BASE, EXP_PRUNE_DEFAULT, bench, cancel);
 	}
 	private static ChartPlotterRoute findExperiment(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int phaseX, int phaseY, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, boolean dirFan, int mode, int targetRadius, Corridor corridor, Bench bench, BooleanSupplier cancel) {
 		turnBias = Math.max(0, Math.min(10, turnBias));
@@ -160,7 +162,7 @@ final class ChartPlotterRouteFinder {
 			return r;
 		}
 		if (corridor == null) return findFull(raw, fp, start, sx, sy, phaseX, phaseY, tx, ty, turnBias, reverse, fast, dirStep, mode, targetRadius, bench, cancel);
-		return searchBucket(data, start, sx, sy, tx, ty, turnBias, corridor.b, corridor.cap, reverse, fast, dirStep, dirFan, targetRadius, corridor, expId, bench, cancel);
+		return searchBucket(data, start, sx, sy, tx, ty, turnBias, corridor.b, corridor.cap, reverse, fast, dirStep, dirFan, targetRadius, corridor, expId, expPrune(), bench, cancel);
 	}
 	private static ChartPlotterRoute findBase(ChartPlotterCollisionData raw, Footprint fp, int start, int sx, int sy, int phaseX, int phaseY, int tx, int ty, int turnBias, boolean reverse, boolean fast, int dirStep, int mode, int targetRadius, Bench parent, BooleanSupplier cancel) {
 		turnBias = Math.max(0, Math.min(10, turnBias));
@@ -488,7 +490,7 @@ final class ChartPlotterRouteFinder {
 		if (bench != null) bench.done(r, searchStart, polls, seen, stale, nodes.n, maxQ, nearest);
 		return r;
 	}
-	private static ChartPlotterRoute searchBucket(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast, int dirStep, boolean dirFan, int targetRadius, Corridor corridor, int exp, Bench bench, BooleanSupplier cancel) {
+	private static ChartPlotterRoute searchBucket(Grid data, int start, int sx, int sy, int tx, int ty, int turnBias, Bounds b, int cap, boolean reverse, boolean fast, int dirStep, boolean dirFan, int targetRadius, Corridor corridor, int exp, int prune, Bench bench, BooleanSupplier cancel) {
 		long searchStart = bench == null ? 0 : System.nanoTime();
 		if (bench != null) bench.begin(b, cap, corridor);
 		Work w = WORK.get();
@@ -615,6 +617,10 @@ final class ChartPlotterRouteFinder {
 			for (int di = 0; di < fn; di++) {
 				int i = di * dirStep;
 				if (bench != null) bench.steps++;
+				if (prune < NO_PRUNE && circDist(ad, i) > prune) {
+					if (bench != null) bench.pruneSkip++;
+					continue;
+				}
 				int nx = ax + DX[i];
 				int ny = ay + DY[i];
 				int np = 0;
@@ -1378,6 +1384,7 @@ final class ChartPlotterRouteFinder {
 		return unknown ? ChartPlotterCollisionCache.UNKNOWN : ChartPlotterCollisionCache.BLOCKED;
 	}
 	private static int dist(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by));}
+	private static int circDist(int a, int b) {int d = Math.abs(a - b); return Math.min(d, DX.length - d);}
 	private static int sparseScore(SparsePath p, int turnBias) {
 		int l = p.cost;
 		int t = sparseTurns(p);
@@ -1428,6 +1435,11 @@ final class ChartPlotterRouteFinder {
 		return "unknown";
 	}
 	private static int selectedExp() {return expId(System.getProperty("chartplotter.exp"));}
+	private static int expPrune() {
+		String s = System.getProperty("chartplotter.prune");
+		if (s == null || s.isEmpty()) return EXP_PRUNE_DEFAULT;
+		return Math.max(0, Math.min(NO_PRUNE, Integer.parseInt(s)));
+	}
 	private static boolean sparseCtx() {return Boolean.getBoolean("chartplotter.sparsectx");}
 	private static int expId(String s) {
 		if (s == null || s.isEmpty() || "default".equalsIgnoreCase(s)) return EXP_ACTIVE;
@@ -1976,6 +1988,7 @@ final class ChartPlotterRouteFinder {
 		int corridorSkip;
 		int capSkip;
 		int bestSkip;
+		int pruneSkip;
 		int moveHit;
 		int moveMiss;
 		int movePass;
@@ -2042,7 +2055,7 @@ final class ChartPlotterRouteFinder {
 			if (!print) return;
 			long total = System.nanoTime() - start;
 			int near = nearest == Integer.MAX_VALUE ? -1 : nearest;
-			System.out.println("bench " + name + " route=" + status(r.status) + " pts=" + r.n + " len=" + routeLength(r) + " turns=" + routeTurns(r) + " totalUs=" + us(total) + " searchUs=" + us(searchNs) + " polls=" + polls + " seen=" + seen + " stale=" + stale + " made=" + made + " qMax=" + maxQ + " near=" + near + " fp=" + modeName(mode) + " best=" + bestName() + " move=" + moveName(moveMode) + " dom=" + (domMin ? "min" : "off") + " dst=" + dstBlock + " exp=" + exp + " skipBest=" + bestSkip + " skipDom=" + domSkip + " moveHit=" + moveHit + " moveMiss=" + moveMiss + " preBlock=" + movePreBlock + cmp(r));
+			System.out.println("bench " + name + " route=" + status(r.status) + " pts=" + r.n + " len=" + routeLength(r) + " turns=" + routeTurns(r) + " totalUs=" + us(total) + " searchUs=" + us(searchNs) + " polls=" + polls + " seen=" + seen + " stale=" + stale + " made=" + made + " qMax=" + maxQ + " near=" + near + " fp=" + modeName(mode) + " best=" + bestName() + " move=" + moveName(moveMode) + " dom=" + (domMin ? "min" : "off") + " dst=" + dstBlock + " exp=" + exp + " skipBest=" + bestSkip + " skipDom=" + domSkip + " moveHit=" + moveHit + " moveMiss=" + moveMiss + " preBlock=" + movePreBlock + " prune=" + pruneSkip + cmp(r));
 		}
 		private String cmp(ChartPlotterRoute r) {return compare == null ? "" : " same=" + sameRoute(r, compare) + " dPts=" + (r.n - compare.n) + " dLen=" + (routeLength(r) - routeLength(compare)) + " dTurns=" + (routeTurns(r) - routeTurns(compare));}
 		private static boolean sameRoute(ChartPlotterRoute a, ChartPlotterRoute b) {

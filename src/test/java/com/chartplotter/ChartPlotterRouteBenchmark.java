@@ -28,6 +28,8 @@ public final class ChartPlotterRouteBenchmark {
 		int corridor = a.i("corridor", 80);
 		String exp = a.str("exp", null);
 		if (exp != null) System.setProperty("chartplotter.exp", exp);
+		String prune = a.str("prune", null);
+		if (prune != null) System.setProperty("chartplotter.prune", prune);
 		String sparseExp = a.str("sparse", null);
 		if ("ctx".equalsIgnoreCase(sparseExp)) System.setProperty("chartplotter.sparsectx", "true");
 		boolean reverse = Boolean.parseBoolean(a.str("reverse", "false"));
