@@ -1006,9 +1006,9 @@ final class ChartPlotterRouteFinder {
 	private static int sparseScore(SparsePath p, int turnBias) {
 		int l = p.cost;
 		int t = sparseTurns(p);
-		if (turnBias <= 0) return l * 10 + t * 50;
-		if (turnBias >= 10) return l + t * 5000;
-		return l * 2 + t * 1200;
+		if (turnBias <= 0) return l * 10 + t * 25;
+		if (turnBias >= 10) return l + t * 6500;
+		return l * 3 + t * 900;
 	}
 	private static int sparseTurns(SparsePath p) {
 		int t = 0;
@@ -1044,7 +1044,7 @@ final class ChartPlotterRouteFinder {
 		return h(x, y, tx, ty) + turn(turnBias) * minTurns(dir, tx - x, ty - y);
 	}
 	private static int wh(int h, boolean fast) {return fast ? h * 5 / 2 : h;}
-	private static int smoothLimit(int turnBias) {return turnBias <= 0 ? 16 : turnBias >= 10 ? 256 : 96;}
+	private static int smoothLimit(int turnBias) {return turnBias <= 0 ? 16 : turnBias >= 10 ? 192 : 64;}
 	private static int directSmoothDir(int sx, int sy, int tx, int ty, int dirStep) {
 		int dir = dir(tx - sx, ty - sy);
 		if (dir < 0) return -1;
@@ -1078,7 +1078,7 @@ final class ChartPlotterRouteFinder {
 		int slack = h + margin * 10 + 160;
 		return Math.max(tight, slack);
 	}
-	private static int turn(int turnBias) {return turnBias <= 0 ? 0 : 20 + turnBias * 22;}
+	private static int turn(int turnBias) {return turnBias <= 0 ? 0 : turnBias >= 10 ? 320 : 110;}
 	private static int tightMargin(int sx, int sy, int tx, int ty) {
 		int d = Math.max(Math.abs(tx - sx), Math.abs(ty - sy));
 		return Math.min(maxMargin(sx, sy, tx, ty, null), Math.max(32, d / 8 + 24));
