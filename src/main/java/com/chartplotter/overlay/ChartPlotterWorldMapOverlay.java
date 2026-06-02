@@ -5,6 +5,7 @@ import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterWorldMap;
 import com.chartplotter.util.ChartPlotterMath;
@@ -41,6 +42,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final Color SPARSE_DOT = new Color(255, 80, 220, 240);
 	private static final Color CACHE_EDGE = new Color(0, 210, 120, 150);
 	private static final Color TIP_BG = new Color(20, 20, 20, 220);
+	private static final Color PREVIEW_OK = new Color(80, 255, 120, 235);
+	private static final Color PREVIEW_SNAP = new Color(255, 200, 40, 235);
+	private static final Color PREVIEW_BAD = new Color(255, 70, 60, 235);
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -48,6 +52,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterWorldMap map;
 	private final ChartPlotterNodeEditor editor;
+	private volatile boolean ctrl;
 	@Inject
 	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection, ChartPlotterCollisionCache collisionCache, ChartPlotterWorldMap map, ChartPlotterNodeEditor editor) {
 		this.client = client;
@@ -89,7 +94,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (anchor == null || center == null) return null;
 			int from = plugin.heading(ship);
 			int course = plugin.course(ship);
-			int mouse = hoverHeading(top, center, s, clip);
+			int mouse = ctrl ? -1 : hoverHeading(top, center, s, clip);
 			int cap = map.pathCap(top, anchor, s);
 			boolean showExt = config.worldMapShowBlockedExtension();
 			ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, cap, showExt);
@@ -101,6 +106,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			ChartPlotterWorldMap.State local = s.base(top);
 			draw(g, local, cur, config.lineColor(), skip);
 			if (pot != null) draw(g, local, pot, config.potentialColor(), 0);
+			if (ctrl) drawCoursePreview(g, s, clip);
 			return null;
 		} finally {
 			g.setStroke(oldStroke);
@@ -113,6 +119,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	public void placeNode(Point m) {editor.place(m);}
 	public boolean movingNode() {return editor.moving();}
 	public void nodeAlt(boolean on) {editor.alt(on);}
+	public void courseCtrl(boolean on) {ctrl = on;}
 	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, p, color);
@@ -266,10 +273,37 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(Color.WHITE);
 		g.drawString(s, x + 5, y + fm.getAscent() + 3);
 	}
-	private int hoverHeading(WorldView wv, LocalPoint anchor, ChartPlotterWorldMap.State s, Shape clip) {
+	private void drawCoursePreview(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip) {
+		Point m = hover(clip);
+		if (m == null) return;
+		int[] t = map.tile(m, s);
+		if (t == null) return;
+		ChartPlotterRoutes.Preview pv = plugin.coursePreview(t[0], t[1]);
+		if (pv.state == ChartPlotterRoutes.PV_NONE) return;
+		Color c = pv.state == ChartPlotterRoutes.PV_OK ? PREVIEW_OK : pv.state == ChartPlotterRoutes.PV_BAD ? PREVIEW_BAD : PREVIEW_SNAP;
+		Point dst = map.point(s, pv.x, pv.y, 0.5, 0.5);
+		if (pv.x != t[0] || pv.y != t[1]) {
+			Point cursor = map.point(s, t[0], t[1], 0.5, 0.5);
+			g.setColor(c);
+			g.drawLine(cursor.getX(), cursor.getY(), dst.getX(), dst.getY());
+			g.fill(new Ellipse2D.Double(cursor.getX() - 2, cursor.getY() - 2, 4, 4));
+		}
+		marker(g, dst, c);
+	}
+	private void marker(Graphics2D g, Point p, Color c) {
+		g.setColor(c);
+		g.fill(new Ellipse2D.Double(p.getX() - 3.5, p.getY() - 3.5, 7, 7));
+		g.draw(new Ellipse2D.Double(p.getX() - 7.5, p.getY() - 7.5, 15, 15));
+	}
+	private Point hover(Shape clip) {
 		Point m = client.getMouseCanvasPosition();
-		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen() || !clip.contains(m.getX(), m.getY())) return -1;
-		if (plugin.suppressPotential(m)) return -1;
+		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen() || !clip.contains(m.getX(), m.getY())) return null;
+		if (plugin.suppressPotential(m)) return null;
+		return m;
+	}
+	private int hoverHeading(WorldView wv, LocalPoint anchor, ChartPlotterWorldMap.State s, Shape clip) {
+		Point m = hover(clip);
+		if (m == null) return -1;
 		double[] p = map.world(m, s);
 		double ax = wv.getBaseX() + anchor.getX() / (double) TS;
 		double ay = wv.getBaseY() + anchor.getY() / (double) TS;

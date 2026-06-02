@@ -58,6 +58,7 @@ public class ChartPlotterPlugin extends Plugin {
 	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
 	public boolean isSailing() {return sailing.boarded();}
 	public ChartPlotterRoute route() {return routes.route();}
+	public ChartPlotterRoutes.Preview coursePreview(int tx, int ty) {return routes.preview(tx, ty);}
 	public boolean suppressPotential(Point m) {return sailing.suppress(m);}
 	public int heading(WorldEntity ship) {return sailing.heading(ship);}
 	public int course(WorldEntity ship) {return sailing.course(ship);}

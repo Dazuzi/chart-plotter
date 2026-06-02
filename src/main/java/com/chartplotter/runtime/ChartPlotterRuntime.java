@@ -40,6 +40,7 @@ public final class ChartPlotterRuntime {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
+			worldMapOverlay.courseCtrl(e.isControlDown());
 			Point m = new Point(e.getX(), e.getY());
 			if (e.getButton() != MouseEvent.BUTTON1) return e;
 			boolean mod = e.isAltDown() || e.isShiftDown() || e.isControlDown();
@@ -53,21 +54,25 @@ public final class ChartPlotterRuntime {
 		@Override
 		public MouseEvent mouseReleased(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
+			worldMapOverlay.courseCtrl(e.isControlDown());
 			return e;
 		}
 		@Override
 		public MouseEvent mouseMoved(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
+			worldMapOverlay.courseCtrl(e.isControlDown());
 			return e;
 		}
 		@Override
 		public MouseEvent mouseDragged(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
+			worldMapOverlay.courseCtrl(e.isControlDown());
 			return e;
 		}
 		@Override
 		public MouseEvent mouseExited(MouseEvent e) {
 			worldMapOverlay.nodeAlt(false);
+			worldMapOverlay.courseCtrl(false);
 			return e;
 		}
 	};

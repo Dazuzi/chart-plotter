@@ -26,6 +26,10 @@ public final class ChartPlotterRoutes {
 	private static final int PRUNE = 12;
 	private static final int CLEAR_RADIUS = 10;
 	private static final int MODE_TILE = 1;
+	public static final int PV_NONE = 0;
+	public static final int PV_OK = 1;
+	public static final int PV_SNAP = 2;
+	public static final int PV_BAD = 3;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterSparseNodes sparseNodes;
@@ -61,6 +65,25 @@ public final class ChartPlotterRoutes {
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		request(top, ship, loc, tx, ty, true);
+	}
+	public Preview preview(int tx, int ty) {
+		if (!sailing.boarded()) return new Preview(PV_NONE, tx, ty);
+		WorldView top = sailing.top();
+		WorldEntity ship = sailing.ship();
+		if (top == null || ship == null) return new Preview(PV_NONE, tx, ty);
+		LocalPoint loc = ship.getTargetLocation();
+		if (loc == null) loc = ship.getLocalLocation();
+		if (loc == null) return new Preview(PV_NONE, tx, ty);
+		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
+		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		ChartPlotterRouteGrid grid = grid(collisionCache.snapshot(), ship.getConfig());
+		int f = grid.flag(tx, ty);
+		if (f == ChartPlotterCollisionCache.UNKNOWN) return new Preview(PV_SNAP, tx, ty);
+		if (open(f)) return new Preview(PV_OK, tx, ty);
+		long t = target(grid, tx, ty, sx, sy);
+		int rx = (int) (t >> 32);
+		int ry = (int) t;
+		return rx == tx && ry == ty ? new Preview(PV_BAD, tx, ty) : new Preview(PV_SNAP, rx, ry);
 	}
 	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
 		ChartPlotterRoute r = route;
@@ -123,7 +146,7 @@ public final class ChartPlotterRoutes {
 	static long target(ChartPlotterCollisionData data, WorldEntityConfig wc, int tx, int ty, int sx, int sy) {return target(grid(data, wc), tx, ty, sx, sy);}
 	static long target(ChartPlotterRouteGrid data, int tx, int ty, int sx, int sy) {
 		int f = data.flag(tx, ty);
-		if (f == ChartPlotterCollisionCache.UNKNOWN || !blocker(f)) return key(tx, ty);
+		if (f == ChartPlotterCollisionCache.UNKNOWN || open(f)) return key(tx, ty);
 		int bx = tx;
 		int by = ty;
 		long bs = Long.MAX_VALUE;
@@ -191,6 +214,16 @@ public final class ChartPlotterRoutes {
 		});
 	}
 	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= CLEAR_RADIUS;}
-	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
+	private static boolean open(int f) {return (f & ChartPlotterCollisionCache.MOVE) == 0;}
 	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
+	public static final class Preview {
+		public final int state;
+		public final int x;
+		public final int y;
+		private Preview(int state, int x, int y) {
+			this.state = state;
+			this.x = x;
+			this.y = y;
+		}
+	}
 }
