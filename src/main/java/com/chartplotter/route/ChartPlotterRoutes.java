@@ -21,11 +21,13 @@ import static com.chartplotter.util.ChartPlotterMath.rotateY;
 @Singleton
 public final class ChartPlotterRoutes {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
-	private static final int PRUNE_RADIUS = 8;
-	private static final int FOLLOW_RADIUS = 24;
-	private static final int PRUNE = 12;
+	private static final int PRUNE_RADIUS = 20;
+	private static final int FOLLOW_RADIUS = 48;
+	private static final int PRUNE = 2;
 	private static final int CLEAR_RADIUS = 10;
+	private static final int REACH_RADIUS = 14;
 	private static final int MODE_TILE = 1;
+	private static final int ETA_CAP = 600;
 	public static final int PV_NONE = 0;
 	public static final int PV_OK = 1;
 	public static final int PV_SNAP = 2;
@@ -213,9 +215,43 @@ public final class ChartPlotterRoutes {
 			return t;
 		});
 	}
-	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= CLEAR_RADIUS;}
+	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= REACH_RADIUS;}
 	private static boolean open(int f) {return (f & ChartPlotterCollisionCache.MOVE) == 0;}
 	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
+	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max) {
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return Turn.NONE;
+		int cx = r.x[1];
+		int cy = r.y[1];
+		int ticks = speed > 0 ? eta(Math.hypot(cx - bx, cy - by), speed, accel, max) : -1;
+		return new Turn(cx, cy, ticks);
+	}
+	private static int eta(double dist, double speed, double accel, double max) {
+		double v = speed;
+		double d = 0;
+		int t = 0;
+		while (d < dist) {
+			v += accel;
+			if (v > max) v = max;
+			if (v <= 0) return -1;
+			d += v;
+			if (++t > ETA_CAP) return -1;
+		}
+		return t;
+	}
+	public static final class Turn {
+		public static final Turn NONE = new Turn(false, 0, 0, -1);
+		public final boolean valid;
+		public final int x;
+		public final int y;
+		public final int ticks;
+		private Turn(int x, int y, int ticks) {this(true, x, y, ticks);}
+		private Turn(boolean valid, int x, int y, int ticks) {
+			this.valid = valid;
+			this.x = x;
+			this.y = y;
+			this.ticks = ticks;
+		}
+	}
 	public static final class Preview {
 		public final int state;
 		public final int x;

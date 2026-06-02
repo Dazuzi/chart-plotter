@@ -2,9 +2,11 @@ package com.chartplotter.overlay;
 import com.chartplotter.ChartPlotterCacheOverlay;
 import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterPlugin;
+import com.chartplotter.ChartPlotterTurnEta;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterScene;
 import java.awt.BasicStroke;
@@ -27,11 +29,13 @@ import net.runelite.api.WorldView;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.overlay.components.TextComponent;
 import net.runelite.client.util.ColorUtil;
 public class ChartPlotterOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int TURN = 128;
 	private static final double FADE = 0.72;
+	private static final double TICK = 0.6;
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -53,36 +57,40 @@ public class ChartPlotterOverlay extends Overlay {
 	public Dimension render(Graphics2D g) {
 		if (!plugin.isSailing()) return null;
 		boolean showWorld = config.worldEnabled();
+		ChartPlotterTurnEta turnEta = config.courseTurnEta();
+		boolean showTurn = turnEta != ChartPlotterTurnEta.OFF;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
-		if (!showWorld && !cacheOverlay.world) return null;
+		if (!showWorld && !cacheOverlay.world && !showTurn) return null;
 		WorldView top = plugin.top();
 		if (top == null) return null;
 		ChartPlotterScene.Area area = scene.area(top);
 		if (cacheOverlay.world) drawCache(g, top, area);
-		if (!showWorld) return null;
+		if (!showWorld && !showTurn) return null;
 		WorldEntity ship = plugin.getShip();
 		if (ship == null) return null;
 		LocalPoint anchor = ship.getTargetLocation();
 		LocalPoint center = ship.getLocalLocation();
 		if (anchor == null) anchor = center;
 		if (anchor == null || center == null) return null;
-		WorldEntityConfig wc = ship.getConfig();
-		float[] rx = ChartPlotterProjection.rectX(wc);
-		float[] ry = ChartPlotterProjection.rectY(wc);
-		int from = plugin.heading(ship);
-		int course = plugin.course(ship);
-		int mouse = hoverHeading(top, center);
-		boolean showExt = config.worldShowBlockedExtension();
-		ChartPlotterProjection.Path cur = projection.path(top, wc, anchor, from, course, showExt);
-		ChartPlotterProjection.Path pot = null;
-		if (mouse >= 0) pot = projection.path(top, wc, anchor, from, mouse, showExt);
-		int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
-		Stroke prev = g.getStroke();
-		g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
-		drawRoute(g, top, plugin.route(), area);
-		draw(g, top, cur, rx, ry, config.lineColor(), skip);
-		if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
-		g.setStroke(prev);
+		if (showWorld) {
+			WorldEntityConfig wc = ship.getConfig();
+			float[] rx = ChartPlotterProjection.rectX(wc);
+			float[] ry = ChartPlotterProjection.rectY(wc);
+			int from = plugin.heading(ship);
+			int course = plugin.course(ship);
+			int mouse = hoverHeading(top, center);
+			boolean showExt = config.worldShowBlockedExtension();
+			ChartPlotterProjection.Path cur = projection.path(top, wc, anchor, from, course, showExt);
+			ChartPlotterProjection.Path pot = mouse >= 0 ? projection.path(top, wc, anchor, from, mouse, showExt) : null;
+			int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
+			Stroke prev = g.getStroke();
+			g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+			drawRoute(g, top, plugin.route(), area);
+			draw(g, top, cur, rx, ry, config.lineColor(), skip);
+			if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
+			g.setStroke(prev);
+		}
+		if (showTurn) drawNextTurn(g, top, area, center, turnEta);
 		return null;
 	}
 	private void draw(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color, int skip) {
@@ -144,6 +152,40 @@ public class ChartPlotterOverlay extends Overlay {
 		s.lineTo(cx[3], cy[3]);
 		g.setColor(color);
 		g.draw(s);
+	}
+	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTurnEta mode) {
+		if (area == null) return;
+		int bx = wv.getBaseX() + Math.floorDiv(center.getX(), TS);
+		int by = wv.getBaseY() + Math.floorDiv(center.getY(), TS);
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, plugin.speed(), plugin.accel(), plugin.maxSpeed());
+		if (!turn.valid) return;
+		Point at = edge(wv, area, center.getX(), center.getY(), (turn.x - wv.getBaseX()) * TS + TS / 2, (turn.y - wv.getBaseY()) * TS + TS / 2);
+		if (at == null) return;
+		String s = turn.ticks < 0 ? "Turn ahead" : "Turn in " + (mode == ChartPlotterTurnEta.TICKS ? turn.ticks + "t" : Math.round(turn.ticks * TICK) + "s");
+		Color c = config.chartColor();
+		g.setColor(c);
+		g.fillOval(at.getX() - 3, at.getY() - 3, 6, 6);
+		TextComponent t = new TextComponent();
+		t.setText(s);
+		t.setColor(c);
+		t.setPosition(new java.awt.Point(at.getX() - g.getFontMetrics().stringWidth(s) / 2, at.getY() - 8));
+		t.render(g);
+	}
+	private Point edge(WorldView wv, ChartPlotterScene.Area area, int sx, int sy, int ex, int ey) {
+		int ax = ex;
+		int ay = ey;
+		if (area.missing(ex, ey)) {
+			double lo = 0;
+			double hi = 1;
+			for (int i = 0; i < 16; i++) {
+				double mid = (lo + hi) / 2;
+				if (area.missing((int) (sx + (ex - sx) * mid), (int) (sy + (ey - sy) * mid))) hi = mid;
+				else lo = mid;
+			}
+			ax = (int) (sx + (ex - sx) * lo);
+			ay = (int) (sy + (ey - sy) * lo);
+		}
+		return Perspective.localToCanvas(client, new LocalPoint(ax, ay, wv), 0);
 	}
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2 || area == null) return;

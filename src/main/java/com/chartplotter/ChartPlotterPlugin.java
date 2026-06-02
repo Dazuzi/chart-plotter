@@ -5,6 +5,7 @@ import com.chartplotter.runtime.ChartPlotterRuntime;
 import com.chartplotter.runtime.ChartPlotterSailing;
 import com.google.inject.Provides;
 import javax.inject.Inject;
+import net.runelite.api.events.FocusChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
@@ -51,6 +52,9 @@ public class ChartPlotterPlugin extends Plugin {
 	@Subscribe
 	public void onGameTick(GameTick e) {runtime.tick();}
 	@SuppressWarnings("unused")
+	@Subscribe
+	public void onFocusChanged(FocusChanged e) {runtime.focus(e.isFocused());}
+	@SuppressWarnings("unused")
 	@Provides
 	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
 	public WorldView top() {return sailing.top();}
@@ -62,4 +66,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public boolean suppressPotential(Point m) {return sailing.suppress(m);}
 	public int heading(WorldEntity ship) {return sailing.heading(ship);}
 	public int course(WorldEntity ship) {return sailing.course(ship);}
+	public double speed() {return sailing.speed();}
+	public double accel() {return sailing.accel();}
+	public double maxSpeed() {return sailing.maxSpeed();}
 }

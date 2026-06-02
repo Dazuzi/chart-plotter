@@ -4,6 +4,7 @@ import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.overlay.ChartPlotterMinimapOverlay;
 import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
+import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import java.awt.event.MouseEvent;
 import javax.inject.Inject;
@@ -16,11 +17,14 @@ import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WorldViewLoaded;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.Notifier;
 import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 @Singleton
 public final class ChartPlotterRuntime {
+	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int ALERT_TICKS = 8;
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -32,9 +36,13 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterCollisionCache collisionCache;
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
+	@Inject private Notifier notifier;
 	private boolean collisionActive;
 	private boolean editorCacheActive;
 	private boolean mouseRegistered;
+	private volatile boolean focused = true;
+	private int alertX = Integer.MIN_VALUE;
+	private int alertY = Integer.MIN_VALUE;
 	private volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
@@ -147,6 +155,23 @@ public final class ChartPlotterRuntime {
 		if (scene && normal && !started) capture(top);
 		if (features.routes && top != null) routes.tick(top, ship, loc);
 		sailing.motion(ship, loc, scene);
+		alert(top, loc);
+	}
+	public void focus(boolean focused) {this.focused = focused;}
+	private void alert(WorldView top, LocalPoint loc) {
+		ChartPlotterRoute r = routes.route();
+		if (!config.courseTurnAlert() || top == null || r == null) {
+			alertX = Integer.MIN_VALUE;
+			alertY = Integer.MIN_VALUE;
+			return;
+		}
+		int bx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
+		int by = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(r, bx, by, sailing.speed(), sailing.accel(), sailing.maxSpeed());
+		if (!turn.valid || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY || focused) return;
+		notifier.notify("Sailing: next turn approaching");
+		alertX = turn.x;
+		alertY = turn.y;
 	}
 	private void apply() {
 		ChartPlotterFeatures prev = features;

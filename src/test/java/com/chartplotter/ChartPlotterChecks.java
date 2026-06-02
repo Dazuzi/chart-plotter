@@ -4,6 +4,7 @@ import com.chartplotter.collision.ChartPlotterCollisionCodec;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRouteChecks;
+import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.route.ChartPlotterRouteFinder;
 import com.chartplotter.route.ChartPlotterSparseCodec;
 import com.chartplotter.route.ChartPlotterSparseNodes;
@@ -57,6 +58,19 @@ public final class ChartPlotterChecks {
 		eq(2, a.n);
 		eq(10, a.y[0]);
 		eq(20, a.y[1]);
+		ChartPlotterRoutes.Turn t0 = ChartPlotterRoutes.turn(r, 0, 0, 1, 0, 1);
+		yes(t0.valid);
+		eq(0, t0.x);
+		eq(10, t0.y);
+		eq(10, t0.ticks);
+		ChartPlotterRoute corner = ChartPlotterRoute.ok(0, 10, 10, 10, new int[]{0, 10}, new int[]{10, 10}, 2, 0, 100);
+		ChartPlotterRoutes.Turn t1 = ChartPlotterRoutes.turn(corner, 0, 8, 1, 0, 1);
+		yes(t1.valid);
+		eq(10, t1.x);
+		eq(10, t1.y);
+		eq(11, t1.ticks);
+		eq(-1, ChartPlotterRoutes.turn(corner, 0, 8, 0, 0, 1).ticks);
+		no(ChartPlotterRoutes.turn(null, 0, 0, 1, 0, 1).valid);
 	}
 	private static void routeFinderProbe() {
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = open();
@@ -188,7 +202,9 @@ public final class ChartPlotterChecks {
 			for (int minimap = 0; minimap < 2; minimap++) {
 				for (int worldMap = 0; worldMap < 2; worldMap++) {
 					for (ChartPlotterCacheOverlay cache : ChartPlotterCacheOverlay.values()) {
-						for (int edit = 0; edit < 2; edit++) features(world != 0, minimap != 0, worldMap != 0, cache, edit != 0);
+						for (int edit = 0; edit < 2; edit++) {
+							for (int turn = 0; turn < 2; turn++) features(world != 0, minimap != 0, worldMap != 0, cache, edit != 0, turn != 0);
+						}
 					}
 				}
 			}
@@ -197,20 +213,21 @@ public final class ChartPlotterChecks {
 		no(off.routes);
 		no(off.cacheView);
 		no(off.edit);
+		no(off.nextTurn);
 		no(off.worldOverlay);
 		no(off.minimapOverlay);
 		no(off.worldMapOverlay);
 		no(off.input);
 		no(off.tracking);
 		no(off.cache(true));
-		ChartPlotterFeatures world = ChartPlotterFeatures.of(true, false, false, ChartPlotterCacheOverlay.OFF, false);
+		ChartPlotterFeatures world = ChartPlotterFeatures.of(true, false, false, ChartPlotterCacheOverlay.OFF, false, false);
 		yes(world.routes);
 		yes(world.worldOverlay);
 		yes(world.input);
 		yes(world.tracking);
 		no(world.cache(false));
 		yes(world.cache(true));
-		ChartPlotterFeatures cache = ChartPlotterFeatures.of(false, false, false, ChartPlotterCacheOverlay.BOTH, false);
+		ChartPlotterFeatures cache = ChartPlotterFeatures.of(false, false, false, ChartPlotterCacheOverlay.BOTH, false, false);
 		no(cache.routes);
 		yes(cache.cacheView);
 		yes(cache.worldOverlay);
@@ -219,26 +236,37 @@ public final class ChartPlotterChecks {
 		yes(cache.tracking);
 		no(cache.cache(false));
 		yes(cache.cache(true));
-		ChartPlotterFeatures edit = ChartPlotterFeatures.of(false, false, false, ChartPlotterCacheOverlay.OFF, true);
+		ChartPlotterFeatures edit = ChartPlotterFeatures.of(false, false, false, ChartPlotterCacheOverlay.OFF, true, false);
 		no(edit.routes);
 		yes(edit.edit);
 		yes(edit.worldMapOverlay);
 		yes(edit.input);
 		yes(edit.tracking);
 		yes(edit.cache(false));
+		ChartPlotterFeatures turn = ChartPlotterFeatures.of(false, false, false, ChartPlotterCacheOverlay.OFF, false, true);
+		no(turn.routes);
+		yes(turn.nextTurn);
+		yes(turn.worldOverlay);
+		no(turn.minimapOverlay);
+		no(turn.worldMapOverlay);
+		no(turn.input);
+		yes(turn.tracking);
+		no(turn.cache(false));
+		no(turn.cache(true));
 	}
-	private static void features(boolean world, boolean minimap, boolean worldMap, ChartPlotterCacheOverlay cache, boolean edit) {
-		ChartPlotterFeatures f = ChartPlotterFeatures.of(world, minimap, worldMap, cache, edit);
+	private static void features(boolean world, boolean minimap, boolean worldMap, ChartPlotterCacheOverlay cache, boolean edit, boolean nextTurn) {
+		ChartPlotterFeatures f = ChartPlotterFeatures.of(world, minimap, worldMap, cache, edit, nextTurn);
 		boolean routes = world || minimap || worldMap;
 		boolean cacheView = cache != ChartPlotterCacheOverlay.OFF;
 		eq(routes, f.routes);
 		eq(cacheView, f.cacheView);
 		eq(edit, f.edit);
-		eq(world || cache.world, f.worldOverlay);
+		eq(nextTurn, f.nextTurn);
+		eq(world || cache.world || nextTurn, f.worldOverlay);
 		eq(minimap, f.minimapOverlay);
 		eq(worldMap || cache.worldMap || edit, f.worldMapOverlay);
 		eq(routes || edit, f.input);
-		eq(routes || cacheView || edit, f.tracking);
+		eq(routes || cacheView || edit || nextTurn, f.tracking);
 		eq(edit, f.cache(false));
 		eq(edit || routes || cacheView, f.cache(true));
 	}

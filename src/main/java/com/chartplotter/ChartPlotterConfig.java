@@ -58,6 +58,10 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
 	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining routes; lower effort returns quicker.", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
+	@ConfigItem(keyName = "courseTurnEta", name = "Turn ETA", description = "Show time to the next turn point of a charted course in the sailing view, as seconds or game ticks.", section = chartingSection, position = 2)
+	default ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.OFF;}
+	@ConfigItem(keyName = "courseTurnAlert", name = "Turn alert", description = "Notify once when the next turn point is under 5 seconds away and the game window is not focused.", section = chartingSection, position = 3)
+	default boolean courseTurnAlert() {return false;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 5)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision coverage.", section = tweaksSection, position = 3)
