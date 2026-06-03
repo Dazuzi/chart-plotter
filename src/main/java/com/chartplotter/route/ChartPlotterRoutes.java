@@ -68,12 +68,12 @@ public final class ChartPlotterRoutes {
 		LocalPoint loc = ship.getTargetLocation();
 		if (loc == null) loc = ship.getLocalLocation();
 		if (loc == null) return;
-		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
-		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		int sx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
+		int sy = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		long t = target(collisionCache.snapshot(), ship.getConfig(), tx, ty, sx, sy);
 		tx = (int) (t >> 32);
 		ty = (int) t;
-		request(top, ship, loc, tx, ty, true);
+		request(ship, tx, ty, true, sx, sy);
 	}
 	public Preview preview(int tx, int ty) {
 		if (!sailing.boarded()) return new Preview(PV_NONE, tx, ty);
@@ -83,8 +83,8 @@ public final class ChartPlotterRoutes {
 		LocalPoint loc = ship.getTargetLocation();
 		if (loc == null) loc = ship.getLocalLocation();
 		if (loc == null) return new Preview(PV_NONE, tx, ty);
-		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
-		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		int sx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
+		int sy = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		ChartPlotterRouteGrid grid = grid(collisionCache.snapshot(), ship.getConfig());
 		int f = grid.flag(tx, ty);
 		if (f == ChartPlotterCollisionCache.UNKNOWN) return new Preview(PV_SNAP, tx, ty);
@@ -97,8 +97,8 @@ public final class ChartPlotterRoutes {
 	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
 		ChartPlotterRoute r = route;
 		if (r == null) return;
-		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
-		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		int sx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
+		int sy = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		if (near(sx, sy, r.tx, r.ty)) {
 			clear();
 			return;
@@ -107,18 +107,18 @@ public final class ChartPlotterRoutes {
 		int turnBias = config.routeShape().bias;
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		if (r.turnBias != turnBias || r.effort != effort) {
-			request(top, ship, loc, r.tx, r.ty, false);
+			request(top, ship, loc, r.tx, r.ty);
 			return;
 		}
 		if (r.status != ChartPlotterRoute.OK && rev != collisionCache.rev()) {
-			request(top, ship, loc, r.tx, r.ty, false);
+			request(top, ship, loc, r.tx, r.ty);
 			return;
 		}
 		if (r.status == ChartPlotterRoute.OK) {
 			if (sailing.speed() == 0) return;
 			LocalPoint front = routeLoc(top, ship, loc);
-			int fx = top.getBaseX() + Math.floorDiv(front.getX(), TS);
-			int fy = top.getBaseY() + Math.floorDiv(front.getY(), TS);
+			int fx = ChartPlotterMath.worldTile(top.getBaseX(), front.getX());
+			int fy = ChartPlotterMath.worldTile(top.getBaseY(), front.getY());
 			ChartPlotterRoute nr = r.advance(fx, fy, PRUNE_RADIUS, FOLLOW_RADIUS, PRUNE);
 			if (nr == r) return;
 			if (nr != null) {
@@ -126,10 +126,10 @@ public final class ChartPlotterRoutes {
 				rev = collisionCache.rev();
 				return;
 			}
-			request(top, ship, loc, r.tx, r.ty, false);
+			request(top, ship, loc, r.tx, r.ty);
 			return;
 		}
-		if (!r.start(sx, sy)) request(top, ship, loc, r.tx, r.ty, false);
+		if (!r.start(sx, sy)) request(top, ship, loc, r.tx, r.ty);
 	}
 	public void clear() {
 		seq.incrementAndGet();
@@ -187,9 +187,10 @@ public final class ChartPlotterRoutes {
 		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
 		return Math.max(1, (r + TS - 1) / TS);
 	}
-	private void request(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty, boolean pending) {
-		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
-		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+	private void request(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty) {
+		request(ship, tx, ty, false, ChartPlotterMath.worldTile(top.getBaseX(), loc.getX()), ChartPlotterMath.worldTile(top.getBaseY(), loc.getY()));
+	}
+	private void request(WorldEntity ship, int tx, int ty, boolean pending, int sx, int sy) {
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		WorldEntityConfig wc = ship.getConfig();
 		int turnBias = config.routeShape().bias;

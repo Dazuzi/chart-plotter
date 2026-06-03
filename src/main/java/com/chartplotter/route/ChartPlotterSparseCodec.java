@@ -29,20 +29,20 @@ public final class ChartPlotterSparseCodec {
 			return null;
 		}
 	}
-	public static boolean write(File dir, File file, ChartPlotterSparseNodes.Snapshot nodes) {
+	public static void write(File dir, File file, ChartPlotterSparseNodes.Snapshot nodes) {
 		File tmp = new File(dir, "sparse.bin.tmp");
-		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
+		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return;}
 		try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(tmp)))) {
 			out.writeByte(VERSION);
 			out.writeInt(nodes.x.length);
 			for (int i = 0; i < nodes.x.length; i++) {
-				if (nodes.x[i] < 0 || nodes.x[i] > USHORT || nodes.y[i] < 0 || nodes.y[i] > USHORT) return false;
+				if (nodes.x[i] < 0 || nodes.x[i] > USHORT || nodes.y[i] < 0 || nodes.y[i] > USHORT) return;
 				out.writeShort(nodes.x[i]);
 				out.writeShort(nodes.y[i]);
 			}
 		} catch (Exception ignored) {
-			return false;
+			return;
 		}
-		return ChartPlotterFiles.replace(tmp, file);
+		ChartPlotterFiles.replace(tmp, file);
 	}
 }

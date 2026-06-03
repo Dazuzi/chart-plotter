@@ -10,6 +10,7 @@ import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterScene;
+import com.chartplotter.util.ChartPlotterMath;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -161,8 +162,8 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTurnEta mode) {
 		if (area == null) return;
-		int bx = wv.getBaseX() + Math.floorDiv(center.getX(), TS);
-		int by = wv.getBaseY() + Math.floorDiv(center.getY(), TS);
+		int bx = ChartPlotterMath.worldTile(wv.getBaseX(), center.getX());
+		int by = ChartPlotterMath.worldTile(wv.getBaseY(), center.getY());
 		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, plugin.speed(), plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
 		if (!turn.valid) {
 			resetEta();
@@ -356,11 +357,15 @@ public class ChartPlotterOverlay extends Overlay {
 		return (int) (a * (1 - t));
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor) {
-		Point m = client.getMouseCanvasPosition();
-		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
-		if (plugin.suppressPotential(m)) return -1;
+		Point m = eligibleMouse(client, plugin);
+		if (m == null) return -1;
 		if (outsideViewport(client, m) || headingInactive(client, wv)) return -1;
 		return sceneHeading(client, wv, anchor, m);
+	}
+	public static Point eligibleMouse(Client client, ChartPlotterPlugin plugin) {
+		Point m = client.getMouseCanvasPosition();
+		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return null;
+		return plugin.suppressPotential(m) ? null : m;
 	}
 	public static boolean headingInactive(Client client, WorldView wv) {
 		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return true;
@@ -386,9 +391,13 @@ public class ChartPlotterOverlay extends Overlay {
 		float[] x = new float[]{0, 0};
 		float[] y = new float[]{1000, -1000};
 		float[] z = new float[]{0, 0};
+		int[] cx = new int[2];
+		int[] cy = new int[2];
 		for (int i = 0; i < n; i++) {
-			int[] cx = new int[2];
-			int[] cy = new int[2];
+			cx[0] = 0;
+			cx[1] = 0;
+			cy[0] = 0;
+			cy[1] = 0;
 			Perspective.modelToCanvas(client, wv, 2, anchor.getX(), anchor.getY(), 0, 64 + TURN * i, x, y, z, cx, cy);
 			if (cx[1] == Integer.MIN_VALUE) return -1;
 			lx[i] = cx[1];

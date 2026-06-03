@@ -37,6 +37,11 @@ public final class ChartPlotterSailing {
 	private int potentialX;
 	private int potentialY;
 	private LocalPoint lastLoc;
+	private volatile WorldEntity shipCache;
+	private volatile WorldView shipTop;
+	private volatile Player shipPlayer;
+	private volatile int shipPid = Integer.MIN_VALUE;
+	private volatile int shipTick = Integer.MIN_VALUE;
 	private long motionTime;
 	private boolean potentialBlocked;
 	@Inject
@@ -65,7 +70,10 @@ public final class ChartPlotterSailing {
 		}
 	}
 	public void loaded(WorldView wv) {
-		if (wv != null && wv.isTopLevel()) top = wv;
+		if (wv != null && wv.isTopLevel()) {
+			top = wv;
+			resetShip();
+		}
 	}
 	public void reset() {
 		top = null;
@@ -79,6 +87,7 @@ public final class ChartPlotterSailing {
 		lastBaseX = Integer.MIN_VALUE;
 		lastBaseY = Integer.MIN_VALUE;
 		lastPlane = Integer.MIN_VALUE;
+		resetShip();
 		resetMotion();
 	}
 	public void clear() {
@@ -87,6 +96,7 @@ public final class ChartPlotterSailing {
 		resetMotion();
 	}
 	public void scene(WorldEntity ship, LocalPoint loc) {
+		resetShip();
 		course = -1;
 		motionHold = MOTION_HOLD;
 		lastLoc = loc;
@@ -127,6 +137,7 @@ public final class ChartPlotterSailing {
 		stillTicks = 0;
 		block(m);
 	}
+	public void tick() {resetShip();}
 	public boolean sceneChanged(WorldView wv) {
 		int x = wv.getBaseX();
 		int y = wv.getBaseY();
@@ -138,7 +149,21 @@ public final class ChartPlotterSailing {
 		return changed;
 	}
 	public WorldView top() {return top;}
-	public WorldEntity ship() {return playerShip(client.getLocalPlayer(), top);}
+	public WorldEntity ship() {
+		Player player = client.getLocalPlayer();
+		WorldView t = top;
+		WorldView pv = player == null ? null : player.getWorldView();
+		int pid = pv == null ? Integer.MIN_VALUE : pv.getId();
+		int tick = client.getTickCount();
+		if (shipTick == tick && shipTop == t && shipPlayer == player && shipPid == pid) return shipCache;
+		WorldEntity ship = playerShip(player, t);
+		shipTick = tick;
+		shipTop = t;
+		shipPlayer = player;
+		shipPid = pid;
+		shipCache = ship;
+		return ship;
+	}
 	public boolean boarded() {return boarded;}
 	public boolean suppress(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
 	public int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
@@ -158,7 +183,18 @@ public final class ChartPlotterSailing {
 	public int actualHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getOrientation());}
 	private int targetHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getTargetOrientation());}
 	private boolean stalled() {return speed == 0 && stillTicks >= COURSE_STALL;}
-	private void syncTop() {if (top == null) top = client.getTopLevelWorldView();}
+	private void syncTop() {
+		if (top != null) return;
+		top = client.getTopLevelWorldView();
+		resetShip();
+	}
+	private void resetShip() {
+		shipTick = Integer.MIN_VALUE;
+		shipTop = null;
+		shipPlayer = null;
+		shipPid = Integer.MIN_VALUE;
+		shipCache = null;
+	}
 	private void resetMotion() {
 		speed = 0;
 		lastSpeed = 0;

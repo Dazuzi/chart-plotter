@@ -14,6 +14,7 @@ import java.awt.geom.Path2D;
 import java.awt.Graphics2D;
 import java.awt.Shape;
 import java.awt.Stroke;
+import java.util.Arrays;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -36,6 +37,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	private final ChartPlotterConfig config;
 	private final ChartPlotterProjection projection;
 	private volatile Shape clip;
+	private ClipKey clipKey;
+	private Shape cachedClip;
 	@Inject
 	ChartPlotterMinimapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection) {
 		this.client = client;
@@ -57,7 +60,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 			clip = null;
 			return null;
 		}
-		Shape c = clip(client, m);
+		Shape c = clip(m);
 		clip = c;
 		ChartPlotterLineMode mode = config.minimapLineMode();
 		if (!mode.on) return null;
@@ -70,7 +73,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		if (anchor == null || center == null) return null;
 		int from = plugin.heading(ship);
 		int course = plugin.course(ship);
-		int mouse = hoverHeading(top, center);
+		int mouse = hoverHeading(top, center, m, c);
 		ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, mode.blocked);
 		ChartPlotterProjection.Path pot = null;
 		if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, mode.blocked);
@@ -90,7 +93,11 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	public static int mouseHeading(Client client, LocalPoint anchor, Point mouse) {
 		if (mouse == null) return -1;
 		Widget w = minimap(client);
-		if (w == null || w.isHidden() || !clip(client, w).contains(mouse.getX(), mouse.getY())) return -1;
+		if (w == null || w.isHidden()) return -1;
+		return mouseHeading(client, anchor, mouse, w, clip(client, w));
+	}
+	private static int mouseHeading(Client client, LocalPoint anchor, Point mouse, Widget w, Shape clip) {
+		if (mouse == null || !clip.contains(mouse.getX(), mouse.getY())) return -1;
 		Point center = Perspective.localToMinimap(client, anchor, DIST);
 		if (center == null) {
 			java.awt.Rectangle b = w.getBounds();
@@ -169,12 +176,19 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.setColor(config.chartColor());
 		g.draw(line);
 	}
-	private int hoverHeading(WorldView wv, LocalPoint anchor) {
-		Point m = client.getMouseCanvasPosition();
-		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
-		if (plugin.suppressPotential(m)) return -1;
+	private int hoverHeading(WorldView wv, LocalPoint anchor, Widget w, Shape clip) {
+		Point m = ChartPlotterOverlay.eligibleMouse(client, plugin);
+		if (m == null) return -1;
 		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return -1;
-		return overMinimap(m) ? mouseHeading(client, anchor, m) : -1;
+		return mouseHeading(client, anchor, m, w, clip);
+	}
+	private Shape clip(Widget minimap) {
+		ClipKey k = new ClipKey(client, minimap);
+		if (k.same(clipKey)) return cachedClip;
+		Shape c = clip(client, minimap);
+		clipKey = k;
+		cachedClip = c;
+		return c;
 	}
 	private static Shape clip(Client client, Widget minimap) {
 		java.awt.Rectangle b = minimap.getBounds();
@@ -186,4 +200,32 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		return a;
 	}
 	private static Area ellipse(java.awt.Rectangle b, int p) {return new Area(new Ellipse2D.Double(b.getX() - p, b.getY() - p, b.getWidth() + p * 2, b.getHeight() + p * 2));}
+	private static final class ClipKey {
+		final int[] v;
+		private ClipKey(Client client, Widget minimap) {
+			v = new int[5 + ORBS.length * 5];
+			int i = 0;
+			java.awt.Rectangle b = minimap.getBounds();
+			v[i++] = b.x;
+			v[i++] = b.y;
+			v[i++] = b.width;
+			v[i++] = b.height;
+			v[i++] = client.isResized() ? 1 : 0;
+			for (int id : ORBS) {
+				Widget w = client.getWidget(id);
+				if (w == null || w.isHidden()) {
+					v[i++] = 0;
+					i += 4;
+					continue;
+				}
+				b = w.getBounds();
+				v[i++] = 1;
+				v[i++] = b.x;
+				v[i++] = b.y;
+				v[i++] = b.width;
+				v[i++] = b.height;
+			}
+		}
+		boolean same(ClipKey k) {return k != null && Arrays.equals(v, k.v);}
+	}
 }

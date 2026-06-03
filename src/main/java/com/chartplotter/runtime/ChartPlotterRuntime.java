@@ -7,6 +7,7 @@ import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
+import com.chartplotter.util.ChartPlotterMath;
 import java.awt.event.MouseEvent;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -25,7 +26,6 @@ import net.runelite.client.input.MouseManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 @Singleton
 public final class ChartPlotterRuntime {
-	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int ALERT_TICKS = 8;
 	private static final int CLICK_SLOP = 4;
 	@Inject private Client client;
@@ -61,8 +61,8 @@ public final class ChartPlotterRuntime {
 		public MouseEvent mousePressed(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseCtrl(e.isControlDown());
-			Point m = new Point(e.getX(), e.getY());
 			if (e.getButton() != MouseEvent.BUTTON1) return e;
+			Point m = new Point(e.getX(), e.getY());
 			down = true;
 			dragged = false;
 			downX = e.getX();
@@ -87,8 +87,10 @@ public final class ChartPlotterRuntime {
 				Point m = new Point(e.getX(), e.getY());
 				clientThread.invoke(() -> chartCourse(m));
 			}
-			if (e.getButton() == MouseEvent.BUTTON1) down = false;
-			if (e.getButton() == MouseEvent.BUTTON1) menuBlock = false;
+			if (e.getButton() == MouseEvent.BUTTON1) {
+				down = false;
+				menuBlock = false;
+			}
 			return e;
 		}
 		@Override
@@ -168,11 +170,13 @@ public final class ChartPlotterRuntime {
 	}
 	public void menu(MenuOptionClicked e) {
 		if (!features.routes) return;
-		if (e.getMenuAction() != MenuAction.SET_HEADING && !minimapOverlay.overMinimap(client.getMouseCanvasPosition())) return;
-		sailing.setCourse(client.getMouseCanvasPosition());
+		Point m = client.getMouseCanvasPosition();
+		if (e.getMenuAction() != MenuAction.SET_HEADING && !minimapOverlay.overMinimap(m)) return;
+		sailing.setCourse(m);
 	}
 	public void tick() {
 		if (!features.tracking || !sailing.boarded() || client.getGameState() != GameState.LOGGED_IN) return;
+		sailing.tick();
 		WorldEntity ship = sailing.ship();
 		if (ship == null) {
 			sailing.clear();
@@ -204,8 +208,8 @@ public final class ChartPlotterRuntime {
 			alertY = Integer.MIN_VALUE;
 			return;
 		}
-		int bx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
-		int by = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
+		int bx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
+		int by = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(r, bx, by, sailing.speed(), sailing.accel(), sailing.maxSpeed());
 		if (!turn.valid || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY || focused) return;
 		notifier.notify("Sailing: next turn approaching");

@@ -363,10 +363,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.draw(new Ellipse2D.Double(p.getX() - 7.5, p.getY() - 7.5, 15, 15));
 	}
 	private Point hover(Shape clip) {
-		Point m = client.getMouseCanvasPosition();
-		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen() || !clip.contains(m.getX(), m.getY())) return null;
-		if (plugin.suppressPotential(m)) return null;
-		return m;
+		Point m = ChartPlotterOverlay.eligibleMouse(client, plugin);
+		return m != null && clip.contains(m.getX(), m.getY()) ? m : null;
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor, ChartPlotterWorldMap.State s, Shape clip) {
 		Point m = hover(clip);

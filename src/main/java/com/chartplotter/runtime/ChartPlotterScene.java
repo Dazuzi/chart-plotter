@@ -17,17 +17,20 @@ public final class ChartPlotterScene {
 	}
 	static long key(Area a) {
 		if (a == null) return 0;
+		return a.key;
+	}
+	private static long key(int baseX, int baseY, int offX, int offY, int minX, int minY, int maxX, int maxY, int n, boolean[] chunks) {
 		long h = 1125899906842597L;
-		h = h * 31 + a.baseX;
-		h = h * 31 + a.baseY;
-		h = h * 31 + a.offX;
-		h = h * 31 + a.offY;
-		h = h * 31 + a.minX;
-		h = h * 31 + a.minY;
-		h = h * 31 + a.maxX;
-		h = h * 31 + a.maxY;
-		h = h * 31 + a.n;
-		for (boolean b : a.chunks) h = h * 31 + (b ? 1 : 0);
+		h = h * 31 + baseX;
+		h = h * 31 + baseY;
+		h = h * 31 + offX;
+		h = h * 31 + offY;
+		h = h * 31 + minX;
+		h = h * 31 + minY;
+		h = h * 31 + maxX;
+		h = h * 31 + maxY;
+		h = h * 31 + n;
+		for (boolean b : chunks) h = h * 31 + (b ? 1 : 0);
 		return h;
 	}
 	private static Area area(WorldView wv, Tile[][] tiles) {
@@ -86,13 +89,13 @@ public final class ChartPlotterScene {
 		return all[plane];
 	}
 	private static final class Slot {
-		public final int baseX;
-		public final int baseY;
+		final int baseX;
+		final int baseY;
 		final int plane;
 		final int sizeX;
 		final int sizeY;
 		final boolean top;
-		public final Tile[][] tiles;
+		final Tile[][] tiles;
 		final Area area;
 		private Slot(WorldView wv, Tile[][] tiles, Area area) {
 			baseX = wv.getBaseX();
@@ -124,6 +127,7 @@ public final class ChartPlotterScene {
 		public final int[] cx;
 		public final int[] cy;
 		public final int n;
+		public final long key;
 		private Area(Tile[][] tiles, int baseX, int baseY, int offX, int offY, int minX, int minY, int maxX, int maxY, int minCX, int minCY, int cw, int ch, boolean[] chunks, int n) {
 			this.tiles = tiles;
 			this.baseX = baseX;
@@ -140,6 +144,7 @@ public final class ChartPlotterScene {
 			this.ch = ch;
 			this.chunks = chunks;
 			this.n = n;
+			key = key(baseX, baseY, offX, offY, minX, minY, maxX, maxY, n, chunks);
 			cx = new int[n];
 			cy = new int[n];
 			int j = 0;

@@ -3,6 +3,7 @@ import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.util.ChartPlotterMath;
+import java.util.Arrays;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.coords.LocalPoint;
@@ -22,6 +23,7 @@ public final class ChartPlotterProjection {
 	private final ChartPlotterScene scene;
 	private final ChartPlotterConfig config;
 	private final Motion motion;
+	private final FlagMemo memo = new FlagMemo(MEMO);
 	private final Slot[] cache = new Slot[8];
 	private int next;
 	@Inject
@@ -63,7 +65,7 @@ public final class ChartPlotterProjection {
 		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area), config.sailingSlide(), sailing.moveMode());
 	}
 	private Path raw(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
-		Blocker b = blocker(wv, wc, collisionCache);
+		Blocker b = blocker(wv, wc, collisionCache, memo.reset());
 		if (config.sailingSlide()) return rawSlide(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, b);
 		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, b);
 	}
@@ -240,8 +242,8 @@ public final class ChartPlotterProjection {
 	private static int wy(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsY());}
 	private static int ww(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsWidth());}
 	private static int wh(WorldEntityConfig wc) {return wc == null ? 0 : Float.floatToIntBits(wc.getBoundsHeight());}
-	private static Blocker blocker(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache) {return blocker(wv.getBaseX(), wv.getBaseY(), wc, cache.snapshot());}
-	private static Blocker blocker(int baseX, int baseY, WorldEntityConfig wc, ChartPlotterCollisionData data) {return new Blocker(baseX, baseY, data, footprint(wc), new FlagMemo(MEMO));}
+	private static Blocker blocker(WorldView wv, WorldEntityConfig wc, ChartPlotterCollisionCache cache, FlagMemo memo) {return blocker(wv.getBaseX(), wv.getBaseY(), wc, cache.snapshot(), memo);}
+	private static Blocker blocker(int baseX, int baseY, WorldEntityConfig wc, ChartPlotterCollisionData data, FlagMemo memo) {return new Blocker(baseX, baseY, data, footprint(wc), memo);}
 	private static Footprint footprint(WorldEntityConfig wc) {
 		float[] rx = rectX(wc);
 		float[] ry = rectY(wc);
@@ -478,6 +480,12 @@ public final class ChartPlotterProjection {
 			key = new long[n];
 			val = new int[n];
 			mask = n - 1;
+		}
+		FlagMemo reset() {
+			Arrays.fill(used, false);
+			n = 0;
+			full = false;
+			return this;
 		}
 		int slot(long k) {
 			k ^= k >>> 33;

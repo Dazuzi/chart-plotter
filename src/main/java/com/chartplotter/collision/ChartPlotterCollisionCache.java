@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.HashMap;
 import java.util.Map;
 import javax.inject.Inject;
@@ -26,7 +27,7 @@ public final class ChartPlotterCollisionCache {
 	private ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private boolean loaded;
 	private ScheduledExecutorService io;
-	private long rev;
+	private final AtomicLong rev = new AtomicLong();
 	private long savedRev;
 	private long viewRev = -1;
 	public synchronized void start() {
@@ -64,13 +65,14 @@ public final class ChartPlotterCollisionCache {
 	}
 	public synchronized ChartPlotterCollisionData snapshot() {
 		if (!loaded) return view;
-		if (viewRev != rev) {
-			view = new ChartPlotterCollisionData(new HashMap<>(chunks), rev);
-			viewRev = rev;
+		long r = rev.get();
+		if (viewRev != r) {
+			view = new ChartPlotterCollisionData(new HashMap<>(chunks), r);
+			viewRev = r;
 		}
 		return view;
 	}
-	public synchronized long rev() {return rev;}
+	public long rev() {return rev.get();}
 	private void mergeQuiet(ChartPlotterCollisionScan scan) {
 		try {
 			if (merge(scan)) sparseNodes.invalidate(snapshot());
@@ -121,7 +123,7 @@ public final class ChartPlotterCollisionCache {
 			Chunk c = e.getValue().chunk();
 			if (same(old, c)) continue;
 			chunks.put(e.getKey(), c);
-			rev++;
+			rev.incrementAndGet();
 		}
 	}
 	private static boolean same(Chunk a, Chunk b) {
@@ -140,8 +142,8 @@ public final class ChartPlotterCollisionCache {
 		synchronized (this) {
 			chunks.clear();
 			chunks.putAll(data);
-			rev++;
-			savedRev = seed && !data.isEmpty() ? rev - 1 : rev;
+			long r = rev.incrementAndGet();
+			savedRev = seed && !data.isEmpty() ? r - 1 : r;
 			viewRev = -1;
 			loaded = true;
 		}
@@ -165,9 +167,10 @@ public final class ChartPlotterCollisionCache {
 		ChartPlotterCollisionData out;
 		long save;
 		synchronized (this) {
-			if (rev == savedRev) return;
+			long r = rev.get();
+			if (r == savedRev) return;
 			out = snapshot();
-			save = rev;
+			save = r;
 		}
 		if (ChartPlotterCollisionCodec.write(dir, file(), out.base)) {
 			synchronized (this) {

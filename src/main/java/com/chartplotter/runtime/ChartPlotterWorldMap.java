@@ -2,6 +2,7 @@ package com.chartplotter.runtime;
 import java.awt.geom.Area;
 import java.awt.Rectangle;
 import java.awt.Shape;
+import java.util.Arrays;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Client;
@@ -18,6 +19,8 @@ public final class ChartPlotterWorldMap {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int[] BLOCK = {InterfaceID.Worldmap.OVERVIEW_CONTAINER, InterfaceID.Worldmap.SIDE, InterfaceID.Worldmap.BOTTOM, InterfaceID.Worldmap.MAPLIST_CONTAINER, InterfaceID.Worldmap.CLOSE, InterfaceID.Worldmap.RESIZE_INDICATOR, InterfaceID.Worldmap.RESIZE_GRAPHIC};
 	private final Client client;
+	private ClipKey clipKey;
+	private Shape cachedClip;
 	@Inject
 	public ChartPlotterWorldMap(Client client) {
 		this.client = client;
@@ -70,6 +73,8 @@ public final class ChartPlotterWorldMap {
 		return (int) Math.ceil(Math.max(dx, dy) * 8) + 64;
 	}
 	public Shape clip(State s) {
+		ClipKey k = new ClipKey(client, s);
+		if (k.same(clipKey)) return cachedClip;
 		Rectangle r = new Rectangle(s.r.x + 1, s.r.y + 1, Math.max(1, s.r.width - 2), Math.max(1, s.r.height - 2));
 		Area a = new Area(r);
 		boolean cut = false;
@@ -79,7 +84,9 @@ public final class ChartPlotterWorldMap {
 			a.subtract(new Area(w.getBounds()));
 			cut = true;
 		}
-		return cut ? a : r;
+		clipKey = k;
+		cachedClip = cut ? a : r;
+		return cachedClip;
 	}
 	private Widget widget() {
 		Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
@@ -107,5 +114,31 @@ public final class ChartPlotterWorldMap {
 			this.baseY = baseY;
 		}
 		public State base(WorldView wv) {return new State(data, z, r, wt, ht, pos, c, wv.getBaseX(), wv.getBaseY());}
+	}
+	private static final class ClipKey {
+		final int[] v;
+		private ClipKey(Client client, State s) {
+			v = new int[4 + BLOCK.length * 5];
+			int i = 0;
+			v[i++] = s.r.x;
+			v[i++] = s.r.y;
+			v[i++] = s.r.width;
+			v[i++] = s.r.height;
+			for (int id : BLOCK) {
+				Widget w = client.getWidget(id);
+				if (w == null || w.isHidden()) {
+					v[i++] = 0;
+					i += 4;
+					continue;
+				}
+				Rectangle b = w.getBounds();
+				v[i++] = 1;
+				v[i++] = b.x;
+				v[i++] = b.y;
+				v[i++] = b.width;
+				v[i++] = b.height;
+			}
+		}
+		boolean same(ClipKey k) {return k != null && Arrays.equals(v, k.v);}
 	}
 }
