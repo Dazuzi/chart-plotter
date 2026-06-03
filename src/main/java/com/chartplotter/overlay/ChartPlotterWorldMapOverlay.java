@@ -28,6 +28,7 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -106,8 +107,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 			drawRoute(g, s, plugin.route());
 			ChartPlotterWorldMap.State local = s.base(top);
-			draw(g, local, cur, config.lineColor(), skip);
-			if (pot != null) draw(g, local, pot, config.potentialColor(), 0);
+			draw(g, local, cur, ship.getConfig(), config.lineColor(), skip);
+			if (pot != null) draw(g, local, pot, ship.getConfig(), config.potentialColor(), 0);
 			if (ctrl) drawCoursePreview(g, s, clip);
 			return null;
 		} finally {
@@ -122,7 +123,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	public boolean movingNode() {return editor.moving();}
 	public void nodeAlt(boolean on) {editor.alt(on);}
 	public void courseCtrl(boolean on) {ctrl = on;}
-	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, Color color, int skip) {
+	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, WorldEntityConfig wc, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, p, color);
 			return;
@@ -130,7 +131,37 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int start = skip > 0 ? skip - 1 : 0;
 		int mid = Math.min(p.blockedAt, p.n);
 		segment(g, s, p, color, start, mid);
-		if (mid < p.n) segment(g, s, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+		boxes(g, s, p, wc, color, start, mid);
+		if (mid < p.n) {
+			segment(g, s, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+			boxes(g, s, p, wc, config.blockedColor(), mid, p.n);
+		}
+	}
+	private void boxes(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, WorldEntityConfig wc, Color color, int from, int to) {
+		if (!config.sailingSlide()) return;
+		float[] rx = ChartPlotterProjection.rectX(wc);
+		float[] ry = ChartPlotterProjection.rectY(wc);
+		g.setColor(color);
+		for (int i = from; i < to; i++) {
+			if (!box(p, i)) continue;
+			int sx = Math.floorDiv(p.x[i], TS);
+			int sy = Math.floorDiv(p.y[i], TS);
+			if (!s.data.surfaceContainsPosition(s.baseX + sx, s.baseY + sy)) continue;
+			g.draw(box(s, p, rx, ry, i));
+		}
+	}
+	private Path2D.Double box(ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, float[] rx, float[] ry, int i) {
+		Path2D.Double box = new Path2D.Double();
+		for (int c = 0; c < 4; c++) {
+			int lx = ChartPlotterMath.rotateX(p.x[i], p.o[i], (int) rx[c], (int) ry[c]);
+			int ly = ChartPlotterMath.rotateY(p.y[i], p.o[i], (int) rx[c], (int) ry[c]);
+			int px = map.mapX(s, lx);
+			int py = map.mapY(s, ly);
+			if (c == 0) box.moveTo(px, py);
+			else box.lineTo(px, py);
+		}
+		box.closePath();
+		return box;
 	}
 	private void segment(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, Color color, int from, int to) {
 		Path2D.Double line = new Path2D.Double();
@@ -153,6 +184,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(color);
 		g.draw(line);
 	}
+	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != prev(p, i) || p.slid[i];}
+	private static int prev(ChartPlotterProjection.Path p, int i) {return i > 0 ? p.o[i - 1] : p.start;}
 	private void drawBlock(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, Color color) {
 		int sx = Math.floorDiv(p.x[0], TS);
 		int sy = Math.floorDiv(p.y[0], TS);

@@ -122,6 +122,7 @@ public class ChartPlotterOverlay extends Overlay {
 			boolean inBlock = i >= p.blockedAt;
 			Color base = inBlock ? blockedColor : color;
 			int a = alpha(inBlock ? sBA : sA, i, p.n);
+			boolean slide = p.slid[i];
 			if (a > 0) {
 				g.setColor(ColorUtil.colorWithAlpha(base, a));
 				s.reset();
@@ -130,8 +131,8 @@ public class ChartPlotterOverlay extends Overlay {
 					rails(s, px, py, cx, cy);
 					d = true;
 				}
-				if (box(p, i) || i == 0) {
-					box(s, cx, cy, open(p, i));
+				if (box(p, i) || slide || i == 0) {
+					box(s, cx, cy, open(p, i) && !slide);
 					d = true;
 				}
 				if (d) g.draw(s);
@@ -313,7 +314,7 @@ public class ChartPlotterOverlay extends Overlay {
 		if (!open) p.lineTo(x[0], y[0]);
 	}
 	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != prev(p, i);}
-	private static boolean open(ChartPlotterProjection.Path p, int i) {return i + 1 < p.n && p.o[i + 1] == p.o[i];}
+	private static boolean open(ChartPlotterProjection.Path p, int i) {return i + 1 < p.n && !p.slid[i + 1] && p.o[i + 1] == p.o[i];}
 	private static int prev(ChartPlotterProjection.Path p, int i) {return i > 0 ? p.o[i - 1] : p.start;}
 	private static void copy(int[] sx, int[] sy, int[] dx, int[] dy) {
 		for (int i = 0; i < 4; i++) {
@@ -331,8 +332,6 @@ public class ChartPlotterOverlay extends Overlay {
 		Point m = client.getMouseCanvasPosition();
 		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
 		if (plugin.suppressPotential(m)) return -1;
-		int mini = ChartPlotterMinimapOverlay.mouseHeading(client, anchor, m);
-		if (mini >= 0) return mini;
 		if (outsideViewport(client, m) || headingInactive(client, wv)) return -1;
 		return sceneHeading(client, wv, anchor, m);
 	}

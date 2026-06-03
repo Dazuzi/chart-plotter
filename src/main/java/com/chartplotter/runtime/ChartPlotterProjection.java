@@ -1,4 +1,5 @@
 package com.chartplotter.runtime;
+import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.util.ChartPlotterMath;
@@ -19,14 +20,16 @@ public final class ChartPlotterProjection {
 	private final ChartPlotterSailing sailing;
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterScene scene;
+	private final ChartPlotterConfig config;
 	private final Motion motion;
 	private final Slot[] cache = new Slot[8];
 	private int next;
 	@Inject
-	private ChartPlotterProjection(ChartPlotterSailing sailing, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene) {
+	private ChartPlotterProjection(ChartPlotterSailing sailing, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene, ChartPlotterConfig config) {
 		this.sailing = sailing;
 		this.collisionCache = collisionCache;
 		this.scene = scene;
+		this.config = config;
 		motion = new Motion() {
 			@Override
 			public int turn() {return sailing.turnDir();}
@@ -38,6 +41,8 @@ public final class ChartPlotterProjection {
 			public double max() {return sailing.maxSpeed();}
 			@Override
 			public boolean reversing() {return sailing.reversing();}
+			@Override
+			public int moveMode() {return sailing.moveMode();}
 		};
 	}
 	public Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, boolean showExt) {
@@ -55,10 +60,12 @@ public final class ChartPlotterProjection {
 		return p;
 	}
 	private Key key(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
-		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area));
+		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area), config.sailingSlide(), sailing.moveMode());
 	}
 	private Path raw(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
-		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, blocker(wv, wc, collisionCache));
+		Blocker b = blocker(wv, wc, collisionCache);
+		if (config.sailingSlide()) return rawSlide(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, b);
+		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, b);
 	}
 	private static Path raw(int ax, int ay, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt, Motion motion, Blocker blocker) {
 		Path p = new Path(cap + 2);
@@ -114,6 +121,101 @@ public final class ChartPlotterProjection {
 			p.n++;
 		}
 		return p;
+	}
+	private static Path rawSlide(int ax, int ay, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt, Motion motion, Blocker blocker) {
+		Path p = new Path(cap + 2);
+		p.start = from;
+		p.x[p.n] = ax;
+		p.y[p.n] = ay;
+		p.o[p.n] = from;
+		p.n++;
+		int o = from;
+		double speed = motion.speed();
+		double accel = motion.accel();
+		if (speed == 0 && motion.moveMode() == 0) o = target;
+		if (motion.reversing()) {
+			speed *= -1;
+			accel *= -1;
+		}
+		int dir = ChartPlotterMath.angleDir(o, target, motion.turn());
+		int cx = ax;
+		int cy = ay;
+		int prevO = from;
+		for (int i = 0; i < cap; i++) {
+			if (o != target) o = turn(o, target, dir);
+			speed += accel;
+			double limit = Math.max(motion.max(), Math.abs(motion.speed()));
+			speed = motion.reversing() ? Math.max(-limit, speed) : Math.min(limit, speed);
+			int vx = velocityX(speed, o);
+			int vy = velocityY(speed, o);
+			if (vx == 0 && vy == 0) break;
+			int nx = cx + vx;
+			int ny = cy + vy;
+			int mx;
+			int my;
+			boolean slid;
+			if (p.blocked) {
+				mx = nx;
+				my = ny;
+				slid = false;
+			} else {
+				int penHere = pen(blocker, cx, cy, o);
+				if (step(blocker, cx, cy, prevO, nx, ny, o, penHere)) {
+					mx = nx;
+					my = ny;
+					slid = false;
+				} else if (vx != 0 && step(blocker, cx, cy, prevO, nx, cy, o, penHere)) {
+					mx = nx;
+					my = cy;
+					slid = true;
+				} else if (vy != 0 && step(blocker, cx, cy, prevO, cx, ny, o, penHere)) {
+					mx = cx;
+					my = ny;
+					slid = true;
+				} else {
+					if (o == target) {
+						p.blocked = true;
+						p.blockedAt = p.n;
+						if (!showExt) break;
+						mx = nx;
+						my = ny;
+						slid = false;
+					} else {
+						prevO = o;
+						speed = 0;
+						p.x[p.n] = cx;
+						p.y[p.n] = cy;
+						p.o[p.n] = o;
+						p.slid[p.n] = true;
+						p.n++;
+						continue;
+					}
+				}
+			}
+			if (area != null && area.missing(mx, my)) break;
+			cx = mx;
+			cy = my;
+			prevO = o;
+			p.x[p.n] = cx;
+			p.y[p.n] = cy;
+			p.o[p.n] = o;
+			p.slid[p.n] = slid;
+			p.n++;
+		}
+		return p;
+	}
+	private static boolean clear(Blocker b, int ax, int ay, int ao, int bx, int by, int bo) {return block(b, ax, ay, ao, bx, by, bo) == null;}
+	private static boolean step(Blocker b, int cx, int cy, int prevO, int dx, int dy, int o, int penHere) {return penHere == 0 ? clear(b, cx, cy, prevO, dx, dy, o) : pen(b, dx, dy, o) <= penHere;}
+	private static int pen(Blocker b, int x, int y, int o) {
+		Footprint fp = b.footprint;
+		int n = 0;
+		for (int i = 0; i < fp.n; i++) {
+			int tx = Math.floorDiv(rotateX(x, o, fp.x[i], fp.y[i]), TS);
+			int ty = Math.floorDiv(rotateY(y, o, fp.x[i], fp.y[i]), TS);
+			int f = flag(b, tx, ty);
+			if (f != ChartPlotterCollisionCache.UNKNOWN && blocker(f)) n++;
+		}
+		return n;
 	}
 	public static int match(Path a, Path b) {
 		int n = Math.min(a.n, b.n);
@@ -320,7 +422,9 @@ public final class ChartPlotterProjection {
 		final long area;
 		final boolean reverse;
 		final boolean show;
-		private Key(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean show, long rev, long area) {
+		final boolean slide;
+		final int moveMode;
+		private Key(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean show, long rev, long area, boolean slide, int moveMode) {
 			this.baseX = baseX;
 			this.baseY = baseY;
 			this.plane = plane;
@@ -343,8 +447,10 @@ public final class ChartPlotterProjection {
 			this.show = show;
 			this.rev = rev;
 			this.area = area;
+			this.slide = slide;
+			this.moveMode = moveMode;
 		}
-		boolean same(Key k) {return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && show == k.show && rev == k.rev && area == k.area;}
+		boolean same(Key k) {return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && show == k.show && rev == k.rev && area == k.area && slide == k.slide && moveMode == k.moveMode;}
 	}
 	private static final class Blocker {
 		final int baseX;
@@ -395,6 +501,7 @@ public final class ChartPlotterProjection {
 		public final int[] x;
 		public final int[] y;
 		public final int[] o;
+		public final boolean[] slid;
 		public int start;
 		public int n;
 		public boolean blocked;
@@ -403,6 +510,7 @@ public final class ChartPlotterProjection {
 			x = new int[cap];
 			y = new int[cap];
 			o = new int[cap];
+			slid = new boolean[cap];
 		}
 	}
 	private static final class Block {
@@ -421,5 +529,6 @@ public final class ChartPlotterProjection {
 		double accel();
 		double max();
 		boolean reversing();
+		int moveMode();
 	}
 }

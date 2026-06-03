@@ -145,6 +145,7 @@ public final class ChartPlotterSailing {
 	public int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
 	public double speed() {return speed;}
 	public double accel() {return accel;}
+	public int moveMode() {return (int) moveMode;}
 	public int turnDir() {return turnDir;}
 	public boolean reversing() {return moveMode == 3;}
 	public double maxSpeed() {

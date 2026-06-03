@@ -44,12 +44,12 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 1)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
-	@ConfigItem(keyName = "worldMapCourseClick", name = "Course click", description = "Click action for setting or clearing charted routes.", section = worldMapSection, position = 2)
+	@ConfigItem(keyName = "worldMapCourseClick", name = "Destination click", description = "Click action for setting or clearing world map destinations.", section = worldMapSection, position = 2)
 	default ChartPlotterWorldMapClick worldMapCourseClick() {return ChartPlotterWorldMapClick.CLICK;}
 	@ConfigSection(name = "Charting", description = "Charted route settings.", position = 4)
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
-	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
+	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.SMOOTH;}
 	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining routes; lower effort returns quicker.", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
 	@ConfigItem(keyName = "courseTurnEta", name = "Turn ETA", description = "Show time to the next turn in the sailing view.", section = chartingSection, position = 2)
@@ -64,4 +64,6 @@ public interface ChartPlotterConfig extends Config {
 	default boolean nodeEditor() {return false;}
 	@ConfigItem(keyName = "sparseRouteDebug", name = "Sparse route debug", description = "Draw sparse route nodes and corridors on the world map.", section = tweaksSection, position = 6)
 	default boolean sparseRouteDebug() {return false;}
+	@ConfigItem(keyName = "sailingSlide", name = "Slide model", description = "(Experimental) Course projection: turn gradually from heading and slide along walls.", section = tweaksSection, position = 7)
+	default boolean sailingSlide() {return false;}
 }

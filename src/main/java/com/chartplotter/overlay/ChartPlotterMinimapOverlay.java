@@ -16,6 +16,7 @@ import java.awt.Shape;
 import java.awt.Stroke;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarbitID;
@@ -172,9 +173,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		Point m = client.getMouseCanvasPosition();
 		if (m == null || client.getCanvas().getMousePosition() == null || client.isMenuOpen()) return -1;
 		if (plugin.suppressPotential(m)) return -1;
-		if (overMinimap(m)) return mouseHeading(client, anchor, m);
-		if (ChartPlotterOverlay.outsideViewport(client, m) || ChartPlotterOverlay.headingInactive(client, wv)) return -1;
-		return ChartPlotterOverlay.mouseHeading(client, wv, anchor, m);
+		if (wv.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return -1;
+		return overMinimap(m) ? mouseHeading(client, anchor, m) : -1;
 	}
 	private static Shape clip(Client client, Widget minimap) {
 		java.awt.Rectangle b = minimap.getBounds();

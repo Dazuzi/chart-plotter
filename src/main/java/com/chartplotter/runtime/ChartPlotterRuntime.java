@@ -163,8 +163,8 @@ public final class ChartPlotterRuntime {
 		if (dst == null) return;
 		menuBlock = true;
 		ChartPlotterRoute r = routes.route();
-		if (r != null && (r.status == ChartPlotterRoute.OK || r.status == ChartPlotterRoute.PENDING)) client.getMenu().createMenuEntry(-1).setOption("Clear course").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.clear());
-		client.getMenu().createMenuEntry(-1).setOption("Set course").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.set(dst[0], dst[1]));
+		if (r != null && (r.status == ChartPlotterRoute.OK || r.status == ChartPlotterRoute.PENDING)) client.getMenu().createMenuEntry(-1).setOption("Clear destination").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.clear());
+		client.getMenu().createMenuEntry(-1).setOption("Set destination").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.set(dst[0], dst[1]));
 	}
 	public void menu(MenuOptionClicked e) {
 		if (!features.routes) return;
@@ -189,7 +189,7 @@ public final class ChartPlotterRuntime {
 		WorldView top = sailing.top();
 		boolean scene = top != null && sailing.sceneChanged(top);
 		if (scene) sailing.scene(ship, loc);
-		boolean normal = features.cache(sailing.boarded()) && top != null && top.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;
+		boolean normal = features.cache(sailing.boarded()) && top != null;
 		boolean started = collision(normal, top);
 		if (scene && normal && !started) capture(top);
 		if (features.routes && top != null) routes.tick(top, ship, loc);
@@ -242,11 +242,12 @@ public final class ChartPlotterRuntime {
 		else if (!prev.tracking) clientThread.invoke(sailing::sync);
 	}
 	private void chartCourse(Point m) {
+		if (!features.routes || !sailing.boarded()) return;
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst != null) routes.chart(dst[0], dst[1]);
 	}
 	private boolean courseClick() {
-		if (!features.routes || downAlt || downShift) return false;
+		if (!features.routes || !sailing.boarded() || downAlt || downShift) return false;
 		ChartPlotterWorldMapClick click = config.worldMapCourseClick();
 		return click == ChartPlotterWorldMapClick.CLICK || click == ChartPlotterWorldMapClick.CTRL_CLICK && downCtrl;
 	}
