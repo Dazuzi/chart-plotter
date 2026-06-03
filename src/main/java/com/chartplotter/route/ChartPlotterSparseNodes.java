@@ -15,9 +15,14 @@ public final class ChartPlotterSparseNodes {
 	private int[] y = new int[64];
 	private int n;
 	private boolean loaded;
+	private long version;
 	public synchronized Snapshot snapshot() {
 		load();
-		return new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n));
+		return new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n), version);
+	}
+	public synchronized long version() {
+		load();
+		return version;
 	}
 	public synchronized int nodeAt(int wx, int wy, int r) {
 		load();
@@ -32,6 +37,7 @@ public final class ChartPlotterSparseNodes {
 		x[n] = wx;
 		y[n] = wy;
 		n++;
+		version++;
 		flushQuiet();
 	}
 	public synchronized void move(int ox, int oy, int wx, int wy) {
@@ -41,6 +47,7 @@ public final class ChartPlotterSparseNodes {
 			if (x[i] == wx && y[i] == wy) return;
 			x[i] = wx;
 			y[i] = wy;
+			version++;
 			flushQuiet();
 			return;
 		}
@@ -54,6 +61,7 @@ public final class ChartPlotterSparseNodes {
 			System.arraycopy(y, i + 1, y, i, m);
 		}
 		n--;
+		version++;
 		flushQuiet();
 	}
 	public synchronized void invalidate(ChartPlotterCollisionData data) {
@@ -66,6 +74,7 @@ public final class ChartPlotterSparseNodes {
 		}
 		if (w == n) return;
 		n = w;
+		version++;
 		flushQuiet();
 	}
 	private void load() {
@@ -79,6 +88,7 @@ public final class ChartPlotterSparseNodes {
 			n = nodes.x.length;
 		}
 		loaded = true;
+		version++;
 	}
 	private void defaults() {
 		try (InputStream in = ChartPlotterSparseNodes.class.getResourceAsStream("/com/chartplotter/sparse-nodes.txt")) {
@@ -134,9 +144,14 @@ public final class ChartPlotterSparseNodes {
 	public static final class Snapshot {
 		public final int[] x;
 		public final int[] y;
+		public final long version;
 		public Snapshot(int[] x, int[] y) {
+			this(x, y, 0);
+		}
+		public Snapshot(int[] x, int[] y, long version) {
 			this.x = x;
 			this.y = y;
+			this.version = version;
 		}
 	}
 }

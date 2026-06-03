@@ -62,7 +62,7 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
 	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map.", section = tweaksSection, position = 5)
 	default boolean nodeEditor() {return false;}
-	@ConfigItem(keyName = "sparseRouteDebug", name = "Sparse route debug", description = "Draw sparse route nodes and corridors on the world map.", section = tweaksSection, position = 6)
+	@ConfigItem(keyName = "sparseRouteDebug", name = "Sparse route debug", description = "Draw sparse route nodes and corridors on the world map when charting a course.", section = tweaksSection, position = 6)
 	default boolean sparseRouteDebug() {return false;}
 	@ConfigItem(keyName = "sailingSlide", name = "Slide model", description = "(Experimental) Course projection: turn gradually from heading and slide along walls.", section = tweaksSection, position = 7)
 	default boolean sailingSlide() {return false;}

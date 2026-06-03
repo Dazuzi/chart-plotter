@@ -27,6 +27,7 @@ public final class ChartPlotterCollisionData {
 		Chunk c = chunk(x, y);
 		return c == null || c.empty();
 	}
+	public int size() {return base.size();}
 	public Iterable<Map.Entry<Long, Chunk>> entries() {return base.entrySet();}
 	public static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	public static final class Chunk {

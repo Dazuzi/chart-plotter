@@ -274,24 +274,51 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private void drawCache(Graphics2D g, ChartPlotterWorldMap.State s) {
 		Stroke old = g.getStroke();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
+		int minWX = (int) Math.floor(s.pos.getX() - s.wt / 2.0) - 8;
+		int minWY = (int) Math.floor(s.pos.getY() - s.ht / 2.0) - 8;
+		int maxWX = (int) Math.ceil(s.pos.getX() + s.wt / 2.0) + 8;
+		int maxWY = (int) Math.ceil(s.pos.getY() + s.ht / 2.0) + 8;
+		int minCX = Math.floorDiv(minWX, 8);
+		int minCY = Math.floorDiv(minWY, 8);
+		int maxCX = Math.floorDiv(maxWX, 8);
+		int maxCY = Math.floorDiv(maxWY, 8);
+		long window = (long) (maxCX - minCX + 1) * (maxCY - minCY + 1);
 		g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
 		g.setColor(CACHE_EDGE);
+		if (window <= data.size()) drawCacheWindow(g, s, data, minCX, minCY, maxCX, maxCY, minWX, minWY, maxWX, maxWY);
+		else drawCacheEntries(g, s, data, minWX, minWY, maxWX, maxWY);
+		g.setStroke(old);
+	}
+	private void drawCacheWindow(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, int minCX, int minCY, int maxCX, int maxCY, int minWX, int minWY, int maxWX, int maxWY) {
+		for (int cx = minCX; cx <= maxCX; cx++) {
+			for (int cy = minCY; cy <= maxCY; cy++) {
+				ChartPlotterCollisionData.Chunk c = data.chunk(cx, cy);
+				if (c == null || c.empty() || cacheChunkHidden(s, cx, cy, minWX, minWY, maxWX, maxWY)) continue;
+				drawCacheChunk(g, s, data, cx, cy);
+			}
+		}
+	}
+	private void drawCacheEntries(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, int minWX, int minWY, int maxWX, int maxWY) {
 		for (Map.Entry<Long, ChartPlotterCollisionData.Chunk> e : data.entries()) {
 			if (e.getValue().empty()) continue;
 			int cx = (int) (e.getKey() >> 32);
 			int cy = (int) (long) e.getKey();
-			if (!cacheChunkVisible(s, cx, cy)) continue;
-			int wx = cx << 3;
-			int wy = cy << 3;
-			if (data.uncached(cx - 1, cy)) drawCacheEdge(g, s, wx, wy, 0, 0, wx, wy + 7, 0, 1);
-			if (data.uncached(cx + 1, cy)) drawCacheEdge(g, s, wx + 7, wy, 1, 0, wx + 7, wy + 7, 1, 1);
-			if (data.uncached(cx, cy - 1)) drawCacheEdge(g, s, wx, wy, 0, 0, wx + 7, wy, 1, 0);
-			if (data.uncached(cx, cy + 1)) drawCacheEdge(g, s, wx, wy + 7, 0, 1, wx + 7, wy + 7, 1, 1);
+			if (cacheChunkHidden(s, cx, cy, minWX, minWY, maxWX, maxWY)) continue;
+			drawCacheChunk(g, s, data, cx, cy);
 		}
-		g.setStroke(old);
 	}
-	private boolean cacheChunkVisible(ChartPlotterWorldMap.State s, int cx, int cy) {
-		return s.data.surfaceContainsPosition((cx << 3) + 4, (cy << 3) + 4);
+	private void drawCacheChunk(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, int cx, int cy) {
+		int wx = cx << 3;
+		int wy = cy << 3;
+		if (data.uncached(cx - 1, cy)) drawCacheEdge(g, s, wx, wy, 0, 0, wx, wy + 7, 0, 1);
+		if (data.uncached(cx + 1, cy)) drawCacheEdge(g, s, wx + 7, wy, 1, 0, wx + 7, wy + 7, 1, 1);
+		if (data.uncached(cx, cy - 1)) drawCacheEdge(g, s, wx, wy, 0, 0, wx + 7, wy, 1, 0);
+		if (data.uncached(cx, cy + 1)) drawCacheEdge(g, s, wx, wy + 7, 0, 1, wx + 7, wy + 7, 1, 1);
+	}
+	private boolean cacheChunkHidden(ChartPlotterWorldMap.State s, int cx, int cy, int minWX, int minWY, int maxWX, int maxWY) {
+		int wx = cx << 3;
+		int wy = cy << 3;
+		return wx > maxWX || wx + 7 < minWX || wy > maxWY || wy + 7 < minWY || !s.data.surfaceContainsPosition(wx + 4, wy + 4);
 	}
 	private void drawCacheEdge(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, double afx, double afy, int bx, int by, double bfx, double bfy) {
 		Point a = map.point(s, ax, ay, afx, afy);
