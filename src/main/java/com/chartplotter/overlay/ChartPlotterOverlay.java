@@ -43,6 +43,10 @@ public class ChartPlotterOverlay extends Overlay {
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterScene scene;
 	private final ChartPlotterProjection projection;
+	private int etaX = Integer.MIN_VALUE;
+	private int etaY = Integer.MIN_VALUE;
+	private int etaTicks = -1;
+	private long etaUpdated;
 	@Inject
 	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene, ChartPlotterProjection projection) {
 		this.client = client;
@@ -160,10 +164,20 @@ public class ChartPlotterOverlay extends Overlay {
 		int bx = wv.getBaseX() + Math.floorDiv(center.getX(), TS);
 		int by = wv.getBaseY() + Math.floorDiv(center.getY(), TS);
 		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, plugin.speed(), plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
-		if (!turn.valid) return;
+		if (!turn.valid) {
+			resetEta();
+			return;
+		}
 		Point at = edge(wv, area, center.getX(), center.getY(), (turn.x - wv.getBaseX()) * TS + TS / 2, (turn.y - wv.getBaseY()) * TS + TS / 2);
 		if (at == null) return;
-		String s = turn.ticks < 0 ? "Turn ahead" : "Turn in " + (mode == ChartPlotterTurnEta.TICKS ? turn.ticks + "t" : seconds(turn) + "s");
+		String s;
+		if (turn.ticks < 0) {
+			resetEta();
+			s = "Turn ahead";
+		} else if (mode == ChartPlotterTurnEta.TICKS) {
+			resetEta();
+			s = "Turn in " + turn.ticks + "t";
+		} else s = "Turn in " + seconds(turn) + "s";
 		Color c = config.chartColor();
 		g.setColor(c);
 		g.fillOval(at.getX() - 3, at.getY() - 3, 6, 6);
@@ -173,9 +187,22 @@ public class ChartPlotterOverlay extends Overlay {
 		t.setPosition(new java.awt.Point(at.getX() - g.getFontMetrics().stringWidth(s) / 2, at.getY() - 8));
 		t.render(g);
 	}
-	private static int seconds(ChartPlotterRoutes.Turn turn) {
-		double left = turn.ticks * TICK - Math.max(0, System.currentTimeMillis() - turn.updated) / 1000.0;
+	private int seconds(ChartPlotterRoutes.Turn turn) {
+		long now = System.currentTimeMillis();
+		if (turn.x != etaX || turn.y != etaY || turn.ticks < etaTicks) {
+			etaX = turn.x;
+			etaY = turn.y;
+			etaTicks = turn.ticks;
+			etaUpdated = turn.updated;
+		}
+		double left = etaTicks * TICK - Math.max(0, now - etaUpdated) / 1000.0;
 		return Math.max(0, (int) Math.ceil(left));
+	}
+	private void resetEta() {
+		etaX = Integer.MIN_VALUE;
+		etaY = Integer.MIN_VALUE;
+		etaTicks = -1;
+		etaUpdated = 0;
 	}
 	private Point edge(WorldView wv, ChartPlotterScene.Area area, int sx, int sy, int ex, int ey) {
 		int ax = ex;

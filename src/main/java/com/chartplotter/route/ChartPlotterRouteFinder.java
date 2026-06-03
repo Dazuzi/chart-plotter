@@ -561,7 +561,7 @@ public final class ChartPlotterRouteFinder {
 		int dy = Math.abs(ty - y);
 		int a = Math.max(dx, dy);
 		int b = Math.min(dx, dy);
-		return 2 * b <= a ? 10 * a + 2 * b : 8 * a + 6 * b;
+		return 2 * b <= a ? 10 * a : (20 * (a + b) + 2) / 3;
 	}
 	private static int h(int x, int y, int tx, int ty, int dir, int turnBias) {
 		return h(x, y, tx, ty) + turn(turnBias) * minTurns(dir, tx - x, ty - y);

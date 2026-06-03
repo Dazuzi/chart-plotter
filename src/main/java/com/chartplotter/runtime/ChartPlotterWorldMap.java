@@ -16,6 +16,7 @@ import net.runelite.api.WorldView;
 @Singleton
 public final class ChartPlotterWorldMap {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int[] BLOCK = {InterfaceID.Worldmap.OVERVIEW_CONTAINER, InterfaceID.Worldmap.SIDE, InterfaceID.Worldmap.BOTTOM, InterfaceID.Worldmap.MAPLIST_CONTAINER, InterfaceID.Worldmap.CLOSE, InterfaceID.Worldmap.RESIZE_INDICATOR, InterfaceID.Worldmap.RESIZE_GRAPHIC};
 	private final Client client;
 	@Inject
 	public ChartPlotterWorldMap(Client client) {
@@ -70,16 +71,12 @@ public final class ChartPlotterWorldMap {
 	}
 	public Shape clip(State s) {
 		Rectangle r = new Rectangle(s.r.x + 1, s.r.y + 1, Math.max(1, s.r.width - 2), Math.max(1, s.r.height - 2));
-		Widget overview = client.getWidget(InterfaceID.Worldmap.OVERVIEW_CONTAINER);
-		Widget selector = client.getWidget(InterfaceID.Worldmap.MAPLIST_BOX_GRAPHIC0);
 		Area a = new Area(r);
 		boolean cut = false;
-		if (overview != null && !overview.isHidden()) {
-			a.subtract(new Area(overview.getBounds()));
-			cut = true;
-		}
-		if (selector != null && !selector.isHidden()) {
-			a.subtract(new Area(selector.getBounds()));
+		for (int id : BLOCK) {
+			Widget w = client.getWidget(id);
+			if (w == null || w.isHidden()) continue;
+			a.subtract(new Area(w.getBounds()));
 			cut = true;
 		}
 		return cut ? a : r;
