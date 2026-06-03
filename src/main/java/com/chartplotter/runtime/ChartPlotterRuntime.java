@@ -211,7 +211,7 @@ public final class ChartPlotterRuntime {
 		int bx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
 		int by = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(r, bx, by, sailing.speed(), sailing.accel(), sailing.maxSpeed());
-		if (!turn.valid || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY || focused) return;
+		if (!turn.valid || turn.end || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY || focused) return;
 		notifier.notify("Sailing: next turn approaching");
 		alertX = turn.x;
 		alertY = turn.y;

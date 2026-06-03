@@ -171,14 +171,15 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		Point at = edge(wv, area, center.getX(), center.getY(), (turn.x - wv.getBaseX()) * TS + TS / 2, (turn.y - wv.getBaseY()) * TS + TS / 2);
 		if (at == null) return;
+		String p = turn.end ? "Destination" : "Turn";
 		String s;
 		if (turn.ticks < 0) {
 			resetEta();
-			s = "Turn ahead";
+			s = p + " ahead";
 		} else if (mode == ChartPlotterTurnEta.TICKS) {
 			resetEta();
-			s = "Turn in " + turn.ticks + "t";
-		} else s = "Turn in " + seconds(turn) + "s";
+			s = p + " in " + turn.ticks + "t";
+		} else s = p + " in " + seconds(turn) + "s";
 		Color c = config.chartColor();
 		g.setColor(c);
 		g.fillOval(at.getX() - 3, at.getY() - 3, 6, 6);

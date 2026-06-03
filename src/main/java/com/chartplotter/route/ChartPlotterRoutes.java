@@ -246,7 +246,7 @@ public final class ChartPlotterRoutes {
 		int cx = r.x[1];
 		int cy = r.y[1];
 		int ticks = speed > 0 ? eta(Math.hypot(cx - bx, cy - by), speed, accel, max) : -1;
-		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated);
+		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated, r.n == 2);
 	}
 	private static int eta(double dist, double speed, double accel, double max) {
 		double v = speed;
@@ -268,13 +268,16 @@ public final class ChartPlotterRoutes {
 		public final int y;
 		public final int ticks;
 		public final long updated;
-		private Turn(int x, int y, int ticks, long updated) {this(true, x, y, ticks, updated);}
-		private Turn(boolean valid, int x, int y, int ticks, long updated) {
+		public final boolean end;
+		private Turn(int x, int y, int ticks, long updated, boolean end) {this(true, x, y, ticks, updated, end);}
+		private Turn(boolean valid, int x, int y, int ticks, long updated) {this(valid, x, y, ticks, updated, false);}
+		private Turn(boolean valid, int x, int y, int ticks, long updated, boolean end) {
 			this.valid = valid;
 			this.x = x;
 			this.y = y;
 			this.ticks = ticks;
 			this.updated = updated;
+			this.end = end;
 		}
 	}
 	public static final class Preview {
