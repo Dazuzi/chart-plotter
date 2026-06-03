@@ -37,6 +37,7 @@ public final class ChartPlotterSailing {
 	private int potentialX;
 	private int potentialY;
 	private LocalPoint lastLoc;
+	private long motionTime;
 	private boolean potentialBlocked;
 	@Inject
 	private ChartPlotterSailing(Client client) {
@@ -92,6 +93,7 @@ public final class ChartPlotterSailing {
 		lastAngle = heading(ship);
 	}
 	public void motion(WorldEntity ship, LocalPoint loc, boolean skip) {
+		motionTime = System.currentTimeMillis();
 		if (!skip && lastLoc != null) {
 			int vx = loc.getX() - lastLoc.getX();
 			int vy = loc.getY() - lastLoc.getY();
@@ -151,6 +153,7 @@ public final class ChartPlotterSailing {
 		if (moveMode == 2 || moveMode == 4 || moveMode == 0 && lastMoveMode == 4) cap = baseSpeed;
 		return cap;
 	}
+	public long motionTime() {return motionTime;}
 	public int actualHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getOrientation());}
 	private int targetHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getTargetOrientation());}
 	private boolean stalled() {return speed == 0 && stillTicks >= COURSE_STALL;}
@@ -158,6 +161,7 @@ public final class ChartPlotterSailing {
 	private void resetMotion() {
 		speed = 0;
 		lastSpeed = 0;
+		motionTime = 0;
 		motionHold = 0;
 		stillTicks = 0;
 		turnDir = 0;

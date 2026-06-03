@@ -9,6 +9,7 @@ import net.runelite.api.events.FocusChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WorldViewLoaded;
 import net.runelite.api.Point;
@@ -47,6 +48,9 @@ public class ChartPlotterPlugin extends Plugin {
 	public void onWorldViewLoaded(WorldViewLoaded e) {runtime.loaded(e);}
 	@SuppressWarnings("unused")
 	@Subscribe
+	public void onMenuOpened(MenuOpened e) {runtime.menu(e);}
+	@SuppressWarnings("unused")
+	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked e) {runtime.menu(e);}
 	@SuppressWarnings({"unused", "UnusedParameters"})
 	@Subscribe
@@ -69,4 +73,5 @@ public class ChartPlotterPlugin extends Plugin {
 	public double speed() {return sailing.speed();}
 	public double accel() {return sailing.accel();}
 	public double maxSpeed() {return sailing.maxSpeed();}
+	public long motionTime() {return sailing.motionTime();}
 }

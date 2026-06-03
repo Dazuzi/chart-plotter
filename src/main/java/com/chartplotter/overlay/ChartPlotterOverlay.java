@@ -1,6 +1,7 @@
 package com.chartplotter.overlay;
 import com.chartplotter.ChartPlotterCacheOverlay;
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterLineMode;
 import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.ChartPlotterTurnEta;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
@@ -56,7 +57,8 @@ public class ChartPlotterOverlay extends Overlay {
 	@Override
 	public Dimension render(Graphics2D g) {
 		if (!plugin.isSailing()) return null;
-		boolean showWorld = config.worldEnabled();
+		ChartPlotterLineMode mode = config.worldLineMode();
+		boolean showWorld = mode.on;
 		ChartPlotterTurnEta turnEta = config.courseTurnEta();
 		boolean showTurn = turnEta != ChartPlotterTurnEta.OFF;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
@@ -79,9 +81,8 @@ public class ChartPlotterOverlay extends Overlay {
 			int from = plugin.heading(ship);
 			int course = plugin.course(ship);
 			int mouse = hoverHeading(top, center);
-			boolean showExt = config.worldShowBlockedExtension();
-			ChartPlotterProjection.Path cur = projection.path(top, wc, anchor, from, course, showExt);
-			ChartPlotterProjection.Path pot = mouse >= 0 ? projection.path(top, wc, anchor, from, mouse, showExt) : null;
+			ChartPlotterProjection.Path cur = projection.path(top, wc, anchor, from, course, mode.blocked);
+			ChartPlotterProjection.Path pot = mouse >= 0 ? projection.path(top, wc, anchor, from, mouse, mode.blocked) : null;
 			int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 			Stroke prev = g.getStroke();
 			g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
@@ -157,11 +158,11 @@ public class ChartPlotterOverlay extends Overlay {
 		if (area == null) return;
 		int bx = wv.getBaseX() + Math.floorDiv(center.getX(), TS);
 		int by = wv.getBaseY() + Math.floorDiv(center.getY(), TS);
-		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, plugin.speed(), plugin.accel(), plugin.maxSpeed());
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, plugin.speed(), plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
 		if (!turn.valid) return;
 		Point at = edge(wv, area, center.getX(), center.getY(), (turn.x - wv.getBaseX()) * TS + TS / 2, (turn.y - wv.getBaseY()) * TS + TS / 2);
 		if (at == null) return;
-		String s = turn.ticks < 0 ? "Turn ahead" : "Turn in " + (mode == ChartPlotterTurnEta.TICKS ? turn.ticks + "t" : Math.round(turn.ticks * TICK) + "s");
+		String s = turn.ticks < 0 ? "Turn ahead" : "Turn in " + (mode == ChartPlotterTurnEta.TICKS ? turn.ticks + "t" : seconds(turn) + "s");
 		Color c = config.chartColor();
 		g.setColor(c);
 		g.fillOval(at.getX() - 3, at.getY() - 3, 6, 6);
@@ -170,6 +171,10 @@ public class ChartPlotterOverlay extends Overlay {
 		t.setColor(c);
 		t.setPosition(new java.awt.Point(at.getX() - g.getFontMetrics().stringWidth(s) / 2, at.getY() - 8));
 		t.render(g);
+	}
+	private static int seconds(ChartPlotterRoutes.Turn turn) {
+		double left = turn.ticks * TICK - Math.max(0, System.currentTimeMillis() - turn.updated) / 1000.0;
+		return Math.max(0, (int) Math.ceil(left));
 	}
 	private Point edge(WorldView wv, ChartPlotterScene.Area area, int sx, int sy, int ex, int ey) {
 		int ax = ex;

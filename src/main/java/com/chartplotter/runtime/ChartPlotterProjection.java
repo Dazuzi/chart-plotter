@@ -1,5 +1,4 @@
 package com.chartplotter.runtime;
-import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.util.ChartPlotterMath;
@@ -18,16 +17,14 @@ public final class ChartPlotterProjection {
 	private static final int STEP = 32;
 	private static final int MEMO = 16384;
 	private final ChartPlotterSailing sailing;
-	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterScene scene;
 	private final Motion motion;
 	private final Slot[] cache = new Slot[8];
 	private int next;
 	@Inject
-	private ChartPlotterProjection(ChartPlotterSailing sailing, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene) {
+	private ChartPlotterProjection(ChartPlotterSailing sailing, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene) {
 		this.sailing = sailing;
-		this.config = config;
 		this.collisionCache = collisionCache;
 		this.scene = scene;
 		motion = new Motion() {
@@ -58,14 +55,10 @@ public final class ChartPlotterProjection {
 		return p;
 	}
 	private Key key(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
-		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), config.stopAtCollision(), showExt, collisionCache.rev(), ChartPlotterScene.key(area));
+		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area));
 	}
 	private Path raw(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
-		boolean stop = config.stopAtCollision();
-		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, stop ? blocker(wv, wc, collisionCache) : null);
-	}
-	public static Path fixture(ChartPlotterCollisionData data, int ax, int ay, int from, int target, int cap, int turn, double speed, double accel, double max, boolean reversing, boolean stop, boolean showExt) {
-		return raw(ax, ay, from, target, cap, null, showExt, new State(turn, speed, accel, max, reversing), stop ? blocker(0, 0, null, data) : null);
+		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, blocker(wv, wc, collisionCache));
 	}
 	private static Path raw(int ax, int ay, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt, Motion motion, Blocker blocker) {
 		Path p = new Path(cap + 2);
@@ -326,9 +319,8 @@ public final class ChartPlotterProjection {
 		final long rev;
 		final long area;
 		final boolean reverse;
-		final boolean stop;
 		final boolean show;
-		private Key(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean stop, boolean show, long rev, long area) {
+		private Key(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean show, long rev, long area) {
 			this.baseX = baseX;
 			this.baseY = baseY;
 			this.plane = plane;
@@ -348,12 +340,11 @@ public final class ChartPlotterProjection {
 			this.accel = accel;
 			this.max = max;
 			this.reverse = reverse;
-			this.stop = stop;
 			this.show = show;
 			this.rev = rev;
 			this.area = area;
 		}
-		boolean same(Key k) {return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && stop == k.stop && show == k.show && rev == k.rev && area == k.area;}
+		boolean same(Key k) {return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && show == k.show && rev == k.rev && area == k.area;}
 	}
 	private static final class Blocker {
 		final int baseX;
@@ -430,29 +421,5 @@ public final class ChartPlotterProjection {
 		double accel();
 		double max();
 		boolean reversing();
-	}
-	private static final class State implements Motion {
-		final int turn;
-		final double speed;
-		final double accel;
-		final double max;
-		final boolean reversing;
-		private State(int turn, double speed, double accel, double max, boolean reversing) {
-			this.turn = turn;
-			this.speed = speed;
-			this.accel = accel;
-			this.max = max;
-			this.reversing = reversing;
-		}
-		@Override
-		public int turn() {return turn;}
-		@Override
-		public double speed() {return speed;}
-		@Override
-		public double accel() {return accel;}
-		@Override
-		public double max() {return max;}
-		@Override
-		public boolean reversing() {return reversing;}
 	}
 }

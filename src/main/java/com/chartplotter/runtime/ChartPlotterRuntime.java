@@ -1,5 +1,6 @@
 package com.chartplotter.runtime;
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterWorldMapClick;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.overlay.ChartPlotterMinimapOverlay;
 import com.chartplotter.overlay.ChartPlotterOverlay;
@@ -13,6 +14,7 @@ import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WorldViewLoaded;
 import net.runelite.client.callback.ClientThread;
@@ -25,6 +27,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 public final class ChartPlotterRuntime {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int ALERT_TICKS = 8;
+	private static final int CLICK_SLOP = 4;
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -43,6 +46,15 @@ public final class ChartPlotterRuntime {
 	private volatile boolean focused = true;
 	private int alertX = Integer.MIN_VALUE;
 	private int alertY = Integer.MIN_VALUE;
+	private int downX;
+	private int downY;
+	private boolean down;
+	private boolean dragged;
+	private boolean downCtrl;
+	private boolean downAlt;
+	private boolean downShift;
+	private boolean downBlock;
+	private boolean menuBlock;
 	private volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
@@ -51,11 +63,18 @@ public final class ChartPlotterRuntime {
 			worldMapOverlay.courseCtrl(e.isControlDown());
 			Point m = new Point(e.getX(), e.getY());
 			if (e.getButton() != MouseEvent.BUTTON1) return e;
+			down = true;
+			dragged = false;
+			downX = e.getX();
+			downY = e.getY();
+			downCtrl = e.isControlDown();
+			downAlt = e.isAltDown();
+			downShift = e.isShiftDown();
+			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown() || e.isShiftDown();
 			boolean mod = e.isAltDown() || e.isShiftDown() || e.isControlDown();
 			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> worldMapOverlay.placeNode(m));
 			else if (e.isShiftDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.startNodeMove(m));
 			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.addNode(m));
-			else if (e.isControlDown() && features.routes) clientThread.invoke(() -> chartCourse(m));
 			if (!mod && features.routes && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
 			return e;
 		}
@@ -63,6 +82,13 @@ public final class ChartPlotterRuntime {
 		public MouseEvent mouseReleased(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseCtrl(e.isControlDown());
+			boolean moved = dragged || Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP;
+			if (e.getButton() == MouseEvent.BUTTON1 && down && !moved && !downBlock && courseClick()) {
+				Point m = new Point(e.getX(), e.getY());
+				clientThread.invoke(() -> chartCourse(m));
+			}
+			if (e.getButton() == MouseEvent.BUTTON1) down = false;
+			if (e.getButton() == MouseEvent.BUTTON1) menuBlock = false;
 			return e;
 		}
 		@Override
@@ -73,12 +99,14 @@ public final class ChartPlotterRuntime {
 		}
 		@Override
 		public MouseEvent mouseDragged(MouseEvent e) {
+			if (down && (Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP)) dragged = true;
 			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseCtrl(e.isControlDown());
 			return e;
 		}
 		@Override
 		public MouseEvent mouseExited(MouseEvent e) {
+			down = false;
 			worldMapOverlay.nodeAlt(false);
 			worldMapOverlay.courseCtrl(false);
 			return e;
@@ -126,6 +154,17 @@ public final class ChartPlotterRuntime {
 		if (wv == null || !wv.isTopLevel()) return;
 		sailing.loaded(wv);
 		capture(wv);
+	}
+	@SuppressWarnings({"unused", "UnusedParameters"})
+	public void menu(MenuOpened e) {
+		if (!features.routes || !sailing.boarded()) return;
+		Point m = client.getMouseCanvasPosition();
+		int[] dst = worldMapOverlay.tile(m);
+		if (dst == null) return;
+		menuBlock = true;
+		ChartPlotterRoute r = routes.route();
+		if (r != null && (r.status == ChartPlotterRoute.OK || r.status == ChartPlotterRoute.PENDING)) client.getMenu().createMenuEntry(-1).setOption("Clear course").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.clear());
+		client.getMenu().createMenuEntry(-1).setOption("Set course").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.set(dst[0], dst[1]));
 	}
 	public void menu(MenuOptionClicked e) {
 		if (!features.routes) return;
@@ -205,6 +244,11 @@ public final class ChartPlotterRuntime {
 	private void chartCourse(Point m) {
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst != null) routes.chart(dst[0], dst[1]);
+	}
+	private boolean courseClick() {
+		if (!features.routes || downAlt || downShift) return false;
+		ChartPlotterWorldMapClick click = config.worldMapCourseClick();
+		return click == ChartPlotterWorldMapClick.CLICK || click == ChartPlotterWorldMapClick.CTRL_CLICK && downCtrl;
 	}
 	private boolean collision(boolean active, WorldView top) {
 		if (active == collisionActive) return false;

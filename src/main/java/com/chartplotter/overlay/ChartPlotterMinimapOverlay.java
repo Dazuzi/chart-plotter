@@ -1,5 +1,6 @@
 package com.chartplotter.overlay;
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterLineMode;
 import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.runtime.ChartPlotterProjection;
@@ -57,7 +58,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		Shape c = clip(client, m);
 		clip = c;
-		if (!config.minimapEnabled()) return null;
+		ChartPlotterLineMode mode = config.minimapLineMode();
+		if (!mode.on) return null;
 		WorldView top = plugin.top();
 		WorldEntity ship = plugin.getShip();
 		if (ship == null || top == null) return null;
@@ -68,10 +70,9 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		int from = plugin.heading(ship);
 		int course = plugin.course(ship);
 		int mouse = hoverHeading(top, center);
-		boolean showExt = config.minimapShowBlockedExtension();
-		ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, showExt);
+		ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, mode.blocked);
 		ChartPlotterProjection.Path pot = null;
-		if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, showExt);
+		if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, mode.blocked);
 		int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();

@@ -1,6 +1,7 @@
 package com.chartplotter.overlay;
 import com.chartplotter.ChartPlotterCacheOverlay;
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterLineMode;
 import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
@@ -45,6 +46,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final Color PREVIEW_OK = new Color(80, 255, 120, 235);
 	private static final Color PREVIEW_SNAP = new Color(255, 200, 40, 235);
 	private static final Color PREVIEW_BAD = new Color(255, 70, 60, 235);
+	private static final long TIP_MS = 3000;
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -71,7 +73,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	public Dimension render(Graphics2D g) {
 		boolean edit = config.nodeEditor();
 		if (!plugin.isSailing() && !edit) return null;
-		boolean showWorldMap = config.worldMapEnabled();
+		ChartPlotterLineMode mode = config.worldMapLineMode();
+		boolean showWorldMap = mode.on;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
 		if (!showWorldMap && !cacheOverlay.worldMap && !edit) return null;
 		ChartPlotterWorldMap.State s = map.state();
@@ -96,10 +99,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			int course = plugin.course(ship);
 			int mouse = ctrl ? -1 : hoverHeading(top, center, s, clip);
 			int cap = map.pathCap(top, anchor, s);
-			boolean showExt = config.worldMapShowBlockedExtension();
-			ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, cap, showExt);
+			ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, cap, mode.blocked);
 			ChartPlotterProjection.Path pot = null;
-			if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, cap, showExt);
+			if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, cap, mode.blocked);
 			int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 			g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 			drawRoute(g, s, plugin.route());
@@ -166,27 +168,32 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		if (r == null) return;
 		Color c = r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
 		Point t = map.point(s, r.tx, r.ty, 0.5, 0.5);
-		if (config.nodeEditor() && r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
+		String text = r.text();
+		if (text != null && r.status != ChartPlotterRoute.PENDING && System.currentTimeMillis() - r.time >= TIP_MS) return;
+		if (config.sparseRouteDebug() && r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
 		if (r.status == ChartPlotterRoute.OK) {
-			drawRoutePath(g, s, r.x, r.y, r.n, c);
+			drawRoutePath(g, s, r, c);
 		}
 		g.setColor(c);
 		g.fill(new Ellipse2D.Double(t.getX() - 3.5, t.getY() - 3.5, 7, 7));
 		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
-		String text = r.text();
-		if (text != null) tip(g, s.r, t, text);
+		if (text != null && System.currentTimeMillis() - r.time < TIP_MS) tip(g, s.r, t, text);
 	}
-	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, int[] x, int[] y, int n, Color c) {
-		if (n < 2) return;
+	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c) {
+		if (r.n < 1) return;
 		Path2D.Double line = new Path2D.Double();
 		boolean have = false;
-		for (int i = 0; i < n; i++) {
-			Point q = map.point(s, x[i], y[i], 0.5, 0.5);
+		for (int i = 0; i < r.n; i++) {
+			Point q = map.point(s, r.x[i], r.y[i], 0.5, 0.5);
 			if (have) line.lineTo(q.getX(), q.getY());
 			else {
 				line.moveTo(q.getX(), q.getY());
 				have = true;
 			}
+		}
+		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) {
+			Point q = map.point(s, r.tx, r.ty, 0.5, 0.5);
+			line.lineTo(q.getX(), q.getY());
 		}
 		g.setColor(c);
 		g.draw(line);

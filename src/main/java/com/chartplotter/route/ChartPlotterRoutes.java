@@ -5,9 +5,12 @@ import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.runtime.ChartPlotterSailing;
 import com.chartplotter.util.ChartPlotterMath;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -41,6 +44,7 @@ public final class ChartPlotterRoutes {
 	private volatile boolean busy;
 	private volatile long rev;
 	private ExecutorService exec;
+	private final AtomicReference<Future<?>> work = new AtomicReference<>();
 	@Inject
 	private ChartPlotterRoutes(ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterSparseNodes sparseNodes, ChartPlotterSailing sailing) {
 		this.config = config;
@@ -49,6 +53,14 @@ public final class ChartPlotterRoutes {
 		this.sailing = sailing;
 	}
 	public void chart(int tx, int ty) {
+		ChartPlotterRoute old = route;
+		if (old != null && old.target(tx, ty, CLEAR_RADIUS)) {
+			clear();
+			return;
+		}
+		set(tx, ty);
+	}
+	public void set(int tx, int ty) {
 		if (!sailing.boarded()) return;
 		WorldView top = sailing.top();
 		WorldEntity ship = sailing.ship();
@@ -56,11 +68,6 @@ public final class ChartPlotterRoutes {
 		LocalPoint loc = ship.getTargetLocation();
 		if (loc == null) loc = ship.getLocalLocation();
 		if (loc == null) return;
-		ChartPlotterRoute old = route;
-		if (old != null && old.target(tx, ty, CLEAR_RADIUS)) {
-			clear();
-			return;
-		}
 		int sx = top.getBaseX() + Math.floorDiv(loc.getX(), TS);
 		int sy = top.getBaseY() + Math.floorDiv(loc.getY(), TS);
 		long t = target(collisionCache.snapshot(), ship.getConfig(), tx, ty, sx, sy);
@@ -126,6 +133,8 @@ public final class ChartPlotterRoutes {
 	}
 	public void clear() {
 		seq.incrementAndGet();
+		Future<?> f = work.getAndSet(null);
+		if (f != null) f.cancel(true);
 		route = null;
 		rev = 0;
 		busy = false;
@@ -192,20 +201,30 @@ public final class ChartPlotterRoutes {
 		ChartPlotterSparseNodes.Snapshot sparse = sparseNodes.snapshot();
 		long dataRev = data.rev;
 		busy = true;
+		Future<?> old = work.getAndSet(null);
+		if (old != null) old.cancel(true);
 		if (pending) {
 			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight).effort(effort);
 			rev = dataRev;
 		}
 		start();
-		exec.execute(() -> {
-			BooleanSupplier cancel = () -> id != seq.get() || Thread.currentThread().isInterrupted();
-			ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, weight, CLEAR_RADIUS, sparse, effort.corridor, cancel).effort(effort);
-			if (id == seq.get() && !Thread.currentThread().isInterrupted()) {
-				route = r;
-				rev = dataRev;
-				busy = false;
+		AtomicReference<Future<?>> nextRef = new AtomicReference<>();
+		FutureTask<Void> next = new FutureTask<>(() -> {
+			try {
+				BooleanSupplier cancel = () -> id != seq.get() || Thread.currentThread().isInterrupted();
+				ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, wc, start, sx, sy, tx, ty, turnBias, reverse, weight, CLEAR_RADIUS, sparse, effort.corridor, cancel).effort(effort);
+				if (id == seq.get() && !Thread.currentThread().isInterrupted()) {
+					route = r;
+					rev = dataRev;
+				}
+			} finally {
+				if (id == seq.get()) busy = false;
+				work.compareAndSet(nextRef.get(), null);
 			}
-		});
+		}, null);
+		nextRef.set(next);
+		work.set(next);
+		exec.execute(next);
 	}
 	private void start() {
 		if (exec != null) return;
@@ -219,11 +238,14 @@ public final class ChartPlotterRoutes {
 	private static boolean open(int f) {return (f & ChartPlotterCollisionCache.MOVE) == 0;}
 	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max) {
+		return turn(r, bx, by, speed, accel, max, 0);
+	}
+	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max, long updated) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return Turn.NONE;
 		int cx = r.x[1];
 		int cy = r.y[1];
 		int ticks = speed > 0 ? eta(Math.hypot(cx - bx, cy - by), speed, accel, max) : -1;
-		return new Turn(cx, cy, ticks);
+		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated);
 	}
 	private static int eta(double dist, double speed, double accel, double max) {
 		double v = speed;
@@ -239,17 +261,19 @@ public final class ChartPlotterRoutes {
 		return t;
 	}
 	public static final class Turn {
-		public static final Turn NONE = new Turn(false, 0, 0, -1);
+		public static final Turn NONE = new Turn(false, 0, 0, -1, 0);
 		public final boolean valid;
 		public final int x;
 		public final int y;
 		public final int ticks;
-		private Turn(int x, int y, int ticks) {this(true, x, y, ticks);}
-		private Turn(boolean valid, int x, int y, int ticks) {
+		public final long updated;
+		private Turn(int x, int y, int ticks, long updated) {this(true, x, y, ticks, updated);}
+		private Turn(boolean valid, int x, int y, int ticks, long updated) {
 			this.valid = valid;
 			this.x = x;
 			this.y = y;
 			this.ticks = ticks;
+			this.updated = updated;
 		}
 	}
 	public static final class Preview {
