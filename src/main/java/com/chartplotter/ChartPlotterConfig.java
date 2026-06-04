@@ -49,7 +49,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigSection(name = "Charting", description = "Charted route settings.", position = 4)
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
-	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.SMOOTH;}
+	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
 	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining routes; lower effort returns quicker.", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
 	@ConfigItem(keyName = "courseTurnEta", name = "Turn ETA", description = "Show time to the next turn in the sailing view.", section = chartingSection, position = 2)

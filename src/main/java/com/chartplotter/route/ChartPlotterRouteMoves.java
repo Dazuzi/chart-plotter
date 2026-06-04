@@ -1,8 +1,8 @@
 package com.chartplotter.route;
 public final class ChartPlotterRouteMoves {
-	static final int[] DX = {0, 5, 9, 12, 13, 12, 9, 5, 0, -5, -9, -12, -13, -12, -9, -5};
-	static final int[] DY = {13, 12, 9, 5, 0, -5, -9, -12, -13, -12, -9, -5, 0, 5, 9, 12};
-	static final int[] COST = {130, 130, 127, 130, 130, 130, 127, 130, 130, 130, 127, 130, 130, 130, 127, 130};
+	static final int[] DX = {0, 4, 7, 9, 10, 9, 7, 4, 0, -4, -7, -9, -10, -9, -7, -4};
+	static final int[] DY = {10, 9, 7, 4, 0, -4, -7, -9, -10, -9, -7, -4, 0, 4, 7, 9};
+	static final int[] COST = {100, 98, 99, 98, 100, 98, 99, 98, 100, 98, 99, 98, 100, 98, 99, 98};
 	static final int[] OR = {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 0, 128, 256, 384, 512, 640, 768, 896};
 	private ChartPlotterRouteMoves() {}
 	static int dir(int dx, int dy) {

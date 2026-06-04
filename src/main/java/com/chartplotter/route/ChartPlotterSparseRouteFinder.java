@@ -176,7 +176,7 @@ public final class ChartPlotterSparseRouteFinder {
 		int dy = Math.abs(ty - y);
 		int a = Math.max(dx, dy);
 		int b = Math.min(dx, dy);
-		return 12 * b <= 5 * a ? 10 * a + 2 * b : (535 * a + 354 * b) / 63;
+		return 9 * b <= 4 * a ? 10 * a + 2 * b : (290 * a + 205 * b) / 35;
 	}
 	private static int cap(int sx, int sy, int tx, int ty, int margin) {
 		int h = h(sx, sy, tx, ty);
