@@ -3,6 +3,7 @@ import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterLineMode;
 import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRouteMoves;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.util.ChartPlotterMath;
 import java.awt.BasicStroke;
@@ -31,6 +32,7 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 public class ChartPlotterMinimapOverlay extends Overlay {
 	private static final int DIST = 32768;
+	private static final float[] DASH = {8, 6};
 	private static final int[] ORBS = {InterfaceID.Orbs.HEALTH_BACKING, InterfaceID.Orbs.PRAYER_BACKING, InterfaceID.Orbs.RUNENERGY_BACKING, InterfaceID.Orbs.SPECENERGY_BACKING, InterfaceID.Orbs.ORB_WORLDMAP};
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
@@ -157,25 +159,26 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	}
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
-		Path2D.Double line = new Path2D.Double();
-		boolean have = false;
-		for (int i = 0; i < r.n; i++) {
-			int lx = (r.x[i] - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
-			int ly = (r.y[i] - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
-			Point q = Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
-			if (q == null) {
-				have = false;
-				continue;
-			}
-			if (have) line.lineTo(q.getX(), q.getY());
-			else {
-				line.moveTo(q.getX(), q.getY());
-				have = true;
-			}
-		}
+		Stroke old = g.getStroke();
+		Stroke dash = new BasicStroke(config.minimapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, DASH, 0);
 		g.setColor(config.chartColor());
-		g.draw(line);
+		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
+		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, old, dash);
+		g.setStroke(old);
 	}
+	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
+		Point a = routePoint(wv, ax, ay);
+		Point b = routePoint(wv, bx, by);
+		if (a == null || b == null) return;
+		g.setStroke(routeSolid(ax, ay, bx, by, speed) ? solid : dash);
+		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+	}
+	private Point routePoint(WorldView wv, int wx, int wy) {
+		int lx = (wx - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+		int ly = (wy - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+		return Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
+	}
+	private static boolean routeSolid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || ChartPlotterRouteMoves.model(bx - ax, by - ay, speed);}
 	private int hoverHeading(WorldView wv, LocalPoint anchor, Widget w, Shape clip) {
 		Point m = ChartPlotterOverlay.eligibleMouse(client, plugin);
 		if (m == null) return -1;

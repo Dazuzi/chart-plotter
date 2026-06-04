@@ -6,6 +6,7 @@ import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRouteMoves;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterWorldMap;
@@ -47,6 +48,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final Color PREVIEW_OK = new Color(80, 255, 120, 235);
 	private static final Color PREVIEW_SNAP = new Color(255, 200, 40, 235);
 	private static final Color PREVIEW_BAD = new Color(255, 70, 60, 235);
+	private static final float[] DASH = {8, 6};
 	private static final long TIP_MS = 3000;
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
@@ -215,23 +217,21 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c) {
 		if (r.n < 1) return;
-		Path2D.Double line = new Path2D.Double();
-		boolean have = false;
-		for (int i = 0; i < r.n; i++) {
-			Point q = map.point(s, r.x[i], r.y[i], 0.5, 0.5);
-			if (have) line.lineTo(q.getX(), q.getY());
-			else {
-				line.moveTo(q.getX(), q.getY());
-				have = true;
-			}
-		}
-		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) {
-			Point q = map.point(s, r.tx, r.ty, 0.5, 0.5);
-			line.lineTo(q.getX(), q.getY());
-		}
+		Stroke old = g.getStroke();
+		Stroke dash = new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, DASH, 0);
 		g.setColor(c);
-		g.draw(line);
+		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
+		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, old, dash);
+		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) routeLine(g, s, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, speed, old, dash);
+		g.setStroke(old);
 	}
+	private void routeLine(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
+		g.setStroke(routeSolid(ax, ay, bx, by, speed) ? solid : dash);
+		Point a = map.point(s, ax, ay, 0.5, 0.5);
+		Point b = map.point(s, bx, by, 0.5, 0.5);
+		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+	}
+	private static boolean routeSolid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || ChartPlotterRouteMoves.model(bx - ax, by - ay, speed);}
 	private void drawSparseRoute(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r) {
 		Path2D.Double line = sparsePath(s, r);
 		if (line == null) return;

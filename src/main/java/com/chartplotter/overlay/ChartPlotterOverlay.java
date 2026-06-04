@@ -7,6 +7,7 @@ import com.chartplotter.ChartPlotterTurnEta;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
+import com.chartplotter.route.ChartPlotterRouteMoves;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterScene;
@@ -38,6 +39,7 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final int TURN = 128;
 	private static final double FADE = 0.72;
 	private static final double TICK = 0.6;
+	private static final float[] DASH = {8, 6};
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -224,13 +226,20 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2 || area == null) return;
-		Path2D.Double line = new Path2D.Double();
-		boolean have = false;
-		for (int i = 1; i < r.n; i++) have = routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], have);
+		Stroke old = g.getStroke();
+		Stroke dash = new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, DASH, 0);
 		g.setColor(config.chartColor());
-		g.draw(line);
+		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
+		for (int i = 1; i < r.n; i++) {
+			Path2D.Double line = new Path2D.Double();
+			routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i]);
+			g.setStroke(routeSolid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed) ? old : dash);
+			g.draw(line);
+		}
+		g.setStroke(old);
 	}
-	private boolean routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, int ax, int ay, int bx, int by, boolean have) {
+	private static boolean routeSolid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || ChartPlotterRouteMoves.model(bx - ax, by - ay, speed);}
+	private void routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, int ax, int ay, int bx, int by) {
 		double x0 = ax + 0.5;
 		double y0 = ay + 0.5;
 		double dx = bx - ax;
@@ -242,7 +251,7 @@ public class ChartPlotterOverlay extends Overlay {
 		double maxX = area.maxWX();
 		double maxY = area.maxWY();
 		if (dx == 0) {
-			if (x0 < minX || x0 > maxX) return false;
+			if (x0 < minX || x0 > maxX) return;
 		} else {
 			double a = (minX - x0) / dx;
 			double b = (maxX - x0) / dx;
@@ -253,10 +262,10 @@ public class ChartPlotterOverlay extends Overlay {
 			}
 			if (a > t0) t0 = a;
 			if (b < t1) t1 = b;
-			if (t0 > t1) return false;
+			if (t0 > t1) return;
 		}
 		if (dy == 0) {
-			if (y0 < minY || y0 > maxY) return false;
+			if (y0 < minY || y0 > maxY) return;
 		} else {
 			double a = (minY - y0) / dy;
 			double b = (maxY - y0) / dy;
@@ -267,15 +276,15 @@ public class ChartPlotterOverlay extends Overlay {
 			}
 			if (a > t0) t0 = a;
 			if (b < t1) t1 = b;
-			if (t0 > t1) return false;
+			if (t0 > t1) return;
 		}
 		int n = (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * (t1 - t0));
 		if (n < 1) n = 1;
+		boolean have = false;
 		for (int i = 0; i <= n; i++) {
 			double t = t0 + (t1 - t0) * i / n;
 			have = routePoint(line, wv, area, x0 + dx * t, y0 + dy * t, have);
 		}
-		return have;
 	}
 	private boolean routePoint(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, double wx, double wy, boolean have) {
 		Point q = routeCanvas(wv, area, wx, wy);

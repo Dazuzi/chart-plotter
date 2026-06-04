@@ -1,4 +1,6 @@
 package com.chartplotter.route;
+import com.chartplotter.util.ChartPlotterMath;
+import net.runelite.api.Perspective;
 public final class ChartPlotterRouteMoves {
 	static final int[] DX = {0, 4, 7, 9, 10, 9, 7, 4, 0, -4, -7, -9, -10, -9, -7, -4};
 	static final int[] DY = {10, 9, 7, 4, 0, -4, -7, -9, -10, -9, -7, -4, 0, 4, 7, 9};
@@ -17,4 +19,17 @@ public final class ChartPlotterRouteMoves {
 		int ay = Math.abs(DY[dir]);
 		return ax != 0 ? Math.abs(dx) / ax : Math.abs(dy) / ay;
 	}
+	public static boolean model(int dx, int dy, double speed) {
+		if (speed <= 0) return false;
+		for (int o : OR) {
+			int vx = vectorX(speed, o);
+			int vy = vectorY(speed, o);
+			if (vx == 0 && vy == 0) continue;
+			if ((long) dx * vy == (long) dy * vx && dx * vx + dy * vy > 0) return true;
+		}
+		return false;
+	}
+	public static double speedBucket(double speed) {return Math.round(speed * 2) / 2.0;}
+	private static int vectorX(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.SINE[o] * speed / 512.0));}
+	private static int vectorY(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.COSINE[o] * speed / 512.0));}
 }
