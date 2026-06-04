@@ -62,7 +62,7 @@ public final class ChartPlotterCollisionCache {
 		if (scan == null) return;
 		synchronized (this) {
 			if (io != ex) return;
-			try {io.execute(() -> mergeQuiet(scan));} catch (RuntimeException ignored) {}
+			try {io.execute(() -> mergeQuiet(ex, scan));} catch (RuntimeException ignored) {}
 		}
 	}
 	public synchronized ChartPlotterCollisionData snapshot() {
@@ -75,26 +75,31 @@ public final class ChartPlotterCollisionCache {
 		return view;
 	}
 	public long rev() {return rev.get();}
-	private void mergeQuiet(ChartPlotterCollisionScan scan) {
+	private void mergeQuiet(ScheduledExecutorService ex, ChartPlotterCollisionScan scan) {
 		try {
-			if (merge(scan)) sparseNodes.invalidate(snapshot());
+			if (merge(ex, scan)) sparseNodes.invalidate(snapshot());
 		} catch (Exception ignored) {
 		}
 	}
-	private boolean merge(ChartPlotterCollisionScan scan) {
+	private boolean merge(ScheduledExecutorService ex, ChartPlotterCollisionScan scan) {
+		Map<Long, Chunk> base;
 		synchronized (this) {
-			if (!loaded) return false;
-			Map<Long, Builder> data = new HashMap<>();
-			int sx1 = scan.width - EDGE;
-			int sy1 = scan.height - EDGE;
-			for (int sx = EDGE; sx < sx1; sx++) {
-				for (int sy = EDGE; sy < sy1; sy++) {
-					int f = scan.flags[sx * scan.height + sy];
-					if (f == VOID) continue;
-					put(data, chunks, scan.baseX + sx, scan.baseY + sy, f);
-				}
+			if (!loaded || io != ex) return false;
+			base = new HashMap<>(chunks);
+		}
+		Map<Long, Builder> data = new HashMap<>();
+		int sx1 = scan.width - EDGE;
+		int sy1 = scan.height - EDGE;
+		for (int sx = EDGE; sx < sx1; sx++) {
+			for (int sy = EDGE; sy < sy1; sy++) {
+				int f = scan.flags[sx * scan.height + sy];
+				if (f == VOID) continue;
+				put(data, base, scan.baseX + sx, scan.baseY + sy, f);
 			}
-			for (int i = 0; i < scan.objects.length; i += 4) putObject(data, chunks, scan, i);
+		}
+		for (int i = 0; i < scan.objects.length; i += 4) putObject(data, base, scan, i);
+		synchronized (this) {
+			if (!loaded || io != ex) return false;
 			merge(data);
 			return true;
 		}
@@ -113,11 +118,12 @@ public final class ChartPlotterCollisionCache {
 		int cy = wy >> 3;
 		long k = key(cx, cy);
 		int i = (wx & 7) + ((wy & 7) << 3);
-		data.compute(k, (x, b) -> {
-			if (b == null) b = new Builder(base.get(x));
-			b.put(i, flag);
-			return b;
-		});
+		Builder b = data.get(k);
+		if (b == null) {
+			b = new Builder(base.get(k));
+			data.put(k, b);
+		}
+		b.put(i, flag);
 	}
 	private void merge(Map<Long, Builder> data) {
 		for (Map.Entry<Long, Builder> e : data.entrySet()) {

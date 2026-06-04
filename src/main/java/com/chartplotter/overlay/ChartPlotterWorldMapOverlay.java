@@ -50,6 +50,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final Color PREVIEW_BAD = new Color(255, 70, 60, 235);
 	private static final float[] DASH = {8, 6};
 	private static final long TIP_MS = 3000;
+	private static final Stroke CACHE_STROKE = new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER);
+	private static final Stroke SPARSE_STROKE = new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -57,6 +59,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterWorldMap map;
 	private final ChartPlotterNodeEditor editor;
+	private final ChartPlotterStrokeCache routeStroke = new ChartPlotterStrokeCache(BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, DASH);
+	private Stroke sparseStroke;
+	private float sparseWidth = Float.NaN;
 	private volatile boolean ctrl;
 	@Inject
 	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection, ChartPlotterCollisionCache collisionCache, ChartPlotterWorldMap map, ChartPlotterNodeEditor editor) {
@@ -99,15 +104,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (cacheOverlay.worldMap) drawCache(g, s);
 			if (edit) editor.draw(g, s);
 			if (!sailing) return null;
-			if (showRoute || showPreview || showCourse || showProjected) g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			if (showRoute || showPreview || showCourse || showProjected) g.setStroke(routeStroke.solid(config.worldMapLineWidth()));
 			if (showRoute) drawRoute(g, s, route);
 			if (showPreview) drawCoursePreview(g, s, clip);
 			if (!showCourse && !showProjected) return null;
 			WorldEntity ship = plugin.getShip();
 			if (ship == null || top == null) return null;
-			LocalPoint anchor = ship.getTargetLocation();
+			LocalPoint anchor = plugin.anchorLoc(ship);
 			LocalPoint center = ship.getLocalLocation();
-			if (anchor == null) anchor = center;
 			if (anchor == null || center == null) return null;
 			int from = plugin.heading(ship);
 			int course = plugin.course(ship);
@@ -195,8 +199,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(color);
 		g.draw(line);
 	}
-	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != prev(p, i) || p.slid[i];}
-	private static int prev(ChartPlotterProjection.Path p, int i) {return i > 0 ? p.o[i - 1] : p.start;}
+	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != p.prev(i) || p.slid[i];}
 	private void drawBlock(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, Color color) {
 		int sx = Math.floorDiv(p.x[0], TS);
 		int sy = Math.floorDiv(p.y[0], TS);
@@ -226,28 +229,28 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c) {
 		if (r.n < 1) return;
 		Stroke old = g.getStroke();
-		Stroke dash = new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, DASH, 0);
+		Stroke solid = routeStroke.solid(config.worldMapLineWidth());
+		Stroke dash = routeStroke.dashed(config.worldMapLineWidth());
 		g.setColor(c);
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
-		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, old, dash);
-		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) routeLine(g, s, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, speed, old, dash);
+		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, solid, dash);
+		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) routeLine(g, s, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, speed, solid, dash);
 		g.setStroke(old);
 	}
 	private void routeLine(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
-		g.setStroke(routeSolid(ax, ay, bx, by, speed) ? solid : dash);
+		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, speed) ? solid : dash);
 		Point a = map.point(s, ax, ay, 0.5, 0.5);
 		Point b = map.point(s, bx, by, 0.5, 0.5);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
 	}
-	private static boolean routeSolid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || ChartPlotterRouteMoves.model(bx - ax, by - ay, speed);}
 	private void drawSparseRoute(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r) {
 		Path2D.Double line = sparsePath(s, r);
 		if (line == null) return;
 		Stroke old = g.getStroke();
-		g.setStroke(new BasicStroke(sparseWidth(s, r.sparseBand), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.setStroke(sparseStroke(sparseWidth(s, r.sparseBand)));
 		g.setColor(SPARSE_GLOW);
 		g.draw(line);
-		g.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.setStroke(SPARSE_STROKE);
 		g.setColor(SPARSE_LINE);
 		g.draw(line);
 		for (int i = 0; i < r.sparseN; i++) sparseDot(g, s, r.sparseX[i], r.sparseY[i]);
@@ -280,6 +283,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static float sparseWidth(ChartPlotterWorldMap.State s, int band) {
 		return Math.max(1, band * 2f * s.z);
 	}
+	private Stroke sparseStroke(float w) {
+		if (w == sparseWidth) return sparseStroke;
+		sparseWidth = w;
+		sparseStroke = new BasicStroke(w, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+		return sparseStroke;
+	}
 	private void drawCache(Graphics2D g, ChartPlotterWorldMap.State s) {
 		Stroke old = g.getStroke();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
@@ -292,7 +301,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int maxCX = Math.floorDiv(maxWX, 8);
 		int maxCY = Math.floorDiv(maxWY, 8);
 		long window = (long) (maxCX - minCX + 1) * (maxCY - minCY + 1);
-		g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		g.setStroke(CACHE_STROKE);
 		g.setColor(CACHE_EDGE);
 		if (window <= data.size()) drawCacheWindow(g, s, data, minCX, minCY, maxCX, maxCY, minWX, minWY, maxWX, maxWY);
 		else drawCacheEntries(g, s, data, minWX, minWY, maxWX, maxWY);

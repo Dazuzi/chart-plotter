@@ -40,12 +40,14 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final double FADE = 0.72;
 	private static final double TICK = 0.6;
 	private static final float[] DASH = {8, 6};
+	private static final Stroke CACHE_STROKE = new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER);
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterScene scene;
 	private final ChartPlotterProjection projection;
+	private final ChartPlotterStrokeCache routeStroke = new ChartPlotterStrokeCache(BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, DASH);
 	private int etaX = Integer.MIN_VALUE;
 	private int etaY = Integer.MIN_VALUE;
 	private int etaTicks = -1;
@@ -82,13 +84,12 @@ public class ChartPlotterOverlay extends Overlay {
 		if (!showWorld && !showTurn) return null;
 		WorldEntity ship = plugin.getShip();
 		if (ship == null) return null;
-		LocalPoint anchor = ship.getTargetLocation();
+		LocalPoint anchor = plugin.anchorLoc(ship);
 		LocalPoint center = ship.getLocalLocation();
-		if (anchor == null) anchor = center;
 		if (anchor == null || center == null) return null;
 		if (showWorld) {
 			Stroke prev = g.getStroke();
-			g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+			g.setStroke(routeStroke.solid(config.worldLineWidth()));
 			if (showChart) drawRoute(g, top, plugin.route(), area);
 			if (showCourse || showProjected) {
 				WorldEntityConfig wc = ship.getConfig();
@@ -141,7 +142,7 @@ public class ChartPlotterOverlay extends Overlay {
 				g.setColor(ColorUtil.colorWithAlpha(base, a));
 				s.reset();
 				boolean d = false;
-				if (have && p.o[i] == prev(p, i)) {
+				if (have && p.o[i] == p.prev(i)) {
 					rails(s, px, py, cx, cy);
 					d = true;
 				}
@@ -234,18 +235,18 @@ public class ChartPlotterOverlay extends Overlay {
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2 || area == null) return;
 		Stroke old = g.getStroke();
-		Stroke dash = new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, DASH, 0);
+		Stroke solid = routeStroke.solid(config.worldLineWidth());
+		Stroke dash = routeStroke.dashed(config.worldLineWidth());
 		g.setColor(config.chartColor());
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
 		for (int i = 1; i < r.n; i++) {
 			Path2D.Double line = new Path2D.Double();
 			routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i]);
-			g.setStroke(routeSolid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed) ? old : dash);
+			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed) ? solid : dash);
 			g.draw(line);
 		}
 		g.setStroke(old);
 	}
-	private static boolean routeSolid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || ChartPlotterRouteMoves.model(bx - ax, by - ay, speed);}
 	private void routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, int ax, int ay, int bx, int by) {
 		double x0 = ax + 0.5;
 		double y0 = ay + 0.5;
@@ -312,7 +313,7 @@ public class ChartPlotterOverlay extends Overlay {
 		if (area == null) return;
 		Stroke old = g.getStroke();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
-		g.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+		g.setStroke(CACHE_STROKE);
 		g.setColor(new Color(0, 210, 120, 150));
 		for (int i = 0; i < area.n; i++) {
 			int cx = area.cx[i];
@@ -358,9 +359,8 @@ public class ChartPlotterOverlay extends Overlay {
 		p.lineTo(x[3], y[3]);
 		if (!open) p.lineTo(x[0], y[0]);
 	}
-	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != prev(p, i);}
+	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != p.prev(i);}
 	private static boolean open(ChartPlotterProjection.Path p, int i) {return i + 1 < p.n && !p.slid[i + 1] && p.o[i + 1] == p.o[i];}
-	private static int prev(ChartPlotterProjection.Path p, int i) {return i > 0 ? p.o[i - 1] : p.start;}
 	private static void copy(int[] sx, int[] sy, int[] dx, int[] dy) {
 		for (int i = 0; i < 4; i++) {
 			dx[i] = sx[i];

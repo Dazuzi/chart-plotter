@@ -61,35 +61,21 @@ public final class ChartPlotterRoutes {
 		set(tx, ty);
 	}
 	public void set(int tx, int ty) {
-		if (!sailing.boarded()) return;
-		WorldView top = sailing.top();
-		WorldEntity ship = sailing.ship();
-		if (top == null || ship == null) return;
-		LocalPoint loc = ship.getTargetLocation();
-		if (loc == null) loc = ship.getLocalLocation();
-		if (loc == null) return;
-		int sx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
-		int sy = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
-		long t = target(collisionCache.snapshot(), ship.getConfig(), tx, ty, sx, sy);
+		Start s = startTile();
+		if (s == null) return;
+		long t = target(collisionCache.snapshot(), s.ship.getConfig(), tx, ty, s.x, s.y);
 		tx = (int) (t >> 32);
 		ty = (int) t;
-		request(ship, tx, ty, true, sx, sy);
+		request(s.ship, tx, ty, true, s.x, s.y);
 	}
 	public Preview preview(int tx, int ty) {
-		if (!sailing.boarded()) return new Preview(PV_NONE, tx, ty);
-		WorldView top = sailing.top();
-		WorldEntity ship = sailing.ship();
-		if (top == null || ship == null) return new Preview(PV_NONE, tx, ty);
-		LocalPoint loc = ship.getTargetLocation();
-		if (loc == null) loc = ship.getLocalLocation();
-		if (loc == null) return new Preview(PV_NONE, tx, ty);
-		int sx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
-		int sy = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
-		ChartPlotterRouteGrid grid = grid(collisionCache.snapshot(), ship.getConfig());
+		Start s = startTile();
+		if (s == null) return new Preview(PV_NONE, tx, ty);
+		ChartPlotterRouteGrid grid = grid(collisionCache.snapshot(), s.ship.getConfig());
 		int f = grid.flag(tx, ty);
 		if (f == ChartPlotterCollisionCache.UNKNOWN) return new Preview(PV_SNAP, tx, ty);
 		if (open(f)) return new Preview(PV_OK, tx, ty);
-		long t = target(grid, tx, ty, sx, sy);
+		long t = target(grid, tx, ty, s.x, s.y);
 		int rx = (int) (t >> 32);
 		int ry = (int) t;
 		return rx == tx && ry == ty ? new Preview(PV_BAD, tx, ty) : new Preview(PV_SNAP, rx, ry);
@@ -190,6 +176,15 @@ public final class ChartPlotterRoutes {
 	private void request(WorldView top, WorldEntity ship, LocalPoint loc, int tx, int ty) {
 		request(ship, tx, ty, false, ChartPlotterMath.worldTile(top.getBaseX(), loc.getX()), ChartPlotterMath.worldTile(top.getBaseY(), loc.getY()));
 	}
+	private Start startTile() {
+		if (!sailing.boarded()) return null;
+		WorldView top = sailing.top();
+		WorldEntity ship = sailing.ship();
+		if (top == null || ship == null) return null;
+		LocalPoint loc = sailing.anchorLoc(ship);
+		if (loc == null) return null;
+		return new Start(ship, ChartPlotterMath.worldTile(top.getBaseX(), loc.getX()), ChartPlotterMath.worldTile(top.getBaseY(), loc.getY()));
+	}
 	private void request(WorldEntity ship, int tx, int ty, boolean pending, int sx, int sy) {
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		WorldEntityConfig wc = ship.getConfig();
@@ -238,6 +233,16 @@ public final class ChartPlotterRoutes {
 	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= REACH_RADIUS;}
 	private static boolean open(int f) {return (f & ChartPlotterCollisionCache.MOVE) == 0;}
 	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
+	private static final class Start {
+		final WorldEntity ship;
+		final int x;
+		final int y;
+		private Start(WorldEntity ship, int x, int y) {
+			this.ship = ship;
+			this.x = x;
+			this.y = y;
+		}
+	}
 	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max) {
 		return turn(r, bx, by, speed, accel, max, 0);
 	}

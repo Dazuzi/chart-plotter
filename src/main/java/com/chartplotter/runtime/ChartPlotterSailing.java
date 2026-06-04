@@ -167,6 +167,11 @@ public final class ChartPlotterSailing {
 	public boolean boarded() {return boarded;}
 	public boolean suppress(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
 	public boolean courseLine(WorldView wv) {return speed > 0 || wv != null && wv.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;}
+	public LocalPoint anchorLoc(WorldEntity ship) {
+		if (ship == null) return null;
+		LocalPoint loc = ship.getTargetLocation();
+		return loc != null ? loc : ship.getLocalLocation();
+	}
 	public int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
 	public int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
 	public double speed() {return speed;}

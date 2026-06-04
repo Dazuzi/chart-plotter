@@ -204,8 +204,7 @@ public final class ChartPlotterRuntime {
 			collision(false, null);
 			return;
 		}
-		LocalPoint loc = ship.getTargetLocation();
-		if (loc == null) loc = ship.getLocalLocation();
+		LocalPoint loc = sailing.anchorLoc(ship);
 		if (loc == null) {
 			collision(false, null);
 			return;

@@ -29,6 +29,7 @@ public final class ChartPlotterRouteMoves {
 		}
 		return false;
 	}
+	public static boolean solid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || model(bx - ax, by - ay, speed);}
 	public static double speedBucket(double speed) {return Math.round(speed * 2) / 2.0;}
 	private static int vectorX(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.SINE[o] * speed / 512.0));}
 	private static int vectorY(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.COSINE[o] * speed / 512.0));}

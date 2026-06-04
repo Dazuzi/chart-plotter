@@ -12,6 +12,7 @@ import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WorldViewLoaded;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
@@ -63,6 +64,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
 	public WorldView top() {return sailing.top();}
 	public WorldEntity getShip() {return sailing.ship();}
+	public LocalPoint anchorLoc(WorldEntity ship) {return sailing.anchorLoc(ship);}
 	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
 	public boolean isSailing() {return sailing.boarded();}
 	public ChartPlotterRoute route() {return routes.route();}

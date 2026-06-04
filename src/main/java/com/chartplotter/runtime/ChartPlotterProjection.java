@@ -356,13 +356,13 @@ public final class ChartPlotterProjection {
 			if (b.memo.full) return flagRaw(b, x, y);
 			long k = (long) x << 32 ^ y & 0xffffffffL;
 			int i = b.memo.slot(k);
-			for (int n = 0; n < b.memo.used.length; n++) {
-				if (!b.memo.used[i]) {
+			for (int n = 0; n < b.memo.gen.length; n++) {
+				if (b.memo.gen[i] != b.memo.mark) {
 					int f = flagRaw(b, x, y);
-					b.memo.used[i] = true;
+					b.memo.gen[i] = b.memo.mark;
 					b.memo.key[i] = k;
 					b.memo.val[i] = f;
-					if (++b.memo.n == b.memo.used.length) b.memo.full = true;
+					if (++b.memo.n == b.memo.gen.length) b.memo.full = true;
 					return f;
 				}
 				if (b.memo.key[i] == k) return b.memo.val[i];
@@ -469,20 +469,24 @@ public final class ChartPlotterProjection {
 		}
 	}
 	private static final class FlagMemo {
-		final boolean[] used;
+		final int[] gen;
 		final long[] key;
 		final int[] val;
 		final int mask;
 		public int n;
+		int mark;
 		boolean full;
 		private FlagMemo(int n) {
-			used = new boolean[n];
+			gen = new int[n];
 			key = new long[n];
 			val = new int[n];
 			mask = n - 1;
 		}
 		FlagMemo reset() {
-			Arrays.fill(used, false);
+			if (++mark == 0) {
+				Arrays.fill(gen, 0);
+				mark = 1;
+			}
 			n = 0;
 			full = false;
 			return this;
@@ -520,6 +524,7 @@ public final class ChartPlotterProjection {
 			o = new int[cap];
 			slid = new boolean[cap];
 		}
+		public int prev(int i) {return i > 0 ? o[i - 1] : start;}
 	}
 	private static final class Block {
 		final int sx;

@@ -38,6 +38,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterProjection projection;
+	private final ChartPlotterStrokeCache routeStroke = new ChartPlotterStrokeCache(BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, DASH);
 	private volatile Shape clip;
 	private ClipKey clipKey;
 	private Shape cachedClip;
@@ -74,14 +75,13 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		if (!showCourse && !showProjected && !showChart) return null;
 		WorldEntity ship = plugin.getShip();
 		if (ship == null || top == null) return null;
-		LocalPoint anchor = ship.getTargetLocation();
+		LocalPoint anchor = plugin.anchorLoc(ship);
 		LocalPoint center = ship.getLocalLocation();
-		if (anchor == null) anchor = center;
 		if (anchor == null || center == null) return null;
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();
 		g.setClip(c);
-		g.setStroke(new BasicStroke(config.minimapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		g.setStroke(routeStroke.solid(config.minimapLineWidth()));
 		if (showChart) drawRoute(g, top, plugin.route());
 		if (showCourse || showProjected) {
 			int from = plugin.heading(ship);
@@ -100,7 +100,6 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	}
 	public boolean overMinimap(Point p) {return p != null && clip != null && clip.contains(p.getX(), p.getY());}
 	public static int mouseHeading(Client client, LocalPoint anchor, Point mouse) {
-		if (mouse == null) return -1;
 		Widget w = minimap(client);
 		if (w == null || w.isHidden()) return -1;
 		return mouseHeading(client, anchor, mouse, w, clip(client, w));
@@ -167,17 +166,18 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
 		Stroke old = g.getStroke();
-		Stroke dash = new BasicStroke(config.minimapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10, DASH, 0);
+		Stroke solid = routeStroke.solid(config.minimapLineWidth());
+		Stroke dash = routeStroke.dashed(config.minimapLineWidth());
 		g.setColor(config.chartColor());
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
-		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, old, dash);
+		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, solid, dash);
 		g.setStroke(old);
 	}
 	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
 		Point a = routePoint(wv, ax, ay);
 		Point b = routePoint(wv, bx, by);
 		if (a == null || b == null) return;
-		g.setStroke(routeSolid(ax, ay, bx, by, speed) ? solid : dash);
+		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, speed) ? solid : dash);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
 	}
 	private Point routePoint(WorldView wv, int wx, int wy) {
@@ -185,7 +185,6 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		int ly = (wy - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
 		return Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
 	}
-	private static boolean routeSolid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || ChartPlotterRouteMoves.model(bx - ax, by - ay, speed);}
 	private int hoverHeading(WorldView wv, LocalPoint anchor, Widget w, Shape clip) {
 		Point m = ChartPlotterOverlay.eligibleMouse(client, plugin);
 		if (m == null) return -1;

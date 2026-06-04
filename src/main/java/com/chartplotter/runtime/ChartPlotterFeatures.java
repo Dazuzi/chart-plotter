@@ -13,7 +13,6 @@ public final class ChartPlotterFeatures {
 	public final boolean worldMapOverlay;
 	public final boolean input;
 	public final boolean tracking;
-	public final boolean nextTurn;
 	private ChartPlotterFeatures(boolean wc, boolean wp, boolean wch, boolean mc, boolean mp, boolean mch, boolean wmc, boolean wmp, boolean wmch, ChartPlotterCacheOverlay cache, boolean edit, boolean nextTurn) {
 		boolean world = wc || wp || wch;
 		boolean minimap = mc || mp || mch;
@@ -23,7 +22,6 @@ public final class ChartPlotterFeatures {
 		routes = course || chart;
 		cacheView = cache != ChartPlotterCacheOverlay.OFF;
 		this.edit = edit;
-		this.nextTurn = nextTurn;
 		worldOverlay = world || cache.world || nextTurn;
 		minimapOverlay = minimap;
 		worldMapOverlay = worldMap || chart || cache.worldMap || edit;
