@@ -72,10 +72,14 @@ public final class ChartPlotterRuntime {
 			downY = e.getY();
 			downCtrl = e.isControlDown();
 			downAlt = e.isAltDown();
-			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown();
+			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown() || worldMapOverlay.cachedClickBlocked();
 			boolean mod = e.isAltDown() || e.isControlDown();
-			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> worldMapOverlay.placeNode(m));
-			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.editNode(m));
+			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> {
+				if (!worldMapOverlay.clickBlocked()) worldMapOverlay.placeNode(m);
+			});
+			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> {
+				if (!worldMapOverlay.clickBlocked()) worldMapOverlay.editNode(m);
+			});
 			if (!mod && features.course && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
 			return e;
 		}
@@ -86,7 +90,7 @@ public final class ChartPlotterRuntime {
 			boolean moved = dragged || Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP;
 			if (e.getButton() == MouseEvent.BUTTON1 && down && !moved && !downBlock && courseClick()) {
 				Point m = new Point(e.getX(), e.getY());
-				clientThread.invoke(() -> chartCourse(m));
+				clientThread.invokeLater(() -> clientThread.invokeLater(() -> chartCourse(m)));
 			}
 			if (e.getButton() == MouseEvent.BUTTON1) {
 				down = false;
@@ -268,7 +272,7 @@ public final class ChartPlotterRuntime {
 		else if (!prev.tracking) clientThread.invoke(sailing::sync);
 	}
 	private void chartCourse(Point m) {
-		if (!features.chart || !sailing.boarded()) return;
+		if (!features.chart || !sailing.boarded() || worldMapOverlay.clickBlocked()) return;
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst != null) routes.chart(dst[0], dst[1]);
 	}

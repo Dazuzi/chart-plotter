@@ -9,7 +9,6 @@ import com.chartplotter.route.ChartPlotterRouteWork.DenseBest;
 import com.chartplotter.route.ChartPlotterRouteWork.DenseCost;
 import com.chartplotter.route.ChartPlotterRouteWork.DomCost;
 import com.chartplotter.route.ChartPlotterRouteWork.Heap;
-import com.chartplotter.route.ChartPlotterRouteWork.LongIntMap;
 import com.chartplotter.route.ChartPlotterRouteWork.MoveCache;
 import com.chartplotter.route.ChartPlotterRouteWork.Nodes;
 import com.chartplotter.route.ChartPlotterSparseRouteFinder.Path;
@@ -19,6 +18,11 @@ import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
+import static com.chartplotter.route.ChartPlotterRouteUtil.cap;
+import static com.chartplotter.route.ChartPlotterRouteUtil.center;
+import static com.chartplotter.route.ChartPlotterRouteUtil.dist;
+import static com.chartplotter.route.ChartPlotterRouteUtil.h;
+import static com.chartplotter.route.ChartPlotterRouteUtil.state;
 import static com.chartplotter.util.ChartPlotterMath.rotateX;
 import static com.chartplotter.util.ChartPlotterMath.rotateY;
 public final class ChartPlotterRouteFinder {
@@ -286,7 +290,7 @@ public final class ChartPlotterRouteFinder {
 					best.put(key, ng);
 					if (dom != null) dom.put(np, i, ng);
 				}
-				int hh = h(nx, ny, tx, ty, i, turnBias);
+				int hh = hd(nx, ny, tx, ty, i, turnBias);
 				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, weight), a));
 			}
 		}
@@ -391,7 +395,7 @@ public final class ChartPlotterRouteFinder {
 		else best.put(state(sx, sy, dir), 0);
 	}
 	private static void addStartBucket(BucketHeap q, DenseCost dense, CompactCost compact, LongIntMap best, Nodes nodes, int sx, int sy, int tx, int ty, int turnBias, int dir, int weight, boolean db, boolean cb) {
-		int hh = h(sx, sy, tx, ty, dir, turnBias);
+		int hh = hd(sx, sy, tx, ty, dir, turnBias);
 		int n = nodes.add(sx, sy, dir, 0, 0, wh(hh, weight), -1);
 		q.add(n);
 		if (db) dense.put(sx, sy, dir);
@@ -539,7 +543,7 @@ public final class ChartPlotterRouteFinder {
 		return 1;
 	}
 	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
-	private static boolean near(int ax, int ay, int bx, int by, int r) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= r;}
+	private static boolean near(int ax, int ay, int bx, int by, int r) {return dist(ax, ay, bx, by) <= r;}
 	private static int targetFlag(ChartPlotterRouteGrid data, int tx, int ty, int r) {
 		int f = data.flag(tx, ty);
 		if (f != ChartPlotterCollisionCache.UNKNOWN && !blocker(f)) return f;
@@ -554,16 +558,8 @@ public final class ChartPlotterRouteFinder {
 		}
 		return unknown ? ChartPlotterCollisionCache.UNKNOWN : ChartPlotterCollisionCache.BLOCKED;
 	}
-	private static int dist(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by);}
 	private static int circDist(int a, int b) {int d = Math.abs(a - b); return Math.min(d, DX.length - d);}
-	private static int h(int x, int y, int tx, int ty) {
-		int dx = Math.abs(tx - x);
-		int dy = Math.abs(ty - y);
-		int a = Math.max(dx, dy);
-		int b = Math.min(dx, dy);
-		return 9 * b <= 4 * a ? 10 * a + 2 * b : (290 * a + 205 * b) / 35;
-	}
-	private static int h(int x, int y, int tx, int ty, int dir, int turnBias) {
+	private static int hd(int x, int y, int tx, int ty, int dir, int turnBias) {
 		return h(x, y, tx, ty) + turn(turnBias) * minTurns(dir, tx - x, ty - y);
 	}
 	private static int wh(int h, int weight) {return h * weight / 100;}
@@ -582,12 +578,6 @@ public final class ChartPlotterRouteFinder {
 		int ux = DX[dir];
 		int uy = DY[dir];
 		return (long) dx * uy == (long) dy * ux && dx * ux + dy * uy > 0;
-	}
-	private static int cap(int sx, int sy, int tx, int ty, int margin) {
-		int h = h(sx, sy, tx, ty);
-		int tight = h * 14 / 10 + 200;
-		int slack = h + margin * 10 + 160;
-		return Math.max(tight, slack);
 	}
 	private static int turn(int turnBias) {return turnBias <= 0 ? 0 : turnBias >= 10 ? 320 : 110;}
 	private static ChartPlotterRouteBounds bounds(int sx, int sy, int tx, int ty, int m) {
@@ -623,7 +613,6 @@ public final class ChartPlotterRouteFinder {
 	}
 	private static int rev(int o) {return ChartPlotterMath.norm(o + 1024);}
 	private static int revDir(int d) {return d < 0 ? d : d + 8 & 15;}
-	private static int center(int v) {return v * TS + TS / 2;}
 	private static int radius(ChartPlotterRouteGrid.Footprint fp) {
 		if (fp == null) return 0;
 		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
@@ -660,5 +649,4 @@ public final class ChartPlotterRouteFinder {
 		if (o >= 0 && o < 2048 && (o & 127) == 0) return (o >> 7) + 8 & 15;
 		return -1;
 	}
-	private static long state(int x, int y, int d) {return ((long) x & 0xfffffL) << 44 | ((long) y & 0xfffffL) << 4 | d;}
 }

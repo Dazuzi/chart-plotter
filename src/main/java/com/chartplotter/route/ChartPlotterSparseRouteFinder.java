@@ -1,10 +1,13 @@
 package com.chartplotter.route;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
-import com.chartplotter.util.ChartPlotterMath;
 import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 import net.runelite.api.Perspective;
+import static com.chartplotter.route.ChartPlotterRouteUtil.cap;
+import static com.chartplotter.route.ChartPlotterRouteUtil.center;
+import static com.chartplotter.route.ChartPlotterRouteUtil.dist;
+import static com.chartplotter.route.ChartPlotterRouteUtil.h;
 public final class ChartPlotterSparseRouteFinder {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int SPARSE_LINK = 128;
@@ -168,20 +171,7 @@ public final class ChartPlotterSparseRouteFinder {
 	}
 	private static int x(ChartPlotterSparseNodes.Snapshot nodes, int i, int sx, int tx) {return i == 0 ? sx : i == 1 ? tx : nodes.x[i - 2];}
 	private static int y(ChartPlotterSparseNodes.Snapshot nodes, int i, int sy, int ty) {return i == 0 ? sy : i == 1 ? ty : nodes.y[i - 2];}
-	private static int center(int v) {return v * TS + TS / 2;}
-	private static int dist(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by);}
 	private static boolean near(int ax, int ay, int bx, int by, int r) {return dist(ax, ay, bx, by) <= r;}
-	private static int h(int x, int y, int tx, int ty) {
-		int dx = Math.abs(tx - x);
-		int dy = Math.abs(ty - y);
-		int a = Math.max(dx, dy);
-		int b = Math.min(dx, dy);
-		return 9 * b <= 4 * a ? 10 * a + 2 * b : (290 * a + 205 * b) / 35;
-	}
-	private static int cap(int sx, int sy, int tx, int ty, int margin) {
-		int h = h(sx, sy, tx, ty);
-		return Math.max(h * 14 / 10 + 200, h + margin * 10 + 160);
-	}
 	private static boolean nearSegment(int x, int y, int ax, int ay, int bx, int by, int band) {
 		long dx = bx - ax;
 		long dy = by - ay;

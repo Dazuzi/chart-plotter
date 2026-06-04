@@ -8,6 +8,7 @@ import javax.inject.Singleton;
 import net.runelite.api.Client;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.widgets.Widget;
@@ -17,10 +18,12 @@ import net.runelite.api.WorldView;
 @Singleton
 public final class ChartPlotterWorldMap {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int[][] SURFACE = {{3222, 3218}, {3213, 3424}, {2964, 3378}, {2662, 3305}};
 	private static final int[] BLOCK = {InterfaceID.Worldmap.OVERVIEW_CONTAINER, InterfaceID.Worldmap.SIDE, InterfaceID.Worldmap.BOTTOM, InterfaceID.Worldmap.MAPLIST_CONTAINER, InterfaceID.Worldmap.CLOSE, InterfaceID.Worldmap.RESIZE_INDICATOR, InterfaceID.Worldmap.RESIZE_GRAPHIC};
 	private final Client client;
 	private ClipKey clipKey;
 	private Shape cachedClip;
+	private volatile boolean cachedClickBlocked = true;
 	@Inject
 	public ChartPlotterWorldMap(Client client) {
 		this.client = client;
@@ -28,11 +31,16 @@ public final class ChartPlotterWorldMap {
 	public State state() {
 		Widget map = widget();
 		WorldMap wm = client.getWorldMap();
-		if (map == null || wm == null) return null;
+		if (map == null || wm == null) {
+			cachedClickBlocked = true;
+			return null;
+		}
 		WorldMapData data = wm.getWorldMapData();
 		float z = wm.getWorldMapZoom();
 		Point pos = wm.getWorldMapPosition();
-		if (data == null || z <= 0 || pos == null) return null;
+		boolean blocked = blocked(data);
+		cachedClickBlocked = blocked;
+		if (blocked || z <= 0 || pos == null) return null;
 		Rectangle r = map.getBounds();
 		int wt = (int) Math.ceil(r.getWidth() / z);
 		int ht = (int) Math.ceil(r.getHeight() / z);
@@ -47,6 +55,18 @@ public final class ChartPlotterWorldMap {
 		int wy = (int) Math.floor(p[1]);
 		return s.data.surfaceContainsPosition(wx, wy) ? new int[]{wx, wy} : null;
 	}
+	public boolean clickBlocked() {
+		WorldMap wm = client.getWorldMap();
+		if (wm == null) {
+			cachedClickBlocked = true;
+			return true;
+		}
+		WorldMapData data = wm.getWorldMapData();
+		boolean blocked = blocked(data);
+		cachedClickBlocked = blocked;
+		return blocked;
+	}
+	public boolean cachedClickBlocked() {return cachedClickBlocked;}
 	public Point point(State s, int wx, int wy, double fx, double fy) {
 		double x = s.r.getX() + (wx + s.wt / 2.0 - s.pos.getX()) * s.z + s.c + (fx - 0.5) * s.z;
 		double y = s.r.getY() + s.r.getHeight() - ((s.pos.getY() - s.ht / 2.0 - wy - 1) * -1 * s.z - s.c) - (fy - 0.5) * s.z;
@@ -92,6 +112,13 @@ public final class ChartPlotterWorldMap {
 		Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
 		return map == null || map.isHidden() ? null : map;
 	}
+	private static boolean surface(WorldMapData data) {
+		for (int[] p : SURFACE) {
+			if (!data.surfaceContainsPosition(p[0], p[1])) return false;
+		}
+		return true;
+	}
+	private boolean blocked(WorldMapData data) {return data == null || !surface(data) || client.getVarcIntValue(VarClientID.WORLDMAP_INTERMAPLINK) > 0;}
 	public static final class State {
 		public final WorldMapData data;
 		public final float z;

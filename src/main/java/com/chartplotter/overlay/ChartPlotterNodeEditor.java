@@ -158,7 +158,7 @@ public final class ChartPlotterNodeEditor {
 		for (int i = 0; i < nodes.x.length; i++) {
 			int bx = Math.floorDiv(nodes.x[i], LINK_DIST);
 			int by = Math.floorDiv(nodes.y[i], LINK_DIST);
-			Bucket b = buckets.computeIfAbsent(key(bx, by), k -> new Bucket());
+			Bucket b = buckets.computeIfAbsent(ChartPlotterCollisionData.key(bx, by), k -> new Bucket());
 			b.add(i);
 		}
 		webN = 0;
@@ -167,7 +167,7 @@ public final class ChartPlotterNodeEditor {
 			int by = Math.floorDiv(nodes.y[i], LINK_DIST);
 			for (int dx = -1; dx <= 1; dx++) {
 				for (int dy = -1; dy <= 1; dy++) {
-					Bucket b = buckets.get(key(bx + dx, by + dy));
+					Bucket b = buckets.get(ChartPlotterCollisionData.key(bx + dx, by + dy));
 					if (b == null) continue;
 					for (int p = 0; p < b.n; p++) {
 						int j = b.v[p];
@@ -317,7 +317,6 @@ public final class ChartPlotterNodeEditor {
 		System.arraycopy(v, 0, w, 0, v.length);
 		return w;
 	}
-	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private static final class Bucket {
 		private int[] v = new int[8];
 		private int n;

@@ -113,17 +113,16 @@ public final class ChartPlotterCollisionCache {
 	}
 	private static void put(Map<Long, Builder> data, Map<Long, Chunk> base, int wx, int wy, int f) {
 		f = clean(f);
-		int flag = f;
 		int cx = wx >> 3;
 		int cy = wy >> 3;
-		long k = key(cx, cy);
+		long k = ChartPlotterCollisionData.key(cx, cy);
 		int i = (wx & 7) + ((wy & 7) << 3);
 		Builder b = data.get(k);
 		if (b == null) {
 			b = new Builder(base.get(k));
 			data.put(k, b);
 		}
-		b.put(i, flag);
+		b.put(i, f);
 	}
 	private void merge(Map<Long, Builder> data) {
 		for (Map.Entry<Long, Builder> e : data.entrySet()) {
@@ -196,7 +195,6 @@ public final class ChartPlotterCollisionCache {
 	private static int clean(int f) {
 		return (f & MOVE) == 0 ? OPEN : BLOCKED;
 	}
-	private static long key(int x, int y) {return ChartPlotterCollisionData.key(x, y);}
 	private static final class Builder {
 		long known;
 		long blocked;

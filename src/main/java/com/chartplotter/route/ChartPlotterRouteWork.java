@@ -1,5 +1,6 @@
 package com.chartplotter.route;
 import java.util.Arrays;
+import static com.chartplotter.route.ChartPlotterRouteUtil.state;
 public final class ChartPlotterRouteWork {
 	private static final int EDGE_MAX = 1 << 24;
 	private static final int DENSE_MAX = 24 << 20;
@@ -11,69 +12,6 @@ public final class ChartPlotterRouteWork {
 	private static final int BUCKET_TIE = 16;
 	private static final int[] DX = ChartPlotterRouteMoves.DX;
 	private ChartPlotterRouteWork() {}
-	private static long state(int x, int y, int d) {return ((long) x & 0xfffffL) << 44 | ((long) y & 0xfffffL) << 4 | d;}
-	static final class LongIntMap {
-		static final int MISS = Integer.MIN_VALUE;
-		long[] k;
-		int[] v;
-		byte[] u;
-		int n;
-		int mask;
-		private LongIntMap(int size) {
-			init(size);
-		}
-		int get(long key) {
-			int i = hash(key) & mask;
-			while (u[i] != 0) {
-				if (k[i] == key) return v[i];
-				i = i + 1 & mask;
-			}
-			return MISS;
-		}
-		void put(long key, int val) {
-			if (n * 2 >= k.length) grow();
-			int i = hash(key) & mask;
-			while (u[i] != 0) {
-				if (k[i] == key) {
-					v[i] = val;
-					return;
-				}
-				i = i + 1 & mask;
-			}
-			u[i] = 1;
-			k[i] = key;
-			v[i] = val;
-			n++;
-		}
-		void clear() {
-			Arrays.fill(u, (byte) 0);
-			n = 0;
-		}
-		private void init(int size) {
-			int c = 1;
-			while (c < size) c <<= 1;
-			k = new long[c];
-			v = new int[c];
-			u = new byte[c];
-			mask = c - 1;
-			n = 0;
-		}
-		private void grow() {
-			long[] ok = k;
-			int[] ov = v;
-			byte[] ou = u;
-			init(k.length << 1);
-			for (int i = 0; i < ok.length; i++) {
-				if (ou[i] != 0) put(ok[i], ov[i]);
-			}
-		}
-		private static int hash(long x) {
-			x += 0x9e3779b97f4a7c15L;
-			x = (x ^ x >>> 30) * -4658895280553007687L;
-			x = (x ^ x >>> 27) * -7723592293110705685L;
-			return (int) (x ^ x >>> 31);
-		}
-	}
 	static final class Work {
 		final Nodes ba = new Nodes(1 << 15);
 		final BucketHeap bucket = new BucketHeap(ba, 1 << 15);
@@ -207,10 +145,7 @@ public final class ChartPlotterRouteWork {
 			v[pos(p, dir)] = 0;
 		}
 		boolean dominated(int pos, int dir, int g, int turn) {
-			return dominatedAt(index[pos] - 1, dir, g, turn);
-		}
-		boolean dominatedAt(int p, int dir, int g, int turn) {
-			return dominatedAtIndex(p, dir, g, turn);
+			return dominatedAtIndex(index[pos] - 1, dir, g, turn);
 		}
 		boolean dominatedAtIndex(int p, int d, int g, int turn) {
 			int lim = g - turn;

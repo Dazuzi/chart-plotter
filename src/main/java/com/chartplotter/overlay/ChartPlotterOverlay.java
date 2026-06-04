@@ -48,6 +48,13 @@ public class ChartPlotterOverlay extends Overlay {
 	private final ChartPlotterScene scene;
 	private final ChartPlotterProjection projection;
 	private final ChartPlotterStrokeCache routeStroke = new ChartPlotterStrokeCache(BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, DASH);
+	private final float[] z = new float[4];
+	private final int[] cx = new int[4];
+	private final int[] cy = new int[4];
+	private final int[] px = new int[4];
+	private final int[] py = new int[4];
+	private final Path2D.Double path = new Path2D.Double();
+	private final Path2D.Double line = new Path2D.Double();
 	private int etaX = Integer.MIN_VALUE;
 	private int etaY = Integer.MIN_VALUE;
 	private int etaTicks = -1;
@@ -114,12 +121,6 @@ public class ChartPlotterOverlay extends Overlay {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, rx, ry, color);
 			return;
 		}
-		float[] z = new float[]{0, 0, 0, 0};
-		int[] cx = new int[4];
-		int[] cy = new int[4];
-		int[] px = new int[4];
-		int[] py = new int[4];
-		Path2D.Double s = new Path2D.Double();
 		boolean have = false;
 		int sA = color.getAlpha();
 		Color blockedColor = config.blockedColor();
@@ -140,35 +141,32 @@ public class ChartPlotterOverlay extends Overlay {
 			boolean slide = p.slid[i];
 			if (a > 0) {
 				g.setColor(ColorUtil.colorWithAlpha(base, a));
-				s.reset();
+				path.reset();
 				boolean d = false;
 				if (have && p.o[i] == p.prev(i)) {
-					rails(s, px, py, cx, cy);
+					rails(path, px, py, cx, cy);
 					d = true;
 				}
 				if (box(p, i) || slide || i == 0) {
-					box(s, cx, cy, open(p, i) && !slide);
+					box(path, cx, cy, open(p, i) && !slide);
 					d = true;
 				}
-				if (d) g.draw(s);
+				if (d) g.draw(path);
 			}
 			copy(cx, cy, px, py);
 			have = true;
 		}
 	}
 	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color) {
-		float[] z = new float[]{0, 0, 0, 0};
-		int[] cx = new int[4];
-		int[] cy = new int[4];
 		if (missing(wv, p, 0, rx, ry, z, cx, cy)) return;
-		Path2D.Double s = new Path2D.Double();
-		box(s, cx, cy, false);
-		s.moveTo(cx[0], cy[0]);
-		s.lineTo(cx[2], cy[2]);
-		s.moveTo(cx[1], cy[1]);
-		s.lineTo(cx[3], cy[3]);
+		path.reset();
+		box(path, cx, cy, false);
+		path.moveTo(cx[0], cy[0]);
+		path.lineTo(cx[2], cy[2]);
+		path.moveTo(cx[1], cy[1]);
+		path.lineTo(cx[3], cy[3]);
 		g.setColor(color);
-		g.draw(s);
+		g.draw(path);
 	}
 	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTurnEta mode) {
 		if (area == null) return;
@@ -240,7 +238,7 @@ public class ChartPlotterOverlay extends Overlay {
 		g.setColor(config.chartColor());
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
 		for (int i = 1; i < r.n; i++) {
-			Path2D.Double line = new Path2D.Double();
+			line.reset();
 			routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i]);
 			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed) ? solid : dash);
 			g.draw(line);

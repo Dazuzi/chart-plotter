@@ -4,6 +4,8 @@ import com.chartplotter.collision.ChartPlotterCollisionData;
 import java.util.Arrays;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
+import static com.chartplotter.route.ChartPlotterRouteUtil.center;
+import static com.chartplotter.route.ChartPlotterRouteUtil.state;
 import static com.chartplotter.util.ChartPlotterMath.rotateX;
 import static com.chartplotter.util.ChartPlotterMath.rotateY;
 public final class ChartPlotterRouteGrid {
@@ -76,7 +78,7 @@ public final class ChartPlotterRouteGrid {
 				cached[i] = (byte) (f + 1);
 				return flag(f);
 			}
-			long key = chunk(x, y);
+			long key = ChartPlotterCollisionData.key(x, y);
 			int v = cache.get(key);
 			if (v != LongIntMap.MISS) return flag((byte) v);
 			byte f = inflated(x, y);
@@ -185,9 +187,6 @@ public final class ChartPlotterRouteGrid {
 	}
 	private static int flag(byte v) {return v == 0 ? ChartPlotterCollisionCache.OPEN : v == 1 ? ChartPlotterCollisionCache.UNKNOWN : ChartPlotterCollisionCache.BLOCKED;}
 	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
-	private static int center(int v) {return v * TS + TS / 2;}
-	private static long state(int x, int y, int d) {return ((long) x & 0xfffffL) << 44 | ((long) y & 0xfffffL) << 4 | d;}
-	private static long chunk(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	static final class Footprint {
 		final int minX;
 		final int maxX;
@@ -275,59 +274,4 @@ public final class ChartPlotterRouteGrid {
 	private static int next(int v, int max) {return Math.min(v + STEP, max);}
 	private static boolean edge(int x, int y, int minX, int maxX, int minY, int maxY) {return x == minX || x == maxX || y == minY || y == maxY;}
 	private static int span(int min, int max) {return (max - min + STEP - 1) / STEP + 1;}
-	private static final class LongIntMap {
-		static final int MISS = Integer.MIN_VALUE;
-		long[] k;
-		int[] v;
-		byte[] u;
-		int n;
-		int mask;
-		private LongIntMap(int size) {init(size);}
-		int get(long key) {
-			int i = hash(key) & mask;
-			while (u[i] != 0) {
-				if (k[i] == key) return v[i];
-				i = i + 1 & mask;
-			}
-			return MISS;
-		}
-		void put(long key, int val) {
-			if (n * 2 >= k.length) grow();
-			int i = hash(key) & mask;
-			while (u[i] != 0) {
-				if (k[i] == key) {
-					v[i] = val;
-					return;
-				}
-				i = i + 1 & mask;
-			}
-			u[i] = 1;
-			k[i] = key;
-			v[i] = val;
-			n++;
-		}
-		private void init(int size) {
-			int c = 1;
-			while (c < size) c <<= 1;
-			k = new long[c];
-			v = new int[c];
-			u = new byte[c];
-			mask = c - 1;
-		}
-		private void grow() {
-			long[] ok = k;
-			int[] ov = v;
-			byte[] ou = u;
-			init(k.length << 1);
-			for (int i = 0; i < ok.length; i++) {
-				if (ou[i] != 0) put(ok[i], ov[i]);
-			}
-		}
-		private static int hash(long x) {
-			x += 0x9e3779b97f4a7c15L;
-			x = (x ^ x >>> 30) * -4658895280553007687L;
-			x = (x ^ x >>> 27) * -7723592293110705685L;
-			return (int) (x ^ x >>> 31);
-		}
-	}
 }

@@ -50,7 +50,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "worldMapLineMode", name = "Current line", description = "Draw the active heading or selected course; blocked extends past collisions.", section = worldMapSection, position = 0)
 	default ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.ON;}
 	@ConfigItem(keyName = "worldMapProjectedLineMode", name = "Projected line", description = "Draw the cursor heading preview; blocked extends past collisions.", section = worldMapSection, position = 1)
-	default ChartPlotterLineMode worldMapProjectedLineMode() {return worldMapLineMode();}
+	default ChartPlotterLineMode worldMapProjectedLineMode() {return ChartPlotterLineMode.OFF;}
 	@ConfigItem(keyName = "worldMapChartLine", name = "Charted line", description = "Draw the destination route set from the world map.", section = worldMapSection, position = 2)
 	default boolean worldMapChartLine() {return worldMapLineMode().on;}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 3)

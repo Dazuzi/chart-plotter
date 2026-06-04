@@ -143,7 +143,7 @@ public final class ChartPlotterRoutes {
 	static long target(ChartPlotterCollisionData data, WorldEntityConfig wc, int tx, int ty, int sx, int sy) {return target(grid(data, wc), tx, ty, sx, sy);}
 	static long target(ChartPlotterRouteGrid data, int tx, int ty, int sx, int sy) {
 		int f = data.flag(tx, ty);
-		if (f == ChartPlotterCollisionCache.UNKNOWN || open(f)) return key(tx, ty);
+		if (f == ChartPlotterCollisionCache.UNKNOWN || open(f)) return ChartPlotterCollisionData.key(tx, ty);
 		int bx = tx;
 		int by = ty;
 		long bs = Long.MAX_VALUE;
@@ -160,9 +160,9 @@ public final class ChartPlotterRoutes {
 					bs = s;
 				}
 			}
-			if (bs != Long.MAX_VALUE) return key(bx, by);
+			if (bs != Long.MAX_VALUE) return ChartPlotterCollisionData.key(bx, by);
 		}
-		return key(tx, ty);
+		return ChartPlotterCollisionData.key(tx, ty);
 	}
 	private static ChartPlotterRouteGrid grid(ChartPlotterCollisionData data, WorldEntityConfig wc) {
 		if (wc == null) return new ChartPlotterRouteGrid(data);
@@ -232,7 +232,6 @@ public final class ChartPlotterRoutes {
 	}
 	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= REACH_RADIUS;}
 	private static boolean open(int f) {return (f & ChartPlotterCollisionCache.MOVE) == 0;}
-	private static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private static final class Start {
 		final WorldEntity ship;
 		final int x;

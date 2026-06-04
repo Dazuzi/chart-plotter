@@ -81,7 +81,10 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	public Dimension render(Graphics2D g) {
 		boolean sailing = plugin.isSailing();
 		boolean edit = config.nodeEditor();
-		if (!sailing && !edit) return null;
+		if (!sailing && !edit) {
+			map.clickBlocked();
+			return null;
+		}
 		WorldView top = sailing ? plugin.top() : null;
 		boolean active = plugin.courseLine(top);
 		ChartPlotterLineMode courseMode = config.worldMapLineMode();
@@ -93,7 +96,10 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		boolean showRoute = sailing && showChart && route != null;
 		boolean showPreview = sailing && showChart && ctrl;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
-		if (!showCourse && !showProjected && !showRoute && !cacheOverlay.worldMap && !edit && !showPreview) return null;
+		if (!showCourse && !showProjected && !showRoute && !cacheOverlay.worldMap && !edit && !showPreview) {
+			map.clickBlocked();
+			return null;
+		}
 		ChartPlotterWorldMap.State s = map.state();
 		if (s == null) return null;
 		Shape clip = map.clip(s);
@@ -131,6 +137,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		}
 	}
 	public int[] tile(Point m) {return map.tile(m);}
+	public boolean clickBlocked() {return map.clickBlocked();}
+	public boolean cachedClickBlocked() {return map.cachedClickBlocked();}
 	public int[] node(Point m) {return editor.node(m);}
 	public void editNode(Point m) {editor.edit(m);}
 	public void removeNode(int wx, int wy) {editor.remove(wx, wy);}
@@ -216,7 +224,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Color c = r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
 		Point t = map.point(s, r.tx, r.ty, 0.5, 0.5);
 		String text = r.text();
-		if (text != null && r.status != ChartPlotterRoute.PENDING && System.currentTimeMillis() - r.time >= TIP_MS) return;
+		long now = text == null ? 0 : System.currentTimeMillis();
+		if (text != null && r.status != ChartPlotterRoute.PENDING && now - r.time >= TIP_MS) return;
 		if (config.sparseRouteDebug() && r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
 		if (r.status == ChartPlotterRoute.OK) {
 			drawRoutePath(g, s, r, c);
@@ -224,7 +233,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(c);
 		g.fill(new Ellipse2D.Double(t.getX() - 3.5, t.getY() - 3.5, 7, 7));
 		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
-		if (text != null && System.currentTimeMillis() - r.time < TIP_MS) tip(g, s.r, t, text);
+		if (text != null && now - r.time < TIP_MS) tip(g, s.r, t, text);
 	}
 	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c) {
 		if (r.n < 1) return;
