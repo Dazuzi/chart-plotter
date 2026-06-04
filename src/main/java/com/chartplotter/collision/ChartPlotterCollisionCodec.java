@@ -38,22 +38,30 @@ public final class ChartPlotterCollisionCodec {
 		}
 		return data;
 	}
-	public static Map<Long, Chunk> readText(InputStream src) {
+	public static Text readText(InputStream src) {
 		Map<Long, Chunk> data = new HashMap<>();
+		String version = null;
 		try (BufferedReader in = new BufferedReader(new InputStreamReader(src, StandardCharsets.UTF_8))) {
 			String s;
 			while ((s = in.readLine()) != null) {
 				String[] p = s.trim().split("\\s+");
-				if (p.length != 3) continue;
+				if (p.length == 2 && "data".equals(p[0])) {
+					version = p[1];
+					continue;
+				}
+				if (p.length != 3 && p.length != 4) continue;
 				int cx = Integer.parseInt(p[0]);
 				int cy = Integer.parseInt(p[1]);
 				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) continue;
-				long blocked = Long.parseUnsignedLong(p[2], 16);
-				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(-1L, blocked));
+				long known = p.length == 3 ? -1L : Long.parseUnsignedLong(p[2], 16);
+				long blocked = Long.parseUnsignedLong(p[p.length - 1], 16);
+				if (known == 0L) continue;
+				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(known, blocked & known));
 			}
 		} catch (Exception ignored) {
+			return null;
 		}
-		return data;
+		return version == null ? null : new Text(data, version);
 	}
 	public static boolean write(File dir, File file, Map<Long, Chunk> data) {
 		File tmp = new File(dir, "collision.bin.tmp");
@@ -81,5 +89,13 @@ public final class ChartPlotterCollisionCodec {
 		int n = 0;
 		for (Chunk c : data.values()) if (!c.empty()) n++;
 		return n;
+	}
+	public static final class Text {
+		public final Map<Long, Chunk> data;
+		public final String version;
+		private Text(Map<Long, Chunk> data, String version) {
+			this.data = data;
+			this.version = version;
+		}
 	}
 }

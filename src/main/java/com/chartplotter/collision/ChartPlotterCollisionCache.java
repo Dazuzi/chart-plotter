@@ -1,6 +1,7 @@
 package com.chartplotter.collision;
 import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
 import com.chartplotter.route.ChartPlotterSparseNodes;
+import com.chartplotter.util.ChartPlotterVersions;
 import java.io.File;
 import java.io.InputStream;
 import java.util.concurrent.Executors;
@@ -15,6 +16,7 @@ import net.runelite.api.WorldView;
 import net.runelite.client.RuneLite;
 @Singleton
 public final class ChartPlotterCollisionCache {
+	private static final String KEY = "collision";
 	public static final int UNKNOWN = ChartPlotterCollisionData.UNKNOWN;
 	public static final int OPEN = ChartPlotterCollisionData.OPEN;
 	public static final int BLOCKED = ChartPlotterCollisionData.BLOCKED;
@@ -137,24 +139,28 @@ public final class ChartPlotterCollisionCache {
 	}
 	private void load() {
 		File f = file();
-		boolean seed = !f.isFile();
-		Map<Long, Chunk> data = seed ? defaults() : ChartPlotterCollisionCodec.read(f);
+		ChartPlotterCollisionCodec.Text seed = defaults();
+		boolean replace = seed != null && (!f.isFile() || ChartPlotterVersions.newer(seed.version, ChartPlotterVersions.read(dir, KEY)));
+		Map<Long, Chunk> data = replace ? seed.data : ChartPlotterCollisionCodec.read(f);
+		if (data.isEmpty() && seed != null && !replace) {
+			replace = true;
+			data = seed.data;
+		}
 		synchronized (this) {
 			chunks.clear();
 			chunks.putAll(data);
 			long r = rev.incrementAndGet();
-			savedRev = seed && !data.isEmpty() ? r - 1 : r;
+			savedRev = replace ? r - 1 : r;
 			viewRev = -1;
 			loaded = true;
 		}
-		if (seed && !data.isEmpty()) flush();
+		if (replace && flush()) ChartPlotterVersions.write(dir, KEY, seed.version);
 	}
-	private Map<Long, Chunk> defaults() {
+	private ChartPlotterCollisionCodec.Text defaults() {
 		try (InputStream in = ChartPlotterCollisionCache.class.getResourceAsStream("/com/chartplotter/collision.txt")) {
-			if (in == null) return new HashMap<>();
-			return ChartPlotterCollisionCodec.readText(in);
+			return in == null ? null : ChartPlotterCollisionCodec.readText(in);
 		} catch (Exception ignored) {
-			return new HashMap<>();
+			return null;
 		}
 	}
 	private void flushQuiet() {
@@ -163,12 +169,12 @@ public final class ChartPlotterCollisionCache {
 		} catch (Exception ignored) {
 		}
 	}
-	private void flush() {
+	private boolean flush() {
 		ChartPlotterCollisionData out;
 		long save;
 		synchronized (this) {
 			long r = rev.get();
-			if (r == savedRev) return;
+			if (r == savedRev) return true;
 			out = snapshot();
 			save = r;
 		}
@@ -176,7 +182,9 @@ public final class ChartPlotterCollisionCache {
 			synchronized (this) {
 				if (savedRev < save) savedRev = save;
 			}
+			return true;
 		}
+		return false;
 	}
 	private File file() {return new File(dir, "collision.bin");}
 	private static int clean(int f) {

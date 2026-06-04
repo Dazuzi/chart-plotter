@@ -1,5 +1,16 @@
+import java.util.zip.GZIPInputStream
 plugins {
 	id 'java'
+}
+class CollisionRow {
+	int x
+	int y
+	long blocked
+	CollisionRow(int x, int y, long blocked) {
+		this.x = x
+		this.y = y
+		this.blocked = blocked
+	}
 }
 repositories {
 	mavenLocal()
@@ -14,6 +25,10 @@ repositories {
 def runeLiteVersion = 'latest.release'
 def pluginMainClass = 'com.chartplotter.ChartPlotterPlugin'
 def runMainClass = 'com.chartplotter.ChartPlotterPluginTest'
+def cacheDir = new File(System.getProperty('user.home'), '.runelite/chart-plotter')
+def resourceDir = file('src/main/resources/com/chartplotter')
+def dataVersion = providers.gradleProperty('dataVersion').orElse(new Date().format('yyyy-MM-dd')).get()
+def hex64 = { long v -> Long.toUnsignedString(v, 16).padLeft(16, '0') }
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -29,6 +44,58 @@ tasks.register('run', JavaExec) {
 	mainClass = runMainClass
 	jvmArgs "-ea"
 	args "--developer-mode"
+}
+tasks.register('exportSparseNodes') {
+	inputs.property 'dataVersion', dataVersion
+	outputs.file new File(resourceDir, 'sparse-nodes.txt')
+	outputs.upToDateWhen { false }
+	doLast {
+		def src = new File(cacheDir, 'sparse.bin')
+		def dst = outputs.files.singleFile
+		if (!src.isFile()) throw new GradleException("Missing ${src}")
+		dst.parentFile.mkdirs()
+		new DataInputStream(new BufferedInputStream(new FileInputStream(src))).withCloseable { input ->
+			if (input.readUnsignedByte() != 1) throw new GradleException("Unsupported sparse.bin version")
+			int n = input.readInt()
+			if (n < 0) throw new GradleException("Invalid sparse node count")
+			dst.withWriter('UTF-8') { out ->
+				out.write("data ${dataVersion}\n")
+				for (int i = 0; i < n; i++) out.write("${input.readUnsignedShort()} ${input.readUnsignedShort()}\n")
+			}
+		}
+	}
+}
+tasks.register('exportCollision') {
+	inputs.property 'dataVersion', dataVersion
+	outputs.file new File(resourceDir, 'collision.txt')
+	outputs.upToDateWhen { false }
+	doLast {
+		def src = new File(cacheDir, 'collision.bin')
+		def dst = outputs.files.singleFile
+		if (!src.isFile()) throw new GradleException("Missing ${src}")
+		dst.parentFile.mkdirs()
+		List<CollisionRow> rows = []
+		new DataInputStream(new GZIPInputStream(new BufferedInputStream(new FileInputStream(src)))).withCloseable { input ->
+			if (input.readUnsignedByte() != 1) throw new GradleException("Unsupported collision.bin version")
+			int n = input.readInt()
+			if (n < 0) throw new GradleException("Invalid collision chunk count")
+			for (int i = 0; i < n; i++) {
+				int cx = input.readUnsignedShort()
+				int cy = input.readUnsignedShort()
+				long known = input.readLong()
+				long blocked = input.readLong() & known
+				if (known != 0L) rows << new CollisionRow(cx, cy, blocked)
+			}
+		}
+		rows = rows.sort { CollisionRow a, CollisionRow b -> a.x == b.x ? a.y <=> b.y : a.x <=> b.x }
+		dst.withWriter('UTF-8') { out ->
+			out.write("data ${dataVersion}\n")
+			rows.each { CollisionRow r -> out.write("${r.x} ${r.y} ${hex64(r.blocked)}\n") }
+		}
+	}
+}
+tasks.register('exportCaches') {
+	dependsOn 'exportSparseNodes', 'exportCollision'
 }
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath

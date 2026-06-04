@@ -1,14 +1,15 @@
 package com.chartplotter.route;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.util.ChartPlotterVersions;
 import java.io.File;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import javax.inject.Singleton;
 import net.runelite.client.RuneLite;
 @Singleton
 public final class ChartPlotterSparseNodes {
+	private static final String KEY = "sparse";
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private int[] x = new int[64];
 	private int[] y = new int[64];
@@ -79,44 +80,26 @@ public final class ChartPlotterSparseNodes {
 	}
 	private void load() {
 		if (loaded) return;
-		ChartPlotterSparseNodes.Snapshot nodes = ChartPlotterSparseCodec.read(file());
-		if (nodes == null) defaults();
-		else {
-			ensure(nodes.x.length);
-			System.arraycopy(nodes.x, 0, x, 0, nodes.x.length);
-			System.arraycopy(nodes.y, 0, y, 0, nodes.y.length);
-			n = nodes.x.length;
+		File f = file();
+		ChartPlotterSparseCodec.Text seed = defaults();
+		boolean replace = seed != null && (!f.isFile() || ChartPlotterVersions.newer(seed.version, ChartPlotterVersions.read(dir, KEY)));
+		ChartPlotterSparseNodes.Snapshot nodes = replace ? seed.nodes : ChartPlotterSparseCodec.read(f);
+		if (nodes == null && seed != null) {
+			replace = true;
+			nodes = seed.nodes;
+		}
+		if (nodes != null) {
+			set(nodes);
+			if (replace && write()) ChartPlotterVersions.write(dir, KEY, seed.version);
 		}
 		loaded = true;
 		version++;
 	}
-	private void defaults() {
+	private ChartPlotterSparseCodec.Text defaults() {
 		try (InputStream in = ChartPlotterSparseNodes.class.getResourceAsStream("/com/chartplotter/sparse-nodes.txt")) {
-			if (in == null) return;
-			byte[] b = in.readAllBytes();
-			parse(new String(b, StandardCharsets.UTF_8));
+			return in == null ? null : ChartPlotterSparseCodec.readText(in);
 		} catch (Exception ignored) {
-		}
-	}
-	private void parse(String s) {
-		int[] v = new int[1024];
-		int c = 0;
-		int p = 0;
-		while (p < s.length()) {
-			while (p < s.length() && !digit(s.charAt(p))) p++;
-			if (p >= s.length()) break;
-			int q = p;
-			while (q < s.length() && digit(s.charAt(q))) q++;
-			if (c == v.length) v = Arrays.copyOf(v, v.length << 1);
-			v[c++] = Integer.parseInt(s.substring(p, q));
-			p = q;
-		}
-		n = 0;
-		ensure(c / 2);
-		for (int i = 1; i < c; i += 2) {
-			x[n] = v[i - 1];
-			y[n] = v[i];
-			n++;
+			return null;
 		}
 	}
 	private void flushQuiet() {
@@ -125,8 +108,14 @@ public final class ChartPlotterSparseNodes {
 		} catch (Exception ignored) {
 		}
 	}
-	private void write() {
-		ChartPlotterSparseCodec.write(dir, file(), new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n)));
+	private boolean write() {
+		return ChartPlotterSparseCodec.write(dir, file(), new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n)));
+	}
+	private void set(ChartPlotterSparseNodes.Snapshot nodes) {
+		ensure(nodes.x.length);
+		System.arraycopy(nodes.x, 0, x, 0, nodes.x.length);
+		System.arraycopy(nodes.y, 0, y, 0, nodes.y.length);
+		n = nodes.x.length;
 	}
 	private File file() {return new File(dir, "sparse.bin");}
 	private void ensure(int c) {
@@ -139,7 +128,6 @@ public final class ChartPlotterSparseNodes {
 	private static boolean blocked(ChartPlotterCollisionData data, int wx, int wy) {
 		return data.flagAt(wx, wy) == ChartPlotterCollisionCache.BLOCKED;
 	}
-	private static boolean digit(char c) {return c >= '0' && c <= '9';}
 	public static final class Snapshot {
 		public final int[] x;
 		public final int[] y;
