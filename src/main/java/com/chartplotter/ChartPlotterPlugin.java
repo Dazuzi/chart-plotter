@@ -76,5 +76,6 @@ public class ChartPlotterPlugin extends Plugin {
 	public double speed() {return sailing.speed();}
 	public double accel() {return sailing.accel();}
 	public double maxSpeed() {return sailing.maxSpeed();}
+	public boolean reversing() {return sailing.reversing();}
 	public long motionTime() {return sailing.motionTime();}
 }

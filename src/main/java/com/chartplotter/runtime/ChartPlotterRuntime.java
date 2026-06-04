@@ -226,7 +226,7 @@ public final class ChartPlotterRuntime {
 	public void focus(boolean focused) {this.focused = focused;}
 	private void alert(WorldView top, LocalPoint loc) {
 		ChartPlotterRoute r = routes.route();
-		if (!config.courseTurnAlert() || top == null || r == null) {
+		if (!config.courseTurnAlert() || top == null || r == null || sailing.reversing()) {
 			alertX = Integer.MIN_VALUE;
 			alertY = Integer.MIN_VALUE;
 			return;

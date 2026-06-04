@@ -1,26 +1,30 @@
 package com.chartplotter.route;
+
 import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterRouteEffort;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.runtime.ChartPlotterSailing;
 import com.chartplotter.util.ChartPlotterMath;
-import java.util.concurrent.Executors;
+import net.runelite.api.Perspective;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldEntityConfig;
+import net.runelite.api.WorldView;
+import net.runelite.api.coords.LocalPoint;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.Perspective;
-import net.runelite.api.WorldEntity;
-import net.runelite.api.WorldEntityConfig;
-import net.runelite.api.WorldView;
+
 import static com.chartplotter.util.ChartPlotterMath.rotateX;
 import static com.chartplotter.util.ChartPlotterMath.rotateY;
+
 @Singleton
 public final class ChartPlotterRoutes {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
@@ -250,6 +254,13 @@ public final class ChartPlotterRoutes {
 		int cx = r.x[1];
 		int cy = r.y[1];
 		int ticks = speed > 0 ? eta(Math.hypot(cx - bx, cy - by), speed, accel, max) : -1;
+		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated, r.n == 2);
+	}
+	public static Turn turn(ChartPlotterRoute r, double bx, double by, double speed, double accel, double max, long updated) {
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return Turn.NONE;
+		int cx = r.x[1];
+		int cy = r.y[1];
+		int ticks = speed > 0 ? eta(Math.hypot(cx + 0.5 - bx, cy + 0.5 - by), speed, accel, max) : -1;
 		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated, r.n == 2);
 	}
 	private static int eta(double dist, double speed, double accel, double max) {

@@ -1,9 +1,6 @@
 package com.chartplotter.overlay;
-import com.chartplotter.ChartPlotterCacheOverlay;
-import com.chartplotter.ChartPlotterConfig;
-import com.chartplotter.ChartPlotterLineMode;
-import com.chartplotter.ChartPlotterPlugin;
-import com.chartplotter.ChartPlotterTurnEta;
+
+import com.chartplotter.*;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
@@ -11,29 +8,19 @@ import com.chartplotter.route.ChartPlotterRouteMoves;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterScene;
-import com.chartplotter.util.ChartPlotterMath;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.geom.Path2D;
-import java.awt.Graphics2D;
-import java.awt.Stroke;
-import javax.inject.Inject;
-import net.runelite.api.Client;
-import net.runelite.api.Constants;
-import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
-import net.runelite.api.Perspective;
+import net.runelite.api.*;
 import net.runelite.api.Point;
-import net.runelite.api.WorldEntity;
-import net.runelite.api.WorldEntityConfig;
-import net.runelite.api.WorldView;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.TextComponent;
 import net.runelite.client.util.ColorUtil;
+
+import javax.inject.Inject;
+import java.awt.*;
+import java.awt.geom.Path2D;
+
 public class ChartPlotterOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int TURN = 128;
@@ -57,8 +44,9 @@ public class ChartPlotterOverlay extends Overlay {
 	private final Path2D.Double line = new Path2D.Double();
 	private int etaX = Integer.MIN_VALUE;
 	private int etaY = Integer.MIN_VALUE;
-	private int etaTicks = -1;
-	private long etaUpdated;
+	private int etaSeconds = -1;
+	private boolean etaEnd;
+	private long etaTick = Long.MIN_VALUE;
 	@Inject
 	ChartPlotterOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene, ChartPlotterProjection projection) {
 		this.client = client;
@@ -170,9 +158,10 @@ public class ChartPlotterOverlay extends Overlay {
 	}
 	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTurnEta mode) {
 		if (area == null) return;
-		int bx = ChartPlotterMath.worldTile(wv.getBaseX(), center.getX());
-		int by = ChartPlotterMath.worldTile(wv.getBaseY(), center.getY());
-		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, plugin.speed(), plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
+		double bx = wv.getBaseX() + center.getX() / (double) TS;
+		double by = wv.getBaseY() + center.getY() / (double) TS;
+		double speed = plugin.reversing() ? -plugin.speed() : plugin.speed();
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, speed, plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
 		if (!turn.valid) {
 			resetEta();
 			return;
@@ -198,21 +187,21 @@ public class ChartPlotterOverlay extends Overlay {
 		t.render(g);
 	}
 	private int seconds(ChartPlotterRoutes.Turn turn) {
-		long now = System.currentTimeMillis();
-		if (turn.x != etaX || turn.y != etaY || turn.ticks < etaTicks) {
+		if (turn.x != etaX || turn.y != etaY || turn.end != etaEnd || turn.updated != etaTick) {
 			etaX = turn.x;
 			etaY = turn.y;
-			etaTicks = turn.ticks;
-			etaUpdated = turn.updated;
+			etaSeconds = Math.max(0, (int) Math.ceil(turn.ticks * TICK));
+			etaEnd = turn.end;
+			etaTick = turn.updated;
 		}
-		double left = etaTicks * TICK - Math.max(0, now - etaUpdated) / 1000.0;
-		return Math.max(0, (int) Math.ceil(left));
+		return etaSeconds;
 	}
 	private void resetEta() {
 		etaX = Integer.MIN_VALUE;
 		etaY = Integer.MIN_VALUE;
-		etaTicks = -1;
-		etaUpdated = 0;
+		etaSeconds = -1;
+		etaEnd = false;
+		etaTick = Long.MIN_VALUE;
 	}
 	private Point edge(WorldView wv, ChartPlotterScene.Area area, int sx, int sy, int ex, int ey) {
 		int ax = ex;
