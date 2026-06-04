@@ -68,6 +68,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public ChartPlotterRoute route() {return routes.route();}
 	public ChartPlotterRoutes.Preview coursePreview(int tx, int ty) {return routes.preview(tx, ty);}
 	public boolean suppressPotential(Point m) {return sailing.suppress(m);}
+	public boolean courseLine(WorldView wv) {return sailing.courseLine(wv);}
 	public int heading(WorldEntity ship) {return sailing.heading(ship);}
 	public int course(WorldEntity ship) {return sailing.course(ship);}
 	public double speed() {return sailing.speed();}

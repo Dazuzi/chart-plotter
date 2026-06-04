@@ -64,29 +64,36 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		Shape c = clip(m);
 		clip = c;
-		ChartPlotterLineMode mode = config.minimapLineMode();
-		if (!mode.on) return null;
 		WorldView top = plugin.top();
+		boolean active = plugin.courseLine(top);
+		ChartPlotterLineMode courseMode = config.minimapLineMode();
+		ChartPlotterLineMode projectedMode = config.minimapProjectedLineMode();
+		boolean showCourse = active && courseMode.on;
+		boolean showProjected = active && projectedMode.on;
+		boolean showChart = config.minimapChartLine();
+		if (!showCourse && !showProjected && !showChart) return null;
 		WorldEntity ship = plugin.getShip();
 		if (ship == null || top == null) return null;
 		LocalPoint anchor = ship.getTargetLocation();
 		LocalPoint center = ship.getLocalLocation();
 		if (anchor == null) anchor = center;
 		if (anchor == null || center == null) return null;
-		int from = plugin.heading(ship);
-		int course = plugin.course(ship);
-		int mouse = hoverHeading(top, center, m, c);
-		ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, mode.blocked);
-		ChartPlotterProjection.Path pot = null;
-		if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, mode.blocked);
-		int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();
 		g.setClip(c);
 		g.setStroke(new BasicStroke(config.minimapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		drawRoute(g, top, plugin.route());
-		draw(g, top, cur, config.lineColor(), skip);
-		if (pot != null) draw(g, top, pot, config.potentialColor(), 0);
+		if (showChart) drawRoute(g, top, plugin.route());
+		if (showCourse || showProjected) {
+			int from = plugin.heading(ship);
+			int course = plugin.course(ship);
+			int mouse = showProjected ? hoverHeading(top, center, m, c) : -1;
+			ChartPlotterProjection.Path cur = showCourse ? projection.path(top, ship.getConfig(), anchor, from, course, courseMode.blocked) : null;
+			ChartPlotterProjection.Path pot = null;
+			if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, projectedMode.blocked);
+			int skip = cur != null && pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
+			if (cur != null) draw(g, top, cur, config.lineColor(), skip);
+			if (pot != null) draw(g, top, pot, config.potentialColor(), 0);
+		}
 		g.setStroke(oldStroke);
 		g.setClip(oldClip);
 		return null;

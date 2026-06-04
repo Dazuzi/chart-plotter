@@ -74,12 +74,21 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	@Override
 	public Dimension render(Graphics2D g) {
+		boolean sailing = plugin.isSailing();
 		boolean edit = config.nodeEditor();
-		if (!plugin.isSailing() && !edit) return null;
-		ChartPlotterLineMode mode = config.worldMapLineMode();
-		boolean showWorldMap = mode.on;
+		if (!sailing && !edit) return null;
+		WorldView top = sailing ? plugin.top() : null;
+		boolean active = plugin.courseLine(top);
+		ChartPlotterLineMode courseMode = config.worldMapLineMode();
+		ChartPlotterLineMode projectedMode = config.worldMapProjectedLineMode();
+		boolean showCourse = active && courseMode.on;
+		boolean showProjected = active && projectedMode.on;
+		boolean showChart = config.worldMapChartLine();
+		ChartPlotterRoute route = plugin.route();
+		boolean showRoute = sailing && showChart && route != null;
+		boolean showPreview = sailing && showChart && ctrl;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
-		if (!showWorldMap && !cacheOverlay.worldMap && !edit) return null;
+		if (!showCourse && !showProjected && !showRoute && !cacheOverlay.worldMap && !edit && !showPreview) return null;
 		ChartPlotterWorldMap.State s = map.state();
 		if (s == null) return null;
 		Shape clip = map.clip(s);
@@ -89,9 +98,11 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		try {
 			if (cacheOverlay.worldMap) drawCache(g, s);
 			if (edit) editor.draw(g, s);
-			if (!plugin.isSailing()) return null;
-			if (!showWorldMap) return null;
-			WorldView top = plugin.top();
+			if (!sailing) return null;
+			if (showRoute || showPreview || showCourse || showProjected) g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			if (showRoute) drawRoute(g, s, route);
+			if (showPreview) drawCoursePreview(g, s, clip);
+			if (!showCourse && !showProjected) return null;
 			WorldEntity ship = plugin.getShip();
 			if (ship == null || top == null) return null;
 			LocalPoint anchor = ship.getTargetLocation();
@@ -100,18 +111,15 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (anchor == null || center == null) return null;
 			int from = plugin.heading(ship);
 			int course = plugin.course(ship);
-			int mouse = ctrl ? -1 : hoverHeading(top, center, s, clip);
+			int mouse = showProjected && !ctrl ? hoverHeading(top, center, s, clip) : -1;
 			int cap = map.pathCap(top, anchor, s);
-			ChartPlotterProjection.Path cur = projection.path(top, ship.getConfig(), anchor, from, course, cap, mode.blocked);
+			ChartPlotterProjection.Path cur = showCourse ? projection.path(top, ship.getConfig(), anchor, from, course, cap, courseMode.blocked) : null;
 			ChartPlotterProjection.Path pot = null;
-			if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, cap, mode.blocked);
-			int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
-			g.setStroke(new BasicStroke(config.worldMapLineWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-			drawRoute(g, s, plugin.route());
+			if (mouse >= 0) pot = projection.path(top, ship.getConfig(), anchor, from, mouse, cap, projectedMode.blocked);
+			int skip = cur != null && pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 			ChartPlotterWorldMap.State local = s.base(top);
-			draw(g, local, cur, ship.getConfig(), config.lineColor(), skip);
+			if (cur != null) draw(g, local, cur, ship.getConfig(), config.lineColor(), skip);
 			if (pot != null) draw(g, local, pot, ship.getConfig(), config.potentialColor(), 0);
-			if (ctrl) drawCoursePreview(g, s, clip);
 			return null;
 		} finally {
 			g.setStroke(oldStroke);

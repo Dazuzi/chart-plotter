@@ -76,7 +76,7 @@ public final class ChartPlotterRuntime {
 			boolean mod = e.isAltDown() || e.isControlDown();
 			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> worldMapOverlay.placeNode(m));
 			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.editNode(m));
-			if (!mod && features.routes && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
+			if (!mod && features.course && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
 			return e;
 		}
 		@Override
@@ -180,7 +180,7 @@ public final class ChartPlotterRuntime {
 				client.getMenu().createMenuEntry(-1).setOption("Remove node").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> worldMapOverlay.removeNode(node[0], node[1]));
 			}
 		}
-		if (!features.routes || !sailing.boarded()) return;
+		if (!features.chart || !sailing.boarded()) return;
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst == null) return;
 		menuBlock = true;
@@ -189,7 +189,7 @@ public final class ChartPlotterRuntime {
 		client.getMenu().createMenuEntry(-1).setOption("Set destination").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.set(dst[0], dst[1]));
 	}
 	public void menu(MenuOptionClicked e) {
-		if (!features.routes) return;
+		if (!features.course) return;
 		Point m = client.getMouseCanvasPosition();
 		if (e.getMenuAction() != MenuAction.SET_HEADING && !minimapOverlay.overMinimap(m)) return;
 		sailing.setCourse(m);
@@ -216,7 +216,7 @@ public final class ChartPlotterRuntime {
 		boolean normal = features.cache(sailing.boarded()) && top != null;
 		boolean started = collision(normal, top);
 		if (scene && normal && !started) capture(top);
-		if (features.routes && top != null) routes.tick(top, ship, loc);
+		if (features.chart && top != null) routes.tick(top, ship, loc);
 		sailing.motion(ship, loc, scene);
 		alert(top, loc);
 	}
@@ -246,7 +246,7 @@ public final class ChartPlotterRuntime {
 		else overlayManager.remove(minimapOverlay);
 		if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
-		if (!next.routes) routes.stop();
+		if (!next.chart) routes.stop();
 		if (next.input && !inputRegistered) {
 			mouseManager.registerMouseListener(mouse);
 			keyManager.registerKeyListener(key);
@@ -269,12 +269,12 @@ public final class ChartPlotterRuntime {
 		else if (!prev.tracking) clientThread.invoke(sailing::sync);
 	}
 	private void chartCourse(Point m) {
-		if (!features.routes || !sailing.boarded()) return;
+		if (!features.chart || !sailing.boarded()) return;
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst != null) routes.chart(dst[0], dst[1]);
 	}
 	private boolean courseClick() {
-		if (!features.routes || !sailing.boarded() || downAlt) return false;
+		if (!features.chart || !sailing.boarded() || downAlt) return false;
 		ChartPlotterWorldMapClick click = config.worldMapCourseClick();
 		return click == ChartPlotterWorldMapClick.CLICK || click == ChartPlotterWorldMapClick.CTRL_CLICK && downCtrl;
 	}

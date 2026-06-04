@@ -64,13 +64,18 @@ public class ChartPlotterOverlay extends Overlay {
 	@Override
 	public Dimension render(Graphics2D g) {
 		if (!plugin.isSailing()) return null;
-		ChartPlotterLineMode mode = config.worldLineMode();
-		boolean showWorld = mode.on;
+		WorldView top = plugin.top();
+		boolean active = plugin.courseLine(top);
+		ChartPlotterLineMode courseMode = config.worldLineMode();
+		ChartPlotterLineMode projectedMode = config.worldProjectedLineMode();
+		boolean showCourse = active && courseMode.on;
+		boolean showProjected = active && projectedMode.on;
+		boolean showChart = config.worldChartLine();
+		boolean showWorld = showCourse || showProjected || showChart;
 		ChartPlotterTurnEta turnEta = config.courseTurnEta();
 		boolean showTurn = turnEta != ChartPlotterTurnEta.OFF;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
 		if (!showWorld && !cacheOverlay.world && !showTurn) return null;
-		WorldView top = plugin.top();
 		if (top == null) return null;
 		ChartPlotterScene.Area area = scene.area(top);
 		if (cacheOverlay.world) drawCache(g, top, area);
@@ -82,20 +87,22 @@ public class ChartPlotterOverlay extends Overlay {
 		if (anchor == null) anchor = center;
 		if (anchor == null || center == null) return null;
 		if (showWorld) {
-			WorldEntityConfig wc = ship.getConfig();
-			float[] rx = ChartPlotterProjection.rectX(wc);
-			float[] ry = ChartPlotterProjection.rectY(wc);
-			int from = plugin.heading(ship);
-			int course = plugin.course(ship);
-			int mouse = hoverHeading(top, center);
-			ChartPlotterProjection.Path cur = projection.path(top, wc, anchor, from, course, mode.blocked);
-			ChartPlotterProjection.Path pot = mouse >= 0 ? projection.path(top, wc, anchor, from, mouse, mode.blocked) : null;
-			int skip = pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 			Stroke prev = g.getStroke();
 			g.setStroke(new BasicStroke(config.worldLineWidth(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
-			drawRoute(g, top, plugin.route(), area);
-			draw(g, top, cur, rx, ry, config.lineColor(), skip);
-			if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
+			if (showChart) drawRoute(g, top, plugin.route(), area);
+			if (showCourse || showProjected) {
+				WorldEntityConfig wc = ship.getConfig();
+				float[] rx = ChartPlotterProjection.rectX(wc);
+				float[] ry = ChartPlotterProjection.rectY(wc);
+				int from = plugin.heading(ship);
+				int course = plugin.course(ship);
+				int mouse = showProjected ? hoverHeading(top, center) : -1;
+				ChartPlotterProjection.Path cur = showCourse ? projection.path(top, wc, anchor, from, course, courseMode.blocked) : null;
+				ChartPlotterProjection.Path pot = mouse >= 0 ? projection.path(top, wc, anchor, from, mouse, projectedMode.blocked) : null;
+				int skip = cur != null && pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
+				if (cur != null) draw(g, top, cur, rx, ry, config.lineColor(), skip);
+				if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
+			}
 			g.setStroke(prev);
 		}
 		if (showTurn) drawNextTurn(g, top, area, center, turnEta);
