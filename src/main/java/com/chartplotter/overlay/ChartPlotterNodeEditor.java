@@ -60,25 +60,33 @@ public final class ChartPlotterNodeEditor {
 		this.sparseNodes = sparseNodes;
 		this.map = map;
 	}
-	void add(Point m) {
-		if (!config.nodeEditor()) return;
-		int[] t = map.tile(m);
-		if (t == null) return;
-		int i = sparseNodes.nodeAt(t[0], t[1], HIT);
-		if (i >= 0) {
-			sparseNodes.remove(i);
-			return;
-		}
-		if (blocked(collisionCache.snapshot(), t[0], t[1])) return;
-		sparseNodes.add(t[0], t[1]);
-	}
-	void startMove(Point m) {
+	void edit(Point m) {
 		if (!config.nodeEditor()) return;
 		int[] t = map.tile(m);
 		if (t == null) return;
 		ChartPlotterSparseNodes.Snapshot nodes = sparseNodes.snapshot();
 		int i = nodeAt(nodes, t[0], t[1]);
-		if (i < 0) return;
+		if (i >= 0) {
+			startMove(nodes, i);
+			return;
+		}
+		if (blocked(collisionCache.snapshot(), t[0], t[1])) return;
+		sparseNodes.add(t[0], t[1]);
+	}
+	int[] node(Point m) {
+		if (!config.nodeEditor() || moving) return null;
+		int[] t = map.tile(m);
+		if (t == null) return null;
+		ChartPlotterSparseNodes.Snapshot nodes = sparseNodes.snapshot();
+		int i = nodeAt(nodes, t[0], t[1]);
+		return i < 0 ? null : new int[] {nodes.x[i], nodes.y[i]};
+	}
+	void remove(int wx, int wy) {
+		if (!config.nodeEditor()) return;
+		if (selected(wx, wy)) clearMove();
+		sparseNodes.remove(wx, wy);
+	}
+	private void startMove(ChartPlotterSparseNodes.Snapshot nodes, int i) {
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		moving = true;
 		moveX = nodes.x[i];
@@ -120,10 +128,14 @@ public final class ChartPlotterNodeEditor {
 			int[] t = map.tile(client.getMouseCanvasPosition(), s);
 			if (t != null) {
 				g.setColor(LINK);
-				for (int i = 0; i < nodes.x.length; i++) {
-					if (dist(t[0], t[1], nodes.x[i], nodes.y[i]) <= LINK_DIST && clear(data, t[0], t[1], nodes.x[i], nodes.y[i])) line(g, s, t[0], t[1], nodes.x[i], nodes.y[i]);
+				int i = nodeAt(nodes, t[0], t[1]);
+				if (i >= 0) drawNodeLinks(g, s, data, nodes, i);
+				else {
+					for (i = 0; i < nodes.x.length; i++) {
+						if (dist(t[0], t[1], nodes.x[i], nodes.y[i]) <= LINK_DIST && clear(data, t[0], t[1], nodes.x[i], nodes.y[i])) line(g, s, t[0], t[1], nodes.x[i], nodes.y[i]);
+					}
+					dot(g, s, t[0], t[1], LINK_DOT, DOT + 2);
 				}
-				dot(g, s, t[0], t[1], LINK_DOT, DOT + 2);
 			}
 		}
 		for (int i = 0; i < nodes.x.length; i++) {
@@ -191,6 +203,12 @@ public final class ChartPlotterNodeEditor {
 	}
 	boolean moving() {return moving;}
 	void alt(boolean on) {alt = on;}
+	private void drawNodeLinks(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int i) {
+		for (int j = 0; j < nodes.x.length; j++) {
+			if (j == i) continue;
+			if (dist(nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]) <= LINK_DIST && clear(data, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j])) line(g, s, nodes.x[i], nodes.y[i], nodes.x[j], nodes.y[j]);
+		}
+	}
 	private void drawMove(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes) {
 		int[] t = map.tile(client.getMouseCanvasPosition(), s);
 		boolean ok = t != null && canMove(data, nodes, t[0], t[1]);

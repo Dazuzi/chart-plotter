@@ -60,7 +60,7 @@ public interface ChartPlotterConfig extends Config {
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision-cache coverage.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
-	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map.", section = tweaksSection, position = 5)
+	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map. ALT+Click to place or move nodes. Right-click a node to remove it.", section = tweaksSection, position = 5)
 	default boolean nodeEditor() {return false;}
 	@ConfigItem(keyName = "sparseRouteDebug", name = "Sparse route debug", description = "Draw sparse route nodes and corridors on the world map when charting a course.", section = tweaksSection, position = 6)
 	default boolean sparseRouteDebug() {return false;}

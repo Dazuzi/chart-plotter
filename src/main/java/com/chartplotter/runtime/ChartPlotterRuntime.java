@@ -8,6 +8,7 @@ import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.util.ChartPlotterMath;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -21,6 +22,8 @@ import net.runelite.api.events.WorldViewLoaded;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.Notifier;
+import net.runelite.client.input.KeyListener;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -40,9 +43,10 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
 	@Inject private Notifier notifier;
+	@Inject private KeyManager keyManager;
 	private boolean collisionActive;
 	private boolean editorCacheActive;
-	private boolean mouseRegistered;
+	private boolean inputRegistered;
 	private volatile boolean focused = true;
 	private int alertX = Integer.MIN_VALUE;
 	private int alertY = Integer.MIN_VALUE;
@@ -52,7 +56,6 @@ public final class ChartPlotterRuntime {
 	private boolean dragged;
 	private boolean downCtrl;
 	private boolean downAlt;
-	private boolean downShift;
 	private boolean downBlock;
 	private boolean menuBlock;
 	private volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
@@ -69,12 +72,10 @@ public final class ChartPlotterRuntime {
 			downY = e.getY();
 			downCtrl = e.isControlDown();
 			downAlt = e.isAltDown();
-			downShift = e.isShiftDown();
-			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown() || e.isShiftDown();
-			boolean mod = e.isAltDown() || e.isShiftDown() || e.isControlDown();
+			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown();
+			boolean mod = e.isAltDown() || e.isControlDown();
 			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> worldMapOverlay.placeNode(m));
-			else if (e.isShiftDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.startNodeMove(m));
-			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.addNode(m));
+			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> worldMapOverlay.editNode(m));
 			if (!mod && features.routes && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
 			return e;
 		}
@@ -114,15 +115,27 @@ public final class ChartPlotterRuntime {
 			return e;
 		}
 	};
+	private final KeyListener key = new KeyListener() {
+		@Override
+		public void keyTyped(KeyEvent e) {}
+		@Override
+		public void keyPressed(KeyEvent e) {mods(e);}
+		@Override
+		public void keyReleased(KeyEvent e) {mods(e);}
+		@Override
+		public void focusLost() {clearMods();}
+	};
 	public void start() {apply();}
 	public void stop() {
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
-		if (mouseRegistered) {
+		if (inputRegistered) {
 			mouseManager.unregisterMouseListener(mouse);
-			mouseRegistered = false;
+			keyManager.unregisterKeyListener(key);
+			inputRegistered = false;
 		}
+		clearMods();
 		collisionActive = false;
 		editorCacheActive = false;
 		features = ChartPlotterFeatures.off();
@@ -159,8 +172,15 @@ public final class ChartPlotterRuntime {
 	}
 	@SuppressWarnings({"unused", "UnusedParameters"})
 	public void menu(MenuOpened e) {
-		if (!features.routes || !sailing.boarded()) return;
 		Point m = client.getMouseCanvasPosition();
+		if (features.edit) {
+			int[] node = worldMapOverlay.node(m);
+			if (node != null) {
+				menuBlock = true;
+				client.getMenu().createMenuEntry(-1).setOption("Remove node").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> worldMapOverlay.removeNode(node[0], node[1]));
+			}
+		}
+		if (!features.routes || !sailing.boarded()) return;
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst == null) return;
 		menuBlock = true;
@@ -227,12 +247,15 @@ public final class ChartPlotterRuntime {
 		if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
 		if (!next.routes) routes.stop();
-		if (next.input && !mouseRegistered) {
+		if (next.input && !inputRegistered) {
 			mouseManager.registerMouseListener(mouse);
-			mouseRegistered = true;
-		} else if (!next.input && mouseRegistered) {
+			keyManager.registerKeyListener(key);
+			inputRegistered = true;
+		} else if (!next.input && inputRegistered) {
 			mouseManager.unregisterMouseListener(mouse);
-			mouseRegistered = false;
+			keyManager.unregisterKeyListener(key);
+			inputRegistered = false;
+			clearMods();
 		}
 		if (next.edit && !editorCacheActive) {
 			collisionCache.start();
@@ -251,9 +274,26 @@ public final class ChartPlotterRuntime {
 		if (dst != null) routes.chart(dst[0], dst[1]);
 	}
 	private boolean courseClick() {
-		if (!features.routes || !sailing.boarded() || downAlt || downShift) return false;
+		if (!features.routes || !sailing.boarded() || downAlt) return false;
 		ChartPlotterWorldMapClick click = config.worldMapCourseClick();
 		return click == ChartPlotterWorldMapClick.CLICK || click == ChartPlotterWorldMapClick.CTRL_CLICK && downCtrl;
+	}
+	private void mods(KeyEvent e) {
+		boolean alt = e.isAltDown();
+		boolean ctrl = e.isControlDown();
+		if (e.getID() == KeyEvent.KEY_PRESSED) {
+			if (e.getKeyCode() == KeyEvent.VK_ALT || e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) alt = true;
+			if (e.getKeyCode() == KeyEvent.VK_CONTROL) ctrl = true;
+		} else if (e.getID() == KeyEvent.KEY_RELEASED) {
+			if (e.getKeyCode() == KeyEvent.VK_ALT || e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) alt = false;
+			if (e.getKeyCode() == KeyEvent.VK_CONTROL) ctrl = false;
+		}
+		worldMapOverlay.nodeAlt(alt);
+		worldMapOverlay.courseCtrl(ctrl);
+	}
+	private void clearMods() {
+		worldMapOverlay.nodeAlt(false);
+		worldMapOverlay.courseCtrl(false);
 	}
 	private boolean collision(boolean active, WorldView top) {
 		if (active == collisionActive) return false;

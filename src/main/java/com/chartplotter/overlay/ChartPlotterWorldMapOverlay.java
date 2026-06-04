@@ -117,8 +117,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		}
 	}
 	public int[] tile(Point m) {return map.tile(m);}
-	public void addNode(Point m) {editor.add(m);}
-	public void startNodeMove(Point m) {editor.startMove(m);}
+	public int[] node(Point m) {return editor.node(m);}
+	public void editNode(Point m) {editor.edit(m);}
+	public void removeNode(int wx, int wy) {editor.remove(wx, wy);}
 	public void placeNode(Point m) {editor.place(m);}
 	public boolean movingNode() {return editor.moving();}
 	public void nodeAlt(boolean on) {editor.alt(on);}

@@ -1,7 +1,6 @@
 package com.chartplotter.route;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
-import com.chartplotter.util.ChartPlotterMath;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -23,13 +22,6 @@ public final class ChartPlotterSparseNodes {
 	public synchronized long version() {
 		load();
 		return version;
-	}
-	public synchronized int nodeAt(int wx, int wy, int r) {
-		load();
-		for (int i = 0; i < n; i++) {
-			if (dist(wx, wy, x[i], y[i]) <= r) return i;
-		}
-		return -1;
 	}
 	public synchronized void add(int wx, int wy) {
 		load();
@@ -63,6 +55,14 @@ public final class ChartPlotterSparseNodes {
 		n--;
 		version++;
 		flushQuiet();
+	}
+	public synchronized void remove(int wx, int wy) {
+		load();
+		for (int i = 0; i < n; i++) {
+			if (x[i] != wx || y[i] != wy) continue;
+			remove(i);
+			return;
+		}
 	}
 	public synchronized void invalidate(ChartPlotterCollisionData data) {
 		load();
@@ -140,7 +140,6 @@ public final class ChartPlotterSparseNodes {
 		return data.flagAt(wx, wy) == ChartPlotterCollisionCache.BLOCKED;
 	}
 	private static boolean digit(char c) {return c >= '0' && c <= '9';}
-	private static int dist(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by);}
 	public static final class Snapshot {
 		public final int[] x;
 		public final int[] y;
