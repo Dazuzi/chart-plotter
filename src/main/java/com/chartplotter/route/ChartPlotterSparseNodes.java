@@ -1,12 +1,15 @@
 package com.chartplotter.route;
+
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.util.ChartPlotterVersions;
+import net.runelite.client.RuneLite;
+
+import javax.inject.Singleton;
 import java.io.File;
 import java.io.InputStream;
 import java.util.Arrays;
-import javax.inject.Singleton;
-import net.runelite.client.RuneLite;
+
 @Singleton
 public final class ChartPlotterSparseNodes {
 	private static final String KEY = "sparse";

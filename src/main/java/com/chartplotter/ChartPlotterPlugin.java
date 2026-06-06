@@ -20,7 +20,7 @@ import javax.inject.Inject;
 
 @PluginDescriptor(
 	name = "Chart Plotter",
-	description = "Displays current course, projected sailing path, and destination routes in the world, minimap, and world map.",
+	description = "Collision-aware sailing navigation helper for viewing your current and projected courses and planning a route to a destination.",
 	configName = "chartplotter",
 	tags = {"sailing","sail","path","pathing","plotting","plot","chart","charting","navigation","navigating","nav","map","route","routing","course","ship","boat","minimap","worldmap","destination"}
 )

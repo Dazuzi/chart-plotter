@@ -1,18 +1,12 @@
 package com.chartplotter.route;
+
 import com.chartplotter.util.ChartPlotterFiles;
-import java.io.BufferedReader;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
+
 public final class ChartPlotterSparseCodec {
 	private static final byte VERSION = 1;
 	private static final int USHORT = 0xffff;

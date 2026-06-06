@@ -523,4 +523,5 @@ public final class ChartPlotterRouteWork {
 			if (af != bf) return af < bf;
 			return nodes.g[a] > nodes.g[b];
 		}
-	}}
+	}
+}

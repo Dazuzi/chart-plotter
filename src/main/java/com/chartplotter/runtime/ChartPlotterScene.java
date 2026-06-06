@@ -1,8 +1,11 @@
 package com.chartplotter.runtime;
-import javax.inject.Singleton;
+
 import net.runelite.api.Perspective;
 import net.runelite.api.Tile;
 import net.runelite.api.WorldView;
+
+import javax.inject.Singleton;
+
 @Singleton
 public final class ChartPlotterScene {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;

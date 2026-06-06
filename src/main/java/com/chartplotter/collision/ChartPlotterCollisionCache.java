@@ -1,19 +1,22 @@
 package com.chartplotter.collision;
+
 import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
 import com.chartplotter.route.ChartPlotterSparseNodes;
 import com.chartplotter.util.ChartPlotterVersions;
+import net.runelite.api.WorldView;
+import net.runelite.client.RuneLite;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import java.io.File;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.HashMap;
-import java.util.Map;
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import net.runelite.api.WorldView;
-import net.runelite.client.RuneLite;
+
 @Singleton
 public final class ChartPlotterCollisionCache {
 	private static final String KEY = "collision";

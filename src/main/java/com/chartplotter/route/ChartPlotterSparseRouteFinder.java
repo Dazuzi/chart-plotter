@@ -1,13 +1,14 @@
 package com.chartplotter.route;
+
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
+import net.runelite.api.Perspective;
+
 import java.util.Arrays;
 import java.util.function.BooleanSupplier;
-import net.runelite.api.Perspective;
-import static com.chartplotter.route.ChartPlotterRouteUtil.cap;
-import static com.chartplotter.route.ChartPlotterRouteUtil.center;
-import static com.chartplotter.route.ChartPlotterRouteUtil.dist;
-import static com.chartplotter.route.ChartPlotterRouteUtil.h;
+
+import static com.chartplotter.route.ChartPlotterRouteUtil.*;
+
 public final class ChartPlotterSparseRouteFinder {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int SPARSE_LINK = 128;

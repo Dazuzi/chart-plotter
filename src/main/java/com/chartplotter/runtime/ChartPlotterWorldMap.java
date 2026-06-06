@@ -1,20 +1,22 @@
 package com.chartplotter.runtime;
-import java.awt.geom.Area;
-import java.awt.Rectangle;
-import java.awt.Shape;
-import java.util.Arrays;
-import javax.inject.Inject;
-import javax.inject.Singleton;
+
 import net.runelite.api.Client;
+import net.runelite.api.Perspective;
+import net.runelite.api.Point;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarClientID;
-import net.runelite.api.Perspective;
-import net.runelite.api.Point;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.worldmap.WorldMap;
 import net.runelite.api.worldmap.WorldMapData;
-import net.runelite.api.WorldView;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.awt.*;
+import java.awt.geom.Area;
+import java.util.Arrays;
+
 @Singleton
 public final class ChartPlotterWorldMap {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;

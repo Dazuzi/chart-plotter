@@ -1,13 +1,17 @@
 package com.chartplotter.route;
+
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
-import java.util.Arrays;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
+
+import java.util.Arrays;
+
 import static com.chartplotter.route.ChartPlotterRouteUtil.center;
 import static com.chartplotter.route.ChartPlotterRouteUtil.state;
 import static com.chartplotter.util.ChartPlotterMath.rotateX;
 import static com.chartplotter.util.ChartPlotterMath.rotateY;
+
 public final class ChartPlotterRouteGrid {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int DENSE_MAX = 24 << 20;

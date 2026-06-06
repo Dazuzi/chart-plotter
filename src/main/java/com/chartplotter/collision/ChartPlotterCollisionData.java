@@ -1,6 +1,9 @@
 package com.chartplotter.collision;
-import java.util.Map;
+
 import net.runelite.api.CollisionDataFlag;
+
+import java.util.Map;
+
 public final class ChartPlotterCollisionData {
 	public static final int UNKNOWN = -1;
 	public static final int OPEN = 0;

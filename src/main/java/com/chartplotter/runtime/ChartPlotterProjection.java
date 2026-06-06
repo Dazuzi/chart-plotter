@@ -1,17 +1,21 @@
 package com.chartplotter.runtime;
+
 import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.util.ChartPlotterMath;
-import java.util.Arrays;
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
+import net.runelite.api.coords.LocalPoint;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.util.Arrays;
+
 import static com.chartplotter.util.ChartPlotterMath.rotateX;
 import static com.chartplotter.util.ChartPlotterMath.rotateY;
+
 @Singleton
 public final class ChartPlotterProjection {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;

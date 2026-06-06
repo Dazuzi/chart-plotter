@@ -1,4 +1,5 @@
 package com.chartplotter.overlay;
+
 import com.chartplotter.ChartPlotterCacheOverlay;
 import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterLineMode;
@@ -11,29 +12,20 @@ import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterWorldMap;
 import com.chartplotter.util.ChartPlotterMath;
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.FontMetrics;
-import java.awt.geom.Ellipse2D;
-import java.awt.geom.Path2D;
-import java.awt.Graphics2D;
-import java.awt.Rectangle;
-import java.awt.Shape;
-import java.awt.Stroke;
-import java.util.Map;
-import javax.inject.Inject;
-import net.runelite.api.Client;
+import net.runelite.api.*;
+import net.runelite.api.Point;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
-import net.runelite.api.Perspective;
-import net.runelite.api.Point;
-import net.runelite.api.WorldEntity;
-import net.runelite.api.WorldEntityConfig;
-import net.runelite.api.WorldView;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
+
+import javax.inject.Inject;
+import java.awt.*;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
+import java.util.Map;
+
 public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final Color STATUS_UNCHARTED = new Color(255, 80, 60, 220);

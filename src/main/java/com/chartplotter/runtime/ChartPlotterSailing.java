@@ -1,18 +1,15 @@
 package com.chartplotter.runtime;
+
 import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.util.ChartPlotterMath;
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import net.runelite.api.Client;
-import net.runelite.api.Constants;
+import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.VarbitChanged;
-import net.runelite.api.GameState;
 import net.runelite.api.gameval.VarbitID;
-import net.runelite.api.Player;
-import net.runelite.api.Point;
-import net.runelite.api.WorldEntity;
-import net.runelite.api.WorldView;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+
 @Singleton
 public final class ChartPlotterSailing {
 	private static final int MOTION_HOLD = 2;
