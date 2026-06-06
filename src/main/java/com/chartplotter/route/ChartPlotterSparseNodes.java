@@ -8,50 +8,67 @@ import net.runelite.client.RuneLite;
 import javax.inject.Singleton;
 import java.io.File;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @Singleton
 public final class ChartPlotterSparseNodes {
 	private static final String KEY = "sparse";
+	private static final int RETRY_SECONDS = 30;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
+	private final ArrayList<Op> pending = new ArrayList<>();
 	private int[] x = new int[64];
 	private int[] y = new int[64];
 	private int n;
+	private boolean active;
 	private boolean loaded;
 	private long version;
 	private long savedVersion;
-	private ExecutorService io;
-	private Future<?> flushTask;
+	private String seedVersion;
+	private ScheduledExecutorService io;
+	private ScheduledFuture<?> flushTask;
 	public synchronized void start() {
-		if (io != null) return;
-		io = Executors.newSingleThreadExecutor(r -> {
+		if (active) return;
+		active = true;
+		ScheduledExecutorService ex = executor();
+		if (!loaded) ex.execute(() -> loadQuiet(ex));
+		else if (savedVersion != version) flush(ex, 0);
+	}
+	private ScheduledExecutorService executor() {
+		if (io != null) return io;
+		io = Executors.newSingleThreadScheduledExecutor(r -> {
 			Thread t = new Thread(r, "chart-plotter-sparse");
 			t.setDaemon(true);
 			return t;
 		});
-		ExecutorService ex = io;
-		if (!loaded) ex.execute(() -> loadQuiet(ex));
-		else if (savedVersion != version) flush(ex);
+		return io;
 	}
 	public void stop() {
-		ExecutorService ex;
-		Future<?> task;
+		ScheduledExecutorService ex;
+		ScheduledFuture<?> task;
 		synchronized (this) {
+			active = false;
 			ex = io;
 			io = null;
 			task = flushTask;
 			flushTask = null;
+			pending.clear();
 		}
+		if (ex == null) return;
 		if (task != null) task.cancel(false);
-		if (ex != null) ex.shutdownNow();
+		ex.shutdownNow();
 	}
 	public synchronized Snapshot snapshot() {return snap();}
 	public synchronized long version() {return version;}
 	public synchronized void add(int wx, int wy) {
-		if (!loaded) return;
+		if (!loaded) {
+			pending(() -> add(wx, wy));
+			return;
+		}
 		if (n == x.length) grow();
 		x[n] = wx;
 		y[n] = wy;
@@ -59,7 +76,10 @@ public final class ChartPlotterSparseNodes {
 		changed();
 	}
 	public synchronized void move(int ox, int oy, int wx, int wy) {
-		if (!loaded) return;
+		if (!loaded) {
+			pending(() -> move(ox, oy, wx, wy));
+			return;
+		}
 		for (int i = 0; i < n; i++) {
 			if (x[i] != ox || y[i] != oy) continue;
 			if (x[i] == wx && y[i] == wy) return;
@@ -70,7 +90,10 @@ public final class ChartPlotterSparseNodes {
 		}
 	}
 	public synchronized void remove(int i) {
-		if (!loaded) return;
+		if (!loaded) {
+			pending(() -> remove(i));
+			return;
+		}
 		if (i < 0 || i >= n) return;
 		int m = n - i - 1;
 		if (m > 0) {
@@ -81,7 +104,10 @@ public final class ChartPlotterSparseNodes {
 		changed();
 	}
 	public synchronized void remove(int wx, int wy) {
-		if (!loaded) return;
+		if (!loaded) {
+			pending(() -> remove(wx, wy));
+			return;
+		}
 		for (int i = 0; i < n; i++) {
 			if (x[i] != wx || y[i] != wy) continue;
 			remove(i);
@@ -89,7 +115,10 @@ public final class ChartPlotterSparseNodes {
 		}
 	}
 	public synchronized void invalidate(ChartPlotterCollisionData data) {
-		if (!loaded) return;
+		if (!loaded) {
+			pending(() -> invalidate(data));
+			return;
+		}
 		int w = 0;
 		for (int i = 0; i < n; i++) {
 			if (blocked(data, x[i], y[i])) continue;
@@ -100,22 +129,17 @@ public final class ChartPlotterSparseNodes {
 		n = w;
 		changed();
 	}
-	private void loadQuiet(ExecutorService ex) {
+	private void loadQuiet(ScheduledExecutorService ex) {
 		Load data = loadData();
-		long save;
 		synchronized (this) {
 			if (io != ex || loaded) return;
 			if (data.nodes != null) set(data.nodes);
 			loaded = true;
 			version++;
-			save = version;
 			savedVersion = data.replace ? version - 1 : version;
-		}
-		if (!data.replace || data.nodes == null) return;
-		if (!ChartPlotterSparseCodec.write(dir, file(), data.nodes)) return;
-		ChartPlotterVersions.write(dir, KEY, data.seedVersion);
-		synchronized (this) {
-			if (savedVersion < save) savedVersion = save;
+			seedVersion = data.replace ? data.seedVersion : null;
+			applyPending();
+			if (savedVersion != version) flush(ex, 0);
 		}
 	}
 	private Load loadData() {
@@ -138,29 +162,44 @@ public final class ChartPlotterSparseNodes {
 	}
 	private void changed() {
 		version++;
-		flush(io);
+		flush(io, 0);
 	}
 	private Snapshot snap() {return new Snapshot(Arrays.copyOf(x, n), Arrays.copyOf(y, n), version);}
-	private void flush(ExecutorService ex) {
+	private void pending(Op op) {
+		if (io == null) return;
+		pending.add(op);
+	}
+	private void applyPending() {
+		for (Op op : pending) op.apply();
+		pending.clear();
+	}
+	private void flush(ScheduledExecutorService ex, int delay) {
 		if (ex == null) return;
 		if (flushTask != null && !flushTask.isDone()) return;
-		try {flushTask = ex.submit(() -> flushQuiet(ex));} catch (RuntimeException ignored) {flushTask = null;}
+		try {flushTask = ex.schedule(() -> flushQuiet(ex), delay, TimeUnit.SECONDS);} catch (RuntimeException ignored) {flushTask = null;}
 	}
-	private void flushQuiet(ExecutorService ex) {
+	private void flushQuiet(ScheduledExecutorService ex) {
 		Snapshot nodes;
 		long save;
 		synchronized (this) {
-			if (io != ex || savedVersion == version) return;
+			if (io != ex) return;
+			if (savedVersion == version) return;
 			nodes = snap();
 			save = version;
 		}
 		boolean ok = ChartPlotterSparseCodec.write(dir, file(), nodes);
+		String seed = null;
 		synchronized (this) {
 			if (io != ex) return;
-			if (ok && savedVersion < save) savedVersion = save;
+			if (ok) {
+				if (savedVersion < save) savedVersion = save;
+				seed = seedVersion;
+				seedVersion = null;
+			}
 			flushTask = null;
-			if (ok && savedVersion != version) flush(ex);
+			if (active && savedVersion != version) flush(ex, ok ? 0 : RETRY_SECONDS);
 		}
+		if (seed != null) ChartPlotterVersions.write(dir, KEY, seed);
 	}
 	private void set(ChartPlotterSparseNodes.Snapshot nodes) {
 		ensure(nodes.x.length);
@@ -177,6 +216,9 @@ public final class ChartPlotterSparseNodes {
 		y = Arrays.copyOf(y, y.length << 1);
 	}
 	private static boolean blocked(ChartPlotterCollisionData data, int wx, int wy) {return data.flagAt(wx, wy) == ChartPlotterCollisionCache.BLOCKED;}
+	private interface Op {
+		void apply();
+	}
 	private static final class Load {
 		final Snapshot nodes;
 		final boolean replace;
