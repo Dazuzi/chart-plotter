@@ -47,6 +47,7 @@ public final class ChartPlotterRoutes {
 	private final AtomicInteger seq = new AtomicInteger();
 	private volatile boolean busy;
 	private volatile long rev;
+	private volatile long sparseRev;
 	private ExecutorService exec;
 	private final AtomicReference<Future<?>> work = new AtomicReference<>();
 	@Inject
@@ -100,6 +101,10 @@ public final class ChartPlotterRoutes {
 			request(top, ship, loc, r.tx, r.ty);
 			return;
 		}
+		if (sparseRev != sparseNodes.version()) {
+			request(top, ship, loc, r.tx, r.ty);
+			return;
+		}
 		if (r.status != ChartPlotterRoute.OK && rev != collisionCache.rev()) {
 			request(top, ship, loc, r.tx, r.ty);
 			return;
@@ -127,6 +132,7 @@ public final class ChartPlotterRoutes {
 		if (f != null) f.cancel(true);
 		route = null;
 		rev = 0;
+		sparseRev = 0;
 		busy = false;
 	}
 	public void stop() {
@@ -206,6 +212,7 @@ public final class ChartPlotterRoutes {
 		if (pending) {
 			route = ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight).effort(effort);
 			rev = dataRev;
+			sparseRev = sparse.version;
 		}
 		start();
 		AtomicReference<Future<?>> nextRef = new AtomicReference<>();
@@ -216,6 +223,7 @@ public final class ChartPlotterRoutes {
 				if (id == seq.get() && !Thread.currentThread().isInterrupted()) {
 					route = r;
 					rev = dataRev;
+					sparseRev = sparse.version;
 				}
 			} finally {
 				if (id == seq.get()) busy = false;

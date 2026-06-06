@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -32,6 +33,7 @@ public final class ChartPlotterCollisionCache {
 	private ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private boolean loaded;
 	private ScheduledExecutorService io;
+	private ScheduledFuture<?> flushTask;
 	private final AtomicLong rev = new AtomicLong();
 	private long savedRev;
 	private long viewRev = -1;
@@ -43,17 +45,20 @@ public final class ChartPlotterCollisionCache {
 			return t;
 		});
 		if (!loaded) io.execute(this::loadQuiet);
-		io.scheduleWithFixedDelay(this::flushQuiet, 30, 30, TimeUnit.SECONDS);
+		flushTask = io.scheduleWithFixedDelay(this::flushQuiet, 30, 30, TimeUnit.SECONDS);
 	}
 	public void stop() {
 		ScheduledExecutorService ex;
+		ScheduledFuture<?> task;
 		synchronized (this) {
 			ex = io;
 			io = null;
+			task = flushTask;
+			flushTask = null;
 		}
 		if (ex == null) return;
-		try {ex.execute(this::flushQuiet);} catch (RuntimeException ignored) {}
-		ex.shutdown();
+		if (task != null) task.cancel(false);
+		ex.shutdownNow();
 	}
 	public void capture(WorldView wv) {
 		ScheduledExecutorService ex;

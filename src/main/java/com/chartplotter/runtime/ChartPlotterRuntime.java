@@ -1,4 +1,5 @@
 package com.chartplotter.runtime;
+
 import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterWorldMapClick;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
@@ -7,26 +8,25 @@ import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
+import com.chartplotter.route.ChartPlotterSparseNodes;
 import com.chartplotter.util.ChartPlotterMath;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseEvent;
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.events.GameStateChanged;
-import net.runelite.api.events.MenuOptionClicked;
-import net.runelite.api.events.MenuOpened;
-import net.runelite.api.events.VarbitChanged;
-import net.runelite.api.events.WorldViewLoaded;
+import net.runelite.api.events.*;
+import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.Notifier;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.ui.overlay.OverlayManager;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
+
 @Singleton
 public final class ChartPlotterRuntime {
 	private static final int ALERT_TICKS = 8;
@@ -42,6 +42,8 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterCollisionCache collisionCache;
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
+	@Inject private ChartPlotterSparseNodes sparseNodes;
+	@Inject private ChartPlotterScene scene;
 	@Inject private Notifier notifier;
 	@Inject private KeyManager keyManager;
 	private boolean collisionActive;
@@ -145,6 +147,7 @@ public final class ChartPlotterRuntime {
 		features = ChartPlotterFeatures.off();
 		collisionCache.stop();
 		routes.stop();
+		sparseNodes.stop();
 		sailing.reset();
 	}
 	public void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
@@ -172,6 +175,7 @@ public final class ChartPlotterRuntime {
 		WorldView wv = e.getWorldView();
 		if (wv == null || !wv.isTopLevel()) return;
 		sailing.loaded(wv);
+		if (features.worldOverlay || features.minimapOverlay || features.worldMapOverlay) scene.update(wv);
 		capture(wv);
 	}
 	@SuppressWarnings({"unused", "UnusedParameters"})
@@ -214,13 +218,14 @@ public final class ChartPlotterRuntime {
 			return;
 		}
 		WorldView top = sailing.top();
-		boolean scene = top != null && sailing.sceneChanged(top);
-		if (scene) sailing.scene(ship, loc);
+		boolean sceneChanged = top != null && sailing.sceneChanged(top);
+		if (top != null && (features.worldOverlay || features.minimapOverlay || features.worldMapOverlay)) scene.update(top);
+		if (sceneChanged) sailing.scene(ship, loc);
 		boolean normal = features.cache(sailing.boarded()) && top != null;
 		boolean started = collision(normal, top);
-		if (scene && normal && !started) capture(top);
+		if (sceneChanged && normal && !started) capture(top);
 		if (features.chart && top != null) routes.tick(top, ship, loc);
-		sailing.motion(ship, loc, scene);
+		sailing.motion(ship, loc, sceneChanged);
 		alert(top, loc);
 	}
 	public void focus(boolean focused) {this.focused = focused;}
@@ -250,6 +255,8 @@ public final class ChartPlotterRuntime {
 		if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
 		if (!next.chart) routes.stop();
+		if (next.chart || next.edit) sparseNodes.start();
+		else sparseNodes.stop();
 		if (next.input && !inputRegistered) {
 			mouseManager.registerMouseListener(mouse);
 			keyManager.registerKeyListener(key);

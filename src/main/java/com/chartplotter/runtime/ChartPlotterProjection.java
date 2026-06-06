@@ -52,7 +52,7 @@ public final class ChartPlotterProjection {
 		};
 	}
 	public Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, boolean showExt) {
-		ChartPlotterScene.Area area = scene.area(wv);
+		ChartPlotterScene.Area area = scene.cached(wv);
 		return path(wv, wc, anchor, from, target, limit(anchor, area), area, showExt);
 	}
 	public Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, boolean showExt) {return path(wv, wc, anchor, from, target, cap, null, showExt);}

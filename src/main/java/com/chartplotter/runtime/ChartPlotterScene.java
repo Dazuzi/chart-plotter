@@ -10,13 +10,17 @@ import javax.inject.Singleton;
 public final class ChartPlotterScene {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private Slot cache;
-	public Area area(WorldView wv) {
+	public void update(WorldView wv) {
 		Tile[][] tiles = tiles(wv);
 		Slot s = cache;
-		if (s != null && s.same(wv, tiles)) return s.area;
+		if (s != null && s.same(wv, tiles)) return;
 		Area area = area(wv, tiles);
 		cache = new Slot(wv, tiles, area);
-		return area;
+	}
+	public Area cached(WorldView wv) {
+		Tile[][] tiles = tiles(wv);
+		Slot s = cache;
+		return s != null && s.same(wv, tiles) ? s.area : null;
 	}
 	static long key(Area a) {
 		if (a == null) return 0;

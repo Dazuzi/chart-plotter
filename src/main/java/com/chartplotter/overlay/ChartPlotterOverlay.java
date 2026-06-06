@@ -74,7 +74,7 @@ public class ChartPlotterOverlay extends Overlay {
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
 		if (!showWorld && !cacheOverlay.world && !showTurn) return null;
 		if (top == null) return null;
-		ChartPlotterScene.Area area = scene.area(top);
+		ChartPlotterScene.Area area = scene.cached(top);
 		if (cacheOverlay.world) drawCache(g, top, area);
 		if (!showWorld && !showTurn) return null;
 		WorldEntity ship = plugin.getShip();
