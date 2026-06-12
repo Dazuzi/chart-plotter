@@ -75,6 +75,7 @@ public final class ChartPlotterProjection {
 	}
 	private static Path raw(int ax, int ay, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt, Motion motion, Blocker blocker) {
 		Path p = new Path(cap + 2);
+		p.reverse = motion.reversing();
 		p.start = from;
 		p.x[p.n] = ax;
 		p.y[p.n] = ay;
@@ -130,6 +131,7 @@ public final class ChartPlotterProjection {
 	}
 	private static Path rawSlide(int ax, int ay, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt, Motion motion, Blocker blocker) {
 		Path p = new Path(cap + 2);
+		p.reverse = motion.reversing();
 		p.start = from;
 		p.x[p.n] = ax;
 		p.y[p.n] = ay;
@@ -521,6 +523,7 @@ public final class ChartPlotterProjection {
 		public int start;
 		public int n;
 		public boolean blocked;
+		public boolean reverse;
 		public int blockedAt = Integer.MAX_VALUE;
 		private Path(int cap) {
 			x = new int[cap];

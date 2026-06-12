@@ -132,11 +132,11 @@ public class ChartPlotterOverlay extends Overlay {
 				path.reset();
 				boolean d = false;
 				if (have && p.o[i] == p.prev(i)) {
-					rails(path, px, py, cx, cy);
+					rails(path, px, py, cx, cy, p.reverse);
 					d = true;
 				}
 				if (box(p, i) || slide || i == 0) {
-					box(path, cx, cy, open(p, i) && !slide);
+					box(path, cx, cy, open(p, i) && !slide, p.reverse);
 					d = true;
 				}
 				if (d) g.draw(path);
@@ -148,7 +148,7 @@ public class ChartPlotterOverlay extends Overlay {
 	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color) {
 		if (missing(wv, p, 0, rx, ry, z, cx, cy)) return;
 		path.reset();
-		box(path, cx, cy, false);
+		box(path, cx, cy, false, false);
 		path.moveTo(cx[0], cy[0]);
 		path.lineTo(cx[2], cy[2]);
 		path.moveTo(cx[1], cy[1]);
@@ -333,13 +333,23 @@ public class ChartPlotterOverlay extends Overlay {
 		Perspective.modelToCanvas(client, wv, 4, p.x[i], p.y[i], 0, p.o[i], rx, ry, z, cx, cy);
 		return cx[0] == Integer.MIN_VALUE || cx[1] == Integer.MIN_VALUE || cx[2] == Integer.MIN_VALUE || cx[3] == Integer.MIN_VALUE;
 	}
-	private static void rails(Path2D p, int[] px, int[] py, int[] cx, int[] cy) {
-		p.moveTo(px[0], py[0]);
-		p.lineTo(cx[0], cy[0]);
-		p.moveTo(px[3], py[3]);
-		p.lineTo(cx[3], cy[3]);
+	private static void rails(Path2D p, int[] px, int[] py, int[] cx, int[] cy, boolean reverse) {
+		int a = reverse ? 1 : 0;
+		int b = reverse ? 2 : 3;
+		p.moveTo(px[a], py[a]);
+		p.lineTo(cx[a], cy[a]);
+		p.moveTo(px[b], py[b]);
+		p.lineTo(cx[b], cy[b]);
 	}
-	private static void box(Path2D p, int[] x, int[] y, boolean open) {
+	private static void box(Path2D p, int[] x, int[] y, boolean open, boolean reverse) {
+		if (open && reverse) {
+			p.moveTo(x[0], y[0]);
+			p.lineTo(x[1], y[1]);
+			p.moveTo(x[2], y[2]);
+			p.lineTo(x[3], y[3]);
+			p.lineTo(x[0], y[0]);
+			return;
+		}
 		p.moveTo(x[0], y[0]);
 		p.lineTo(x[1], y[1]);
 		p.lineTo(x[2], y[2]);
