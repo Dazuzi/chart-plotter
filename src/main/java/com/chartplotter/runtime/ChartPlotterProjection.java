@@ -48,7 +48,7 @@ public final class ChartPlotterProjection {
 			@Override
 			public boolean reversing() {return sailing.reversing();}
 			@Override
-			public int moveMode() {return sailing.moveMode();}
+			public boolean turnsOnSpot() {return !sailing.movesOnHeading();}
 		};
 	}
 	public Path path(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, boolean showExt) {
@@ -66,7 +66,7 @@ public final class ChartPlotterProjection {
 		return p;
 	}
 	private Key key(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
-		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area), config.sailingSlide(), sailing.moveMode());
+		return new Key(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area), config.sailingSlide(), sailing.moveMode(), sailing.movesOnHeading());
 	}
 	private Path raw(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
 		Blocker b = blocker(wv, wc, collisionCache, memo.reset());
@@ -86,7 +86,11 @@ public final class ChartPlotterProjection {
 		int o = from;
 		double speed = motion.speed();
 		double accel = motion.accel();
-		if (speed == 0) o = target;
+		if (speed == 0 && motion.turnsOnSpot()) {
+			o = target;
+			speed = Math.max(motion.max(), motion.accel());
+			accel = 0;
+		}
 		if (motion.reversing()) {
 			speed *= -1;
 			accel *= -1;
@@ -140,11 +144,17 @@ public final class ChartPlotterProjection {
 		int o = from;
 		double speed = motion.speed();
 		double accel = motion.accel();
-		if (speed == 0 && motion.moveMode() == 0) o = target;
+		if (speed == 0 && motion.turnsOnSpot()) {
+			o = target;
+			speed = Math.max(motion.max(), motion.accel());
+			accel = 0;
+		}
 		if (motion.reversing()) {
 			speed *= -1;
 			accel *= -1;
 		}
+		p.start = o;
+		p.o[0] = o;
 		int dir = ChartPlotterMath.angleDir(o, target, motion.turn());
 		int cx = ax;
 		int cy = ay;
@@ -431,8 +441,9 @@ public final class ChartPlotterProjection {
 		final boolean reverse;
 		final boolean show;
 		final boolean slide;
+		final boolean moving;
 		final int moveMode;
-		private Key(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean show, long rev, long area, boolean slide, int moveMode) {
+		private Key(int baseX, int baseY, int plane, int ax, int ay, int from, int target, int cap, int turn, int wid, int wcat, int wx, int wy, int ww, int wh, long speed, long accel, long max, boolean reverse, boolean show, long rev, long area, boolean slide, int moveMode, boolean moving) {
 			this.baseX = baseX;
 			this.baseY = baseY;
 			this.plane = plane;
@@ -457,8 +468,9 @@ public final class ChartPlotterProjection {
 			this.area = area;
 			this.slide = slide;
 			this.moveMode = moveMode;
+			this.moving = moving;
 		}
-		boolean same(Key k) {return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && show == k.show && rev == k.rev && area == k.area && slide == k.slide && moveMode == k.moveMode;}
+		boolean same(Key k) {return baseX == k.baseX && baseY == k.baseY && plane == k.plane && ax == k.ax && ay == k.ay && from == k.from && target == k.target && cap == k.cap && turn == k.turn && wid == k.wid && wcat == k.wcat && wx == k.wx && wy == k.wy && ww == k.ww && wh == k.wh && speed == k.speed && accel == k.accel && max == k.max && reverse == k.reverse && show == k.show && rev == k.rev && area == k.area && slide == k.slide && moveMode == k.moveMode && moving == k.moving;}
 	}
 	private static final class Blocker {
 		final int baseX;
@@ -549,6 +561,6 @@ public final class ChartPlotterProjection {
 		double accel();
 		double max();
 		boolean reversing();
-		int moveMode();
+		boolean turnsOnSpot();
 	}
 }

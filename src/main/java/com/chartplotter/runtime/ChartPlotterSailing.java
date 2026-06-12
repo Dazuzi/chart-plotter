@@ -19,8 +19,8 @@ public final class ChartPlotterSailing {
 	private volatile boolean boarded;
 	private double baseSpeed;
 	private double accel;
-	private double moveMode;
-	private double lastMoveMode = 2;
+	private int moveMode;
+	private int lastMoveMode = 2;
 	private double speed;
 	private double lastSpeed;
 	private int motionHold;
@@ -173,8 +173,9 @@ public final class ChartPlotterSailing {
 	public int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
 	public double speed() {return speed;}
 	public double accel() {return accel;}
-	public int moveMode() {return (int) moveMode;}
+	public int moveMode() {return moveMode;}
 	public int turnDir() {return turnDir;}
+	public boolean movesOnHeading() {return speed > 0 || moveMode == 2 || moveMode == 3 || moveMode == 4;}
 	public boolean reversing() {return moveMode == 3;}
 	public double maxSpeed() {
 		if (reversing()) return 0.5;
