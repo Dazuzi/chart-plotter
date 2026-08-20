@@ -16,6 +16,7 @@ import net.runelite.api.events.*;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginMessage;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.input.MouseAdapter;
@@ -31,6 +32,7 @@ import java.awt.event.MouseEvent;
 public final class ChartPlotterRuntime {
 	private static final int ALERT_TICKS = 8;
 	private static final int CLICK_SLOP = 4;
+	private static final int MAX_WORLD_TILE = 0x3fff;
 	@Inject private Client client;
 	@Inject private ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
@@ -229,6 +231,20 @@ public final class ChartPlotterRuntime {
 		alert(top, loc);
 	}
 	public void focus(boolean focused) {this.focused = focused;}
+	public void message(PluginMessage e) {
+		if (!"chartplotter".equals(e.getNamespace())) return;
+		if ("clear".equals(e.getName())) {
+			clientThread.invoke(routes::clear);
+			return;
+		}
+		if (!"chart".equals(e.getName())) return;
+		int x = tile(e.getData().get("x"));
+		int y = tile(e.getData().get("y"));
+		if (x < 0 || y < 0) return;
+		clientThread.invoke(() -> {
+			if (features.chart && sailing.boarded()) routes.set(x, y);
+		});
+	}
 	private void alert(WorldView top, LocalPoint loc) {
 		ChartPlotterRoute r = routes.route();
 		if (!config.courseTurnAlert() || top == null || r == null || sailing.reversing()) {
@@ -319,5 +335,10 @@ public final class ChartPlotterRuntime {
 	private void capture(WorldView top) {
 		if (!collisionActive && !editorCacheActive) return;
 		collisionCache.capture(top);
+	}
+	private static int tile(Object value) {
+		if (!(value instanceof Integer)) return -1;
+		int tile = (Integer) value;
+		return tile >= 0 && tile <= MAX_WORLD_TILE ? tile : -1;
 	}
 }

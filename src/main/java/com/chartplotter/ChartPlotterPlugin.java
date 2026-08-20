@@ -13,6 +13,7 @@ import net.runelite.api.events.*;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginMessage;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -56,6 +57,9 @@ public class ChartPlotterPlugin extends Plugin {
 	@SuppressWarnings("unused")
 	@Subscribe
 	public void onFocusChanged(FocusChanged e) {runtime.focus(e.isFocused());}
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onPluginMessage(PluginMessage e) {runtime.message(e);}
 	@SuppressWarnings("unused")
 	@Provides
 	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
