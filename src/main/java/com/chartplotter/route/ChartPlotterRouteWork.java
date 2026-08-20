@@ -10,12 +10,13 @@ public final class ChartPlotterRouteWork {
 	private static final int MC_SPARSE = 2;
 	private static final int MC_COMPACT = 3;
 	private static final int BUCKET_TIE = 16;
+	private static final int INITIAL_SIZE = 1 << 15;
 	private static final int[] DX = ChartPlotterRouteMoves.DX;
 	private ChartPlotterRouteWork() {}
 	static final class Work {
-		final Nodes ba = new Nodes(1 << 15);
-		final BucketHeap bucket = new BucketHeap(ba, 1 << 15);
-		final LongIntMap bg = new LongIntMap(1 << 15);
+		final Nodes ba = new Nodes();
+		final BucketHeap bucket = new BucketHeap(ba);
+		final LongIntMap bg = new LongIntMap(INITIAL_SIZE);
 		final DenseCost bbest = new DenseCost();
 		final CompactCost cbest = new CompactCost();
 		final BaseMoveCache bmoves = new BaseMoveCache();
@@ -23,9 +24,9 @@ public final class ChartPlotterRouteWork {
 		final int[] tileDelta = new int[DX.length];
 		final int[] bestDelta = new int[DX.length];
 		final int[] moveDelta = new int[DX.length];
-		final Nodes a = new Nodes(1 << 15);
-		final Heap aq = new Heap(a, 1 << 15);
-		final LongIntMap ag = new LongIntMap(1 << 15);
+		final Nodes a = new Nodes();
+		final Heap aq = new Heap(a);
+		final LongIntMap ag = new LongIntMap(INITIAL_SIZE);
 		final DenseBest best = new DenseBest();
 		final MoveCache moves = new MoveCache();
 		void clear() {
@@ -359,14 +360,14 @@ public final class ChartPlotterRouteWork {
 		int[] f;
 		int[] prev;
 		int n;
-		private Nodes(int size) {
-			x = new int[size];
-			y = new int[size];
-			dir = new int[size];
-			g = new int[size];
-			d = new int[size];
-			f = new int[size];
-			prev = new int[size];
+		private Nodes() {
+			x = new int[INITIAL_SIZE];
+			y = new int[INITIAL_SIZE];
+			dir = new int[INITIAL_SIZE];
+			g = new int[INITIAL_SIZE];
+			d = new int[INITIAL_SIZE];
+			f = new int[INITIAL_SIZE];
+			prev = new int[INITIAL_SIZE];
 		}
 		int add(int xx, int yy, int dd, int gg, int dist, int ff, int pp) {
 			if (n == x.length) grow();
@@ -400,9 +401,9 @@ public final class ChartPlotterRouteWork {
 		int usedN;
 		int min;
 		int base;
-		private BucketHeap(Nodes nodes, int size) {
+		private BucketHeap(Nodes nodes) {
 			this.nodes = nodes;
-			next = new int[size];
+			next = new int[INITIAL_SIZE];
 		}
 		boolean hasNext() {return n != 0;}
 		void clear() {
@@ -451,10 +452,10 @@ public final class ChartPlotterRouteWork {
 		int[] q;
 		int[] pos;
 		int n;
-		private Heap(Nodes nodes, int size) {
+		private Heap(Nodes nodes) {
 			this.nodes = nodes;
-			q = new int[size];
-			pos = new int[size];
+			q = new int[INITIAL_SIZE];
+			pos = new int[INITIAL_SIZE];
 		}
 		boolean hasNext() {return n != 0;}
 		void clear() {

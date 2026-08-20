@@ -27,7 +27,7 @@ public final class ChartPlotterProjection {
 	private final ChartPlotterScene scene;
 	private final ChartPlotterConfig config;
 	private final Motion motion;
-	private final FlagMemo memo = new FlagMemo(MEMO);
+	private final FlagMemo memo = new FlagMemo();
 	private final Slot[] cache = new Slot[8];
 	private int next;
 	@Inject
@@ -494,11 +494,11 @@ public final class ChartPlotterProjection {
 		public int n;
 		int mark;
 		boolean full;
-		private FlagMemo(int n) {
-			gen = new int[n];
-			key = new long[n];
-			val = new int[n];
-			mask = n - 1;
+		private FlagMemo() {
+			gen = new int[MEMO];
+			key = new long[MEMO];
+			val = new int[MEMO];
+			mask = MEMO - 1;
 		}
 		FlagMemo reset() {
 			if (++mark == 0) {

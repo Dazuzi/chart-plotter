@@ -5,6 +5,7 @@ import net.runelite.client.util.ColorUtil;
 
 import java.awt.*;
 
+@SuppressWarnings("SameReturnValue")
 @ConfigGroup("chartplotter")
 public interface ChartPlotterConfig extends Config {
 	@ConfigSection(name = "Colors", description = "Shared overlay colors.", position = 0)

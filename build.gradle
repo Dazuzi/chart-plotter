@@ -30,10 +30,10 @@ def resourceDir = file('src/main/resources/com/chartplotter')
 def dataVersion = providers.gradleProperty('dataVersion').orElse(new Date().format('yyyy-MM-dd')).get()
 def hex64 = { long v -> Long.toUnsignedString(v, 16).padLeft(16, '0') }
 dependencies {
-	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
-	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
-	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
-	testImplementation group: 'junit', name:'junit', version: '4.13.2'
+	compileOnly "net.runelite:client:$runeLiteVersion"
+	testImplementation "net.runelite:client:$runeLiteVersion"
+	testImplementation "net.runelite:jshell:$runeLiteVersion"
+	testImplementation 'junit:junit:4.13.2'
 }
 group = 'com.chartplotter'
 tasks.withType(JavaCompile).configureEach {

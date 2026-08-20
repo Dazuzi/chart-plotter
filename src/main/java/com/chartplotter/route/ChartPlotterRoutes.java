@@ -365,16 +365,15 @@ public final class ChartPlotterRoutes {
 					int sx = s.x;
 					int sy = s.y;
 					if (i > 0) {
-						ChartPlotterRoute from = previous;
-						if (from == null || from.status != ChartPlotterRoute.OK) {
+						if (previous == null || previous.status != ChartPlotterRoute.OK) {
 							for (; i < selected.length; i++) {
 								ChartPlotterRoute r = ChartPlotterRoute.dependent(snapshot.x(i - 1), snapshot.y(i - 1), snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort);
 								if (!update(id, i, r)) return;
 							}
 							return;
 						}
-						sx = endX(from);
-						sy = endY(from);
+						sx = endX(previous);
+						sy = endY(previous);
 					}
 					int heading = i == 0 ? s.heading : -1;
 					boolean reverse = i == 0 && s.reverse;
@@ -510,15 +509,15 @@ public final class ChartPlotterRoutes {
 		return t;
 	}
 	public static final class Turn {
-		public static final Turn NONE = new Turn(false, 0, 0, -1, 0);
+		public static final Turn NONE = new Turn();
 		public final boolean valid;
 		public final int x;
 		public final int y;
 		public final int ticks;
 		public final long updated;
 		public final boolean end;
+		private Turn() {this(false, 0, 0, -1, 0, false);}
 		private Turn(int x, int y, int ticks, long updated, boolean end) {this(true, x, y, ticks, updated, end);}
-		private Turn(boolean valid, int x, int y, int ticks, long updated) {this(valid, x, y, ticks, updated, false);}
 		private Turn(boolean valid, int x, int y, int ticks, long updated, boolean end) {
 			this.valid = valid;
 			this.x = x;
