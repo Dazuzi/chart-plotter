@@ -1,12 +1,10 @@
 package com.chartplotter;
-import java.awt.Color;
-import net.runelite.client.config.Alpha;
-import net.runelite.client.config.Config;
-import net.runelite.client.config.ConfigGroup;
-import net.runelite.client.config.ConfigItem;
-import net.runelite.client.config.Range;
-import net.runelite.client.config.ConfigSection;
+
+import net.runelite.client.config.*;
 import net.runelite.client.util.ColorUtil;
+
+import java.awt.*;
+
 @ConfigGroup("chartplotter")
 public interface ChartPlotterConfig extends Config {
 	@ConfigSection(name = "Colors", description = "Shared overlay colors.", position = 0)
@@ -18,7 +16,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "potentialColor", name = "Projected color", description = "Line previewing the heading under the cursor.", section = colorsSection, position = 1)
 	default Color potentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
 	@Alpha
-	@ConfigItem(keyName = "chartColor", name = "Charted color", description = "Line and marker for the destination route.", section = colorsSection, position = 2)
+	@ConfigItem(keyName = "chartColor", name = "Charted color", description = "Lines and markers for charted trips.", section = colorsSection, position = 2)
 	default Color chartColor() {return ColorUtil.colorWithAlpha(new Color(255, 101, 255), 185);}
 	@Alpha
 	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Line section after the first blocked tile.", section = colorsSection, position = 3)
@@ -29,7 +27,7 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterLineMode worldLineMode() {return ChartPlotterLineMode.BLOCKED;}
 	@ConfigItem(keyName = "worldProjectedLineMode", name = "Projected line", description = "Draw the cursor heading preview; blocked extends past collisions.", section = worldSection, position = 1)
 	default ChartPlotterLineMode worldProjectedLineMode() {return worldLineMode();}
-	@ConfigItem(keyName = "worldChartLine", name = "Charted line", description = "Draw the destination route set from the world map.", section = worldSection, position = 2)
+	@ConfigItem(keyName = "worldChartLine", name = "Charted line", description = "Draw the active leg of the charted trip.", section = worldSection, position = 2)
 	default boolean worldChartLine() {return worldLineMode().on;}
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 3)
 	@Range(min = 1, max = 10)
@@ -40,7 +38,7 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterLineMode minimapLineMode() {return ChartPlotterLineMode.OFF;}
 	@ConfigItem(keyName = "minimapProjectedLineMode", name = "Projected line", description = "Draw the cursor heading preview; blocked extends past collisions.", section = minimapSection, position = 1)
 	default ChartPlotterLineMode minimapProjectedLineMode() {return minimapLineMode();}
-	@ConfigItem(keyName = "minimapChartLine", name = "Charted line", description = "Draw the destination route set from the world map.", section = minimapSection, position = 2)
+	@ConfigItem(keyName = "minimapChartLine", name = "Charted line", description = "Draw the active leg of the charted trip.", section = minimapSection, position = 2)
 	default boolean minimapChartLine() {return minimapLineMode().on;}
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 3)
 	@Range(min = 1, max = 10)
@@ -51,14 +49,16 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.ON;}
 	@ConfigItem(keyName = "worldMapProjectedLineMode", name = "Projected line", description = "Draw the cursor heading preview; blocked extends past collisions.", section = worldMapSection, position = 1)
 	default ChartPlotterLineMode worldMapProjectedLineMode() {return ChartPlotterLineMode.OFF;}
-	@ConfigItem(keyName = "worldMapChartLine", name = "Charted line", description = "Draw the destination route set from the world map.", section = worldMapSection, position = 2)
+	@ConfigItem(keyName = "worldMapChartLine", name = "Charted line", description = "Draw all charted trip routes and stop markers.", section = worldMapSection, position = 2)
 	default boolean worldMapChartLine() {return worldMapLineMode().on;}
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
-	@ConfigItem(keyName = "worldMapCourseClick", name = "Destination click", description = "World-map click used to set or clear charted destinations.", section = worldMapSection, position = 4)
+	@ConfigItem(keyName = "worldMapCourseClick", name = "Destination click", description = "Use the selected click to replace a trip; hold Shift with it to append, click a stop to remove its tail, or drag a stop to move it.", section = worldMapSection, position = 4)
 	default ChartPlotterWorldMapClick worldMapCourseClick() {return ChartPlotterWorldMapClick.CLICK;}
-	@ConfigSection(name = "Charting", description = "Destination route settings.", position = 4)
+	@ConfigItem(keyName = "worldMapTripHints", name = "Trip control hints", description = "Show trip controls while hovering a destination.", section = worldMapSection, position = 5)
+	default boolean worldMapTripHints() {return true;}
+	@ConfigSection(name = "Charting", description = "Trip route settings.", position = 4)
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}

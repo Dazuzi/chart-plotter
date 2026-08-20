@@ -27,6 +27,8 @@ public final class ChartPlotterRouteFinder {
 	private static final int MC_SPARSE = 2;
 	private static final int MC_COMPACT = 3;
 	private static final int PRUNE = 4;
+	private static final int GOAL_REFINE = 4096;
+	private static final int GOAL_EXTRA = 320;
 	private static final int[] DX = ChartPlotterRouteMoves.DX;
 	private static final int[] DY = ChartPlotterRouteMoves.DY;
 	private static final int[] COST = ChartPlotterRouteMoves.COST;
@@ -176,6 +178,11 @@ public final class ChartPlotterRouteFinder {
 		}
 		boolean domFirst = dense.dom || compact.dom;
 		if (dom != null) domFirst = true;
+		int goal = -1;
+		int goalDist = Integer.MAX_VALUE;
+		int goalCost = Integer.MAX_VALUE;
+		int goalLimit = Integer.MAX_VALUE;
+		int refine = 0;
 		while (q.hasNext()) {
 			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
 			int a = q.poll();
@@ -190,7 +197,15 @@ public final class ChartPlotterRouteFinder {
 				if (bg == LongIntMap.MISS || ag != bg) continue;
 			}
 			int td = dist(ax, ay, tx, ty);
-			if (td <= targetRadius) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, weight, 1);
+			if (td <= targetRadius) {
+				if (goal < 0) goalLimit = ag + GOAL_EXTRA;
+				if (ag <= goalLimit && (td < goalDist || td == goalDist && ag < goalCost)) {
+					goal = a;
+					goalDist = td;
+					goalCost = ag;
+				}
+			}
+			if (goal >= 0 && ++refine > GOAL_REFINE) return route(data, start, nodes, goal, sx, sy, tx, ty, turnBias, reverse, weight, 1);
 			if (db && turn > 0) {
 				if (dense.dominated(pos, ad, ag, turn)) continue;
 			} else if (cb && turn > 0) {
@@ -285,6 +300,7 @@ public final class ChartPlotterRouteFinder {
 				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, weight), a));
 			}
 		}
+		if (goal >= 0) return route(data, start, nodes, goal, sx, sy, tx, ty, turnBias, reverse, weight, 1);
 		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, weight) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, weight);
 	}
 	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData raw, ChartPlotterRouteGrid.Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int mode, int targetRadius, int sparseBand, Path p, BooleanSupplier cancel) {

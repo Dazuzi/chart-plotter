@@ -9,6 +9,7 @@ import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.route.ChartPlotterSparseNodes;
+import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.util.ChartPlotterMath;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
@@ -59,25 +60,43 @@ public final class ChartPlotterRuntime {
 	private boolean down;
 	private boolean dragged;
 	private boolean downCtrl;
+	private boolean downShift;
 	private boolean downAlt;
 	private boolean downBlock;
 	private boolean menuBlock;
+	private int draggedStop = -1;
+	private int draggedX;
+	private int draggedY;
+	private boolean stopPress;
 	private volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
-			worldMapOverlay.courseCtrl(e.isControlDown());
+			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			if (e.getButton() != MouseEvent.BUTTON1) return e;
+			cancelStopDrag();
 			Point m = new Point(e.getX(), e.getY());
 			down = true;
 			dragged = false;
 			downX = e.getX();
 			downY = e.getY();
 			downCtrl = e.isControlDown();
+			downShift = e.isShiftDown();
 			downAlt = e.isAltDown();
 			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown() || worldMapOverlay.cachedClickBlocked();
-			boolean mod = e.isAltDown() || e.isControlDown();
+			boolean mod = e.isAltDown() || e.isControlDown() || e.isShiftDown();
+			if (!downBlock && !mod && features.chart && sailing.boarded()) {
+				int[] stop = worldMapOverlay.cachedStop(m);
+				if (stop != null) {
+					draggedStop = stop[0];
+					draggedX = stop[1];
+					draggedY = stop[2];
+					stopPress = true;
+					worldMapOverlay.dragStop(draggedStop, draggedX, draggedY, m);
+					e.consume();
+				}
+			}
 			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> {
 				if (!worldMapOverlay.clickBlocked()) worldMapOverlay.placeNode(m);
 			});
@@ -90,36 +109,65 @@ public final class ChartPlotterRuntime {
 		@Override
 		public MouseEvent mouseReleased(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
-			worldMapOverlay.courseCtrl(e.isControlDown());
+			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			boolean moved = dragged || Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP;
-			if (e.getButton() == MouseEvent.BUTTON1 && down && !moved && !downBlock && courseClick()) {
+			int stop = draggedStop;
+			int oldX = draggedX;
+			int oldY = draggedY;
+			if (e.getButton() == MouseEvent.BUTTON1 && down && stop >= 0) {
+				if (moved) {
+					Point drop = new Point(e.getX(), e.getY());
+					if (!downBlock) clientThread.invoke(() -> {
+						int[] dst = worldMapOverlay.tile(drop);
+						if (dst != null) routes.move(stop, oldX, oldY, dst[0], dst[1]);
+					});
+				} else if (!downBlock) clientThread.invoke(() -> routes.truncate(stop, oldX, oldY));
+			} else if (e.getButton() == MouseEvent.BUTTON1 && down && !moved && !downBlock && features.chart && !downAlt) {
 				Point m = new Point(e.getX(), e.getY());
-				clientThread.invokeLater(() -> clientThread.invokeLater(() -> chartCourse(m)));
+				boolean active = courseClick();
+				boolean append = active && downShift;
+				clientThread.invokeLater(() -> clientThread.invokeLater(() -> chartCourse(m, active, append)));
 			}
 			if (e.getButton() == MouseEvent.BUTTON1) {
+				if (stop >= 0) e.consume();
+				draggedStop = -1;
+				worldMapOverlay.clearStopDrag();
 				down = false;
 				menuBlock = false;
 			}
 			return e;
 		}
 		@Override
+		public MouseEvent mouseClicked(MouseEvent e) {
+			if (e.getButton() == MouseEvent.BUTTON1 && stopPress) {
+				stopPress = false;
+				e.consume();
+			}
+			return e;
+		}
+		@Override
 		public MouseEvent mouseMoved(MouseEvent e) {
 			worldMapOverlay.nodeAlt(e.isAltDown());
-			worldMapOverlay.courseCtrl(e.isControlDown());
+			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			return e;
 		}
 		@Override
 		public MouseEvent mouseDragged(MouseEvent e) {
 			if (down && (Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP)) dragged = true;
+			if (draggedStop >= 0) {
+				worldMapOverlay.dragStop(draggedStop, draggedX, draggedY, new Point(e.getX(), e.getY()));
+				e.consume();
+			}
 			worldMapOverlay.nodeAlt(e.isAltDown());
-			worldMapOverlay.courseCtrl(e.isControlDown());
+			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			return e;
 		}
 		@Override
 		public MouseEvent mouseExited(MouseEvent e) {
 			down = false;
+			cancelStopDrag();
 			worldMapOverlay.nodeAlt(false);
-			worldMapOverlay.courseCtrl(false);
+			worldMapOverlay.courseMods(false, false);
 			return e;
 		}
 	};
@@ -157,7 +205,7 @@ public final class ChartPlotterRuntime {
 		if (!features.tracking) return;
 		sailing.varbit(e);
 		if (sailing.boarded()) return;
-		routes.clear();
+		routes.pause();
 		collision(false, null);
 		sailing.clear();
 	}
@@ -190,12 +238,21 @@ public final class ChartPlotterRuntime {
 				client.getMenu().createMenuEntry(-1).setOption("Remove node").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> worldMapOverlay.removeNode(node[0], node[1]));
 			}
 		}
-		if (!features.chart || !sailing.boarded()) return;
-		int[] dst = worldMapOverlay.tile(m);
-		if (dst == null) return;
+		if (!features.chart) return;
+		int stop = worldMapOverlay.stop(m);
+		int[] dst = sailing.boarded() ? worldMapOverlay.tile(m) : null;
+		if (stop < 0 && dst == null) return;
 		menuBlock = true;
-		ChartPlotterRoute r = routes.route();
-		if (r != null && (r.status == ChartPlotterRoute.OK || r.status == ChartPlotterRoute.PENDING)) client.getMenu().createMenuEntry(-1).setOption("Clear destination").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.clear());
+		ChartPlotterTrip trip = routes.trip();
+		if (!trip.empty()) client.getMenu().createMenuEntry(-1).setOption("Clear trip").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.clear());
+		if (stop >= 0) {
+			int x = trip.x(stop);
+			int y = trip.y(stop);
+			client.getMenu().createMenuEntry(-1).setOption("Remove stop and later").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.truncate(stop, x, y));
+			return;
+		}
+		if (!sailing.boarded()) return;
+		if (!trip.empty() && routes.canAppend()) client.getMenu().createMenuEntry(-1).setOption("Add stop").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.append(dst[0], dst[1]));
 		client.getMenu().createMenuEntry(-1).setOption("Set destination").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.set(dst[0], dst[1]));
 	}
 	public void menu(MenuOptionClicked e) {
@@ -210,7 +267,7 @@ public final class ChartPlotterRuntime {
 		WorldEntity ship = sailing.ship();
 		if (ship == null) {
 			sailing.clear();
-			routes.clear();
+			routes.pause();
 			collision(false, null);
 			return;
 		}
@@ -270,7 +327,10 @@ public final class ChartPlotterRuntime {
 		else overlayManager.remove(minimapOverlay);
 		if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
 		else overlayManager.remove(worldMapOverlay);
-		if (!next.chart) routes.stop();
+		if (!next.chart) {
+			routes.stop();
+			cancelStopDrag();
+		}
 		if (next.chart || next.edit) sparseNodes.start();
 		else sparseNodes.stop();
 		if (next.input && !inputRegistered) {
@@ -294,10 +354,18 @@ public final class ChartPlotterRuntime {
 		if (!next.tracking) sailing.reset();
 		else if (!prev.tracking) clientThread.invoke(sailing::sync);
 	}
-	private void chartCourse(Point m) {
-		if (!features.chart || !sailing.boarded() || worldMapOverlay.clickBlocked()) return;
+	private void chartCourse(Point m, boolean active, boolean append) {
+		if (!features.chart || worldMapOverlay.clickBlocked()) return;
+		int stop = worldMapOverlay.stop(m);
+		if (stop >= 0) {
+			if (!append) routes.truncate(stop);
+			return;
+		}
+		if (!active || !sailing.boarded()) return;
 		int[] dst = worldMapOverlay.tile(m);
-		if (dst != null) routes.chart(dst[0], dst[1]);
+		if (dst == null) return;
+		if (append) routes.append(dst[0], dst[1]);
+		else routes.set(dst[0], dst[1]);
 	}
 	private boolean courseClick() {
 		if (!features.chart || !sailing.boarded() || downAlt) return false;
@@ -307,19 +375,28 @@ public final class ChartPlotterRuntime {
 	private void mods(KeyEvent e) {
 		boolean alt = e.isAltDown();
 		boolean ctrl = e.isControlDown();
+		boolean shift = e.isShiftDown();
 		if (e.getID() == KeyEvent.KEY_PRESSED) {
 			if (e.getKeyCode() == KeyEvent.VK_ALT || e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) alt = true;
 			if (e.getKeyCode() == KeyEvent.VK_CONTROL) ctrl = true;
+			if (e.getKeyCode() == KeyEvent.VK_SHIFT) shift = true;
 		} else if (e.getID() == KeyEvent.KEY_RELEASED) {
 			if (e.getKeyCode() == KeyEvent.VK_ALT || e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) alt = false;
 			if (e.getKeyCode() == KeyEvent.VK_CONTROL) ctrl = false;
+			if (e.getKeyCode() == KeyEvent.VK_SHIFT) shift = false;
 		}
 		worldMapOverlay.nodeAlt(alt);
-		worldMapOverlay.courseCtrl(ctrl);
+		worldMapOverlay.courseMods(ctrl, shift);
 	}
 	private void clearMods() {
+		cancelStopDrag();
 		worldMapOverlay.nodeAlt(false);
-		worldMapOverlay.courseCtrl(false);
+		worldMapOverlay.courseMods(false, false);
+	}
+	private void cancelStopDrag() {
+		draggedStop = -1;
+		stopPress = false;
+		worldMapOverlay.clearStopDrag();
 	}
 	private boolean collision(boolean active, WorldView top) {
 		if (active == collisionActive) return false;

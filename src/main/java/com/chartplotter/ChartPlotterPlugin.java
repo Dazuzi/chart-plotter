@@ -2,6 +2,7 @@ package com.chartplotter;
 
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
+import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterRuntime;
 import com.chartplotter.runtime.ChartPlotterSailing;
 import com.google.inject.Provides;
@@ -21,7 +22,7 @@ import javax.inject.Inject;
 
 @PluginDescriptor(
 	name = "Chart Plotter",
-	description = "Collision-aware sailing navigation helper for viewing your current and projected courses and planning a route to a destination.",
+	description = "Collision-aware sailing navigation helper for viewing your current and projected courses and planning ordered trips through one or more destinations.",
 	configName = "chartplotter",
 	tags = {"sailing","sail","path","pathing","plotting","plot","chart","charting","navigation","navigating","nav","map","route","routing","course","ship","boat","minimap","worldmap","destination"}
 )
@@ -69,7 +70,10 @@ public class ChartPlotterPlugin extends Plugin {
 	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
 	public boolean isSailing() {return sailing.boarded();}
 	public ChartPlotterRoute route() {return routes.route();}
-	public ChartPlotterRoutes.Preview coursePreview(int tx, int ty) {return routes.preview(tx, ty);}
+	public ChartPlotterTrip trip() {return routes.trip();}
+	public boolean hasNextStop() {return routes.trip().size() > 1;}
+	public boolean canAppend() {return routes.canAppend();}
+	public ChartPlotterRoutes.Preview coursePreview(int tx, int ty, boolean append) {return routes.preview(tx, ty, append);}
 	public boolean suppressPotential(Point m) {return sailing.suppress(m);}
 	public boolean courseLine(WorldView wv) {return sailing.courseLine(wv);}
 	public int heading(WorldEntity ship) {return sailing.heading(ship);}

@@ -1,14 +1,12 @@
 package com.chartplotter.overlay;
 
-import com.chartplotter.ChartPlotterCacheOverlay;
-import com.chartplotter.ChartPlotterConfig;
-import com.chartplotter.ChartPlotterLineMode;
-import com.chartplotter.ChartPlotterPlugin;
+import com.chartplotter.*;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRouteMoves;
 import com.chartplotter.route.ChartPlotterRoutes;
+import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterWorldMap;
 import com.chartplotter.util.ChartPlotterMath;
@@ -24,6 +22,7 @@ import javax.inject.Inject;
 import java.awt.*;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.util.Arrays;
 import java.util.Map;
 
 public class ChartPlotterWorldMapOverlay extends Overlay {
@@ -40,8 +39,10 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final Color PREVIEW_OK = new Color(80, 255, 120, 235);
 	private static final Color PREVIEW_SNAP = new Color(255, 200, 40, 235);
 	private static final Color PREVIEW_BAD = new Color(255, 70, 60, 235);
+	private static final Color REMOVE = new Color(255, 70, 60, 235);
 	private static final float[] DASH = {8, 6};
 	private static final long TIP_MS = 3000;
+	private static final int STOP_HIT_RADIUS = 10;
 	private static final Stroke CACHE_STROKE = new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER);
 	private static final Stroke SPARSE_STROKE = new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
 	private final Client client;
@@ -55,6 +56,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private Stroke sparseStroke;
 	private float sparseWidth = Float.NaN;
 	private volatile boolean ctrl;
+	private volatile boolean shift;
+	private volatile int draggedStop = -1;
+	private volatile int draggedX;
+	private volatile int draggedY;
+	private volatile Point draggedPoint;
+	private volatile StopCache stopCache = StopCache.EMPTY;
 	@Inject
 	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection, ChartPlotterCollisionCache collisionCache, ChartPlotterWorldMap map, ChartPlotterNodeEditor editor) {
 		this.client = client;
@@ -73,7 +80,11 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	public Dimension render(Graphics2D g) {
 		boolean sailing = plugin.isSailing();
 		boolean edit = config.nodeEditor();
-		if (!sailing && !edit) {
+		boolean showChart = config.worldMapChartLine();
+		ChartPlotterTrip trip = plugin.trip();
+		boolean showRoute = showChart && !trip.empty();
+		if (!showRoute) stopCache = StopCache.EMPTY;
+		if (!sailing && !edit && !showRoute) {
 			map.clickBlocked();
 			return null;
 		}
@@ -83,28 +94,33 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		ChartPlotterLineMode projectedMode = config.worldMapProjectedLineMode();
 		boolean showCourse = active && courseMode.on;
 		boolean showProjected = active && projectedMode.on;
-		boolean showChart = config.worldMapChartLine();
-		ChartPlotterRoute route = plugin.route();
-		boolean showRoute = sailing && showChart && route != null;
-		boolean showPreview = sailing && showChart && ctrl;
+		boolean courseGesture = config.worldMapCourseClick() == ChartPlotterWorldMapClick.CLICK || ctrl;
+		boolean append = sailing && shift && courseGesture;
+		boolean showPreview = sailing && showChart && courseGesture && (ctrl || shift);
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
 		if (!showCourse && !showProjected && !showRoute && !cacheOverlay.worldMap && !edit && !showPreview) {
 			map.clickBlocked();
 			return null;
 		}
 		ChartPlotterWorldMap.State s = map.state();
-		if (s == null) return null;
+		if (s == null) {
+			stopCache = StopCache.EMPTY;
+			return null;
+		}
 		Shape clip = map.clip(s);
 		Shape oldClip = g.getClip();
 		Stroke oldStroke = g.getStroke();
 		g.setClip(clip);
 		try {
-			if (cacheOverlay.worldMap) drawCache(g, s);
+			if (sailing && cacheOverlay.worldMap) drawCache(g, s);
 			if (edit) editor.draw(g, s);
-			if (!sailing) return null;
 			if (showRoute || showPreview || showCourse || showProjected) g.setStroke(routeStroke.solid(config.worldMapLineWidth()));
-			if (showRoute) drawRoute(g, s, route);
-			if (showPreview) drawCoursePreview(g, s, clip);
+			if (showRoute) {
+				cacheStops(s, clip, trip);
+				drawTrip(g, s, clip, trip, append);
+			}
+			if (!sailing) return null;
+			if (showPreview) drawCoursePreview(g, s, clip, append);
 			if (!showCourse && !showProjected) return null;
 			WorldEntity ship = plugin.getShip();
 			if (ship == null || top == null) return null;
@@ -113,7 +129,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (anchor == null || center == null) return null;
 			int from = plugin.heading(ship);
 			int course = plugin.course(ship);
-			int mouse = showProjected && !ctrl ? hoverHeading(top, center, s, clip) : -1;
+			int mouse = showProjected && !showPreview ? hoverHeading(top, center, s, clip) : -1;
 			int cap = map.pathCap(top, anchor, s);
 			ChartPlotterProjection.Path cur = showCourse ? projection.path(top, ship.getConfig(), anchor, from, course, cap, courseMode.blocked) : null;
 			ChartPlotterProjection.Path pot = null;
@@ -129,6 +145,26 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		}
 	}
 	public int[] tile(Point m) {return map.tile(m);}
+	public int stop(Point m) {
+		if (!config.worldMapChartLine()) return -1;
+		ChartPlotterWorldMap.State s = map.state();
+		return s == null ? -1 : stop(m, s, map.clip(s), plugin.trip());
+	}
+	public int[] cachedStop(Point m) {
+		StopCache cache = stopCache;
+		if (m == null || cache.clip == null || !cache.clip.contains(m.getX(), m.getY())) return null;
+		int best = -1;
+		int bd = STOP_HIT_RADIUS * STOP_HIT_RADIUS + 1;
+		for (int i = cache.hits.length - 5; i >= 0; i -= 5) {
+			int dx = cache.hits[i + 3] - m.getX();
+			int dy = cache.hits[i + 4] - m.getY();
+			int d = dx * dx + dy * dy;
+			if (d >= bd) continue;
+			best = i;
+			bd = d;
+		}
+		return best < 0 ? null : new int[]{cache.hits[best], cache.hits[best + 1], cache.hits[best + 2]};
+	}
 	public boolean clickBlocked() {return map.clickBlocked();}
 	public boolean cachedClickBlocked() {return map.cachedClickBlocked();}
 	public int[] node(Point m) {return editor.node(m);}
@@ -137,7 +173,20 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	public void placeNode(Point m) {editor.place(m);}
 	public boolean movingNode() {return editor.moving();}
 	public void nodeAlt(boolean on) {editor.alt(on);}
-	public void courseCtrl(boolean on) {ctrl = on;}
+	public void courseMods(boolean ctrl, boolean shift) {
+		this.ctrl = ctrl;
+		this.shift = shift;
+	}
+	public void dragStop(int stop, int x, int y, Point point) {
+		draggedPoint = point;
+		draggedX = x;
+		draggedY = y;
+		draggedStop = stop;
+	}
+	public void clearStopDrag() {
+		draggedStop = -1;
+		draggedPoint = null;
+	}
 	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterProjection.Path p, WorldEntityConfig wc, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, p, color);
@@ -211,21 +260,76 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.drawLine(x - r, y - r, x + r, y + r);
 		g.drawLine(x + r, y - r, x - r, y + r);
 	}
-	private void drawRoute(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r) {
-		if (r == null) return;
-		Color c = r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
-		Point t = map.point(s, r.tx, r.ty, 0.5, 0.5);
-		String text = r.text();
-		long now = text == null ? 0 : System.currentTimeMillis();
-		if (text != null && r.status != ChartPlotterRoute.PENDING && now - r.time >= TIP_MS) return;
-		if (config.sparseRouteDebug() && r.status == ChartPlotterRoute.OK && r.sparseN > 1) drawSparseRoute(g, s, r);
-		if (r.status == ChartPlotterRoute.OK) {
-			drawRoutePath(g, s, r, c);
+	private void drawTrip(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, boolean append) {
+		Point mouse = hover(clip);
+		int moving = draggedStop >= 0 && draggedStop < trip.size() && trip.x(draggedStop) == draggedX && trip.y(draggedStop) == draggedY ? draggedStop : -1;
+		Point drag = draggedPoint;
+		int[] moved = moving >= 0 && drag != null ? map.tile(drag, s) : null;
+		Point movedPoint = moving < 0 || drag == null ? null : moved == null ? drag : map.point(s, moved[0], moved[1], 0.5, 0.5);
+		int remove = moving >= 0 || append ? -1 : stop(mouse, s, clip, trip);
+		for (int i = 0; i < trip.size(); i++) {
+			ChartPlotterRoute r = trip.route(i);
+			if (r == null || r.status != ChartPlotterRoute.OK) continue;
+			if (config.sparseRouteDebug() && r.sparseN > 1) drawSparseRoute(g, s, r);
+			drawRoutePath(g, s, r, i >= remove && remove >= 0 ? REMOVE : routeColor(r, i > 0));
 		}
+		if (movedPoint != null) {
+			Point old = map.point(s, trip.x(moving), trip.y(moving), 0.5, 0.5);
+			Stroke stroke = g.getStroke();
+			g.setStroke(routeStroke.dashed(config.worldMapLineWidth()));
+			g.setColor(moved == null ? PREVIEW_BAD : PREVIEW_SNAP);
+			g.drawLine(old.getX(), old.getY(), movedPoint.getX(), movedPoint.getY());
+			g.setStroke(stroke);
+		}
+		long now = System.currentTimeMillis();
+		for (int i = 0; i < trip.size(); i++) {
+			ChartPlotterRoute r = trip.route(i);
+			Point p = i == moving && movedPoint != null ? movedPoint : map.point(s, trip.x(i), trip.y(i), 0.5, 0.5);
+			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : i >= remove && remove >= 0 ? REMOVE : routeColor(r, i > 0);
+			marker(g, p, c);
+			if (trip.size() > 1) label(g, p, i + 1, c);
+			if (i == 0 && r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, p, r.text());
+		}
+		if (moving >= 0 && movedPoint != null) tip(g, s.r, movedPoint, moved == null ? "Release to cancel" : "Release to move stop " + (moving + 1));
+		else if (remove >= 0) {
+			Point p = map.point(s, trip.x(remove), trip.y(remove), 0.5, 0.5);
+			tripTip(g, s.r, p, trip, remove);
+		}
+	}
+	private void tripTip(Graphics2D g, Rectangle bounds, Point p, ChartPlotterTrip trip, int stop) {
+		ChartPlotterRoute route = trip.route(stop);
+		String status = route == null ? "Charting course" : route.text();
+		if (!config.worldMapTripHints()) {
+			if (status != null) tip(g, bounds, p, status);
+			return;
+		}
+		String action = trip.size() == 1 ? "Click: clear destination" : "Click: remove stop " + (stop + 1) + " and later";
+		if (!plugin.isSailing()) {
+			if (status == null) tip(g, bounds, p, action, "Right-click: trip actions");
+			else tip(g, bounds, p, status, action, "Right-click: trip actions");
+			return;
+		}
+		if (!plugin.canAppend()) {
+			if (status == null) tip(g, bounds, p, action, "Drag: move stop", "Right-click: trip actions");
+			else tip(g, bounds, p, status, action, "Drag: move stop", "Right-click: trip actions");
+			return;
+		}
+		String add = (config.worldMapCourseClick() == ChartPlotterWorldMapClick.CLICK ? "Shift+click" : "Ctrl+Shift+click") + ": add stop";
+		if (status == null) tip(g, bounds, p, action, "Drag: move stop", add, "Right-click: trip actions");
+		else tip(g, bounds, p, status, action, "Drag: move stop", add, "Right-click: trip actions");
+	}
+	private Color routeColor(ChartPlotterRoute r, boolean future) {
+		Color c = r == null ? STATUS_WARN : r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
+		return future ? faded(c) : c;
+	}
+	private void label(Graphics2D g, Point p, int n, Color c) {
+		String text = Integer.toString(n);
+		int x = p.getX() + 10;
+		int y = p.getY() + g.getFontMetrics().getAscent() / 2;
+		g.setColor(new Color(0, 0, 0, c.getAlpha()));
+		g.drawString(text, x + 1, y + 1);
 		g.setColor(c);
-		g.fill(new Ellipse2D.Double(t.getX() - 3.5, t.getY() - 3.5, 7, 7));
-		g.draw(new Ellipse2D.Double(t.getX() - 7.5, t.getY() - 7.5, 15, 15));
-		if (text != null && now - r.time < TIP_MS) tip(g, s.r, t, text);
+		g.drawString(text, x, y);
 	}
 	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c) {
 		if (r.n < 1) return;
@@ -235,7 +339,13 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(c);
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
 		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, solid, dash);
-		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) routeLine(g, s, r.x[r.n - 1], r.y[r.n - 1], r.tx, r.ty, speed, solid, dash);
+		if (r.x[r.n - 1] != r.tx || r.y[r.n - 1] != r.ty) {
+			g.setStroke(dash);
+			g.setColor(faded(c));
+			Point a = map.point(s, r.x[r.n - 1], r.y[r.n - 1], 0.5, 0.5);
+			Point b = map.point(s, r.tx, r.ty, 0.5, 0.5);
+			g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+		}
 		g.setStroke(old);
 	}
 	private void routeLine(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
@@ -244,6 +354,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Point b = map.point(s, bx, by, 0.5, 0.5);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
 	}
+	private static Color faded(Color c) {return new Color(c.getRed(), c.getGreen(), c.getBlue(), c.getAlpha() * 3 / 5);}
 	private void drawSparseRoute(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r) {
 		Path2D.Double line = sparsePath(s, r);
 		if (line == null) return;
@@ -344,10 +455,12 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Point b = map.point(s, bx, by, bfx, bfy);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
 	}
-	private void tip(Graphics2D g, Rectangle r, Point p, String s) {
+	private void tip(Graphics2D g, Rectangle r, Point p, String... lines) {
 		FontMetrics fm = g.getFontMetrics();
-		int w = fm.stringWidth(s) + 10;
-		int h = fm.getHeight() + 6;
+		int w = 0;
+		for (String line : lines) w = Math.max(w, fm.stringWidth(line));
+		w += 10;
+		int h = fm.getHeight() * lines.length + 6;
 		int x = p.getX() + 12;
 		int y = p.getY() - h - 8;
 		if (x + w > r.x + r.width) x = p.getX() - w - 12;
@@ -357,14 +470,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(TIP_BG);
 		g.fillRect(x, y, w, h);
 		g.setColor(Color.WHITE);
-		g.drawString(s, x + 5, y + fm.getAscent() + 3);
+		for (int i = 0; i < lines.length; i++) g.drawString(lines[i], x + 5, y + fm.getAscent() + 3 + i * fm.getHeight());
 	}
-	private void drawCoursePreview(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip) {
+	private void drawCoursePreview(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, boolean append) {
 		Point m = hover(clip);
-		if (m == null) return;
+		if (m == null || stop(m, s, clip, plugin.trip()) >= 0) return;
 		int[] t = map.tile(m, s);
 		if (t == null) return;
-		ChartPlotterRoutes.Preview pv = plugin.coursePreview(t[0], t[1]);
+		ChartPlotterRoutes.Preview pv = plugin.coursePreview(t[0], t[1], append);
 		if (pv.state == ChartPlotterRoutes.PV_NONE) return;
 		Color c = pv.state == ChartPlotterRoutes.PV_OK ? PREVIEW_OK : pv.state == ChartPlotterRoutes.PV_BAD ? PREVIEW_BAD : PREVIEW_SNAP;
 		Point dst = map.point(s, pv.x, pv.y, 0.5, 0.5);
@@ -381,6 +494,35 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.fill(new Ellipse2D.Double(p.getX() - 3.5, p.getY() - 3.5, 7, 7));
 		g.draw(new Ellipse2D.Double(p.getX() - 7.5, p.getY() - 7.5, 15, 15));
 	}
+	private void cacheStops(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {
+		int[] hits = new int[trip.size() * 5];
+		int n = 0;
+		for (int i = 0; i < trip.size(); i++) {
+			Point p = map.point(s, trip.x(i), trip.y(i), 0.5, 0.5);
+			if (!clip.contains(p.getX(), p.getY())) continue;
+			hits[n++] = i;
+			hits[n++] = trip.x(i);
+			hits[n++] = trip.y(i);
+			hits[n++] = p.getX();
+			hits[n++] = p.getY();
+		}
+		stopCache = new StopCache(clip, n == hits.length ? hits : Arrays.copyOf(hits, n));
+	}
+	private int stop(Point m, ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {
+		if (m == null || !clip.contains(m.getX(), m.getY())) return -1;
+		int best = -1;
+		int bd = STOP_HIT_RADIUS * STOP_HIT_RADIUS + 1;
+		for (int i = trip.size() - 1; i >= 0; i--) {
+			Point p = map.point(s, trip.x(i), trip.y(i), 0.5, 0.5);
+			int dx = p.getX() - m.getX();
+			int dy = p.getY() - m.getY();
+			int d = dx * dx + dy * dy;
+			if (d >= bd) continue;
+			best = i;
+			bd = d;
+		}
+		return best;
+	}
 	private Point hover(Shape clip) {
 		Point m = ChartPlotterOverlay.eligibleMouse(client, plugin);
 		return m != null && clip.contains(m.getX(), m.getY()) ? m : null;
@@ -396,5 +538,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		if (dx == 0 && dy == 0) return -1;
 		double d = Math.toDegrees(Math.atan2(dy, dx));
 		return ChartPlotterMath.norm((int) Math.round((270 - d) / 360 * 16) * 128);
+	}
+	private static final class StopCache {
+		static final StopCache EMPTY = new StopCache(null, new int[0]);
+		final Shape clip;
+		final int[] hits;
+		private StopCache(Shape clip, int[] hits) {
+			this.clip = clip;
+			this.hits = hits;
+		}
 	}
 }

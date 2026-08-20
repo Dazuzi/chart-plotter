@@ -5,6 +5,7 @@ import com.chartplotter.ChartPlotterLineMode;
 import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRouteMoves;
+import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.util.ChartPlotterMath;
 import net.runelite.api.*;
@@ -76,7 +77,12 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		Stroke oldStroke = g.getStroke();
 		g.setClip(c);
 		g.setStroke(routeStroke.solid(config.minimapLineWidth()));
-		if (showChart) drawRoute(g, top, plugin.route());
+		if (showChart) {
+			ChartPlotterTrip trip = plugin.trip();
+			Color color = config.chartColor();
+			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color));
+			drawRoute(g, top, trip.active(), color);
+		}
 		if (showCourse || showProjected) {
 			int from = plugin.heading(ship);
 			int course = plugin.course(ship);
@@ -157,16 +163,17 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
 		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.minimapLineWidth());
 		Stroke dash = routeStroke.dashed(config.minimapLineWidth());
-		g.setColor(config.chartColor());
+		g.setColor(color);
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
 		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, solid, dash);
 		g.setStroke(old);
 	}
+	private static Color faded(Color color) {return new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() * 3 / 5);}
 	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
 		Point a = routePoint(wv, ax, ay);
 		Point b = routePoint(wv, bx, by);
