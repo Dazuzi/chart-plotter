@@ -288,7 +288,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : i >= remove && remove >= 0 ? REMOVE : routeColor(r, i > 0);
 			marker(g, p, c);
 			if (trip.size() > 1) label(g, p, i + 1, c);
-			if (i == 0 && r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, p, r.text());
+			if (r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, p, r.text());
 		}
 		if (moving >= 0 && movedPoint != null) tip(g, s.r, movedPoint, moved == null ? "Release to cancel" : "Release to move stop " + (moving + 1));
 		else if (remove >= 0) {
