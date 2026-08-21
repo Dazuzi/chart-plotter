@@ -55,7 +55,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "worldMapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldMapSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int worldMapLineWidth() {return 1;}
-	@ConfigItem(keyName = "worldMapCourseClick", name = "Destination click", description = "Use the selected click to replace a trip; hold Shift with it to append, click a stop to remove its tail, or drag a stop to move it.", section = worldMapSection, position = 4)
+	@ConfigItem(keyName = "worldMapCourseClick", name = "Destination click", description = "Use the selected click to replace a trip; hold Shift with it to append, click a stop to remove it, Shift-click one to remove its tail, or drag it to move it.", section = worldMapSection, position = 4)
 	default ChartPlotterWorldMapClick worldMapCourseClick() {return ChartPlotterWorldMapClick.CLICK;}
 	@ConfigItem(keyName = "worldMapTripHints", name = "Trip control hints", description = "Show trip controls while hovering a destination.", section = worldMapSection, position = 5)
 	default boolean worldMapTripHints() {return true;}

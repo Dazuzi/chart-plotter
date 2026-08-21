@@ -35,6 +35,21 @@ public final class ChartPlotterTrip {
 		if (n <= 0) return empty(generation);
 		return new ChartPlotterTrip(generation, Arrays.copyOf(x, n), Arrays.copyOf(y, n), Arrays.copyOf(routes, n));
 	}
+	ChartPlotterTrip remove(int generation, int i) {
+		if (x.length <= 1) return empty(generation);
+		int n = x.length - 1;
+		int[] nx = new int[n];
+		int[] ny = new int[n];
+		ChartPlotterRoute[] nr = new ChartPlotterRoute[n];
+		System.arraycopy(x, 0, nx, 0, i);
+		System.arraycopy(y, 0, ny, 0, i);
+		System.arraycopy(routes, 0, nr, 0, i);
+		System.arraycopy(x, i + 1, nx, i, n - i);
+		System.arraycopy(y, i + 1, ny, i, n - i);
+		System.arraycopy(routes, i + 1, nr, i, n - i);
+		if (i < n) nr[i] = null;
+		return new ChartPlotterTrip(generation, nx, ny, nr);
+	}
 	ChartPlotterTrip advance(int generation) {
 		if (x.length <= 1) return empty(generation);
 		return new ChartPlotterTrip(generation, Arrays.copyOfRange(x, 1, x.length), Arrays.copyOfRange(y, 1, y.length), Arrays.copyOfRange(routes, 1, routes.length));

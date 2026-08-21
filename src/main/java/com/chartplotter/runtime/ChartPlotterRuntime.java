@@ -121,12 +121,12 @@ public final class ChartPlotterRuntime {
 						int[] dst = worldMapOverlay.tile(drop);
 						if (dst != null) routes.move(stop, oldX, oldY, dst[0], dst[1]);
 					});
-				} else if (!downBlock) clientThread.invoke(() -> routes.truncate(stop, oldX, oldY));
+				} else if (!downBlock) clientThread.invoke(() -> routes.remove(stop, oldX, oldY));
 			} else if (e.getButton() == MouseEvent.BUTTON1 && down && !moved && !downBlock && features.chart && !downAlt) {
 				Point m = new Point(e.getX(), e.getY());
 				boolean active = courseClick();
-				boolean append = active && downShift;
-				clientThread.invokeLater(() -> clientThread.invokeLater(() -> chartCourse(m, active, append)));
+				boolean shift = downShift;
+				clientThread.invokeLater(() -> clientThread.invokeLater(() -> chartCourse(m, active, shift)));
 			}
 			if (e.getButton() == MouseEvent.BUTTON1) {
 				if (stop >= 0) e.consume();
@@ -249,6 +249,7 @@ public final class ChartPlotterRuntime {
 			int x = trip.x(stop);
 			int y = trip.y(stop);
 			client.getMenu().createMenuEntry(-1).setOption("Remove stop and later").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.truncate(stop, x, y));
+			client.getMenu().createMenuEntry(-1).setOption("Remove stop").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> routes.remove(stop, x, y));
 			return;
 		}
 		if (!sailing.boarded()) return;
@@ -354,17 +355,18 @@ public final class ChartPlotterRuntime {
 		if (!next.tracking) sailing.reset();
 		else if (!prev.tracking) clientThread.invoke(sailing::sync);
 	}
-	private void chartCourse(Point m, boolean active, boolean append) {
+	private void chartCourse(Point m, boolean active, boolean shift) {
 		if (!features.chart || worldMapOverlay.clickBlocked()) return;
 		int stop = worldMapOverlay.stop(m);
 		if (stop >= 0) {
-			if (!append) routes.truncate(stop);
+			if (shift) routes.truncate(stop);
+			else routes.remove(stop);
 			return;
 		}
 		if (!active || !sailing.boarded()) return;
 		int[] dst = worldMapOverlay.tile(m);
 		if (dst == null) return;
-		if (append) routes.append(dst[0], dst[1]);
+		if (shift) routes.append(dst[0], dst[1]);
 		else routes.set(dst[0], dst[1]);
 	}
 	private boolean courseClick() {

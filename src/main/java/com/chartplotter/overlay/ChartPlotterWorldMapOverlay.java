@@ -117,7 +117,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (showRoute || showPreview || showCourse || showProjected) g.setStroke(routeStroke.solid(config.worldMapLineWidth()));
 			if (showRoute) {
 				cacheStops(s, clip, trip);
-				drawTrip(g, s, clip, trip, append);
+				drawTrip(g, s, clip, trip, shift);
 			}
 			if (!sailing) return null;
 			if (showPreview) drawCoursePreview(g, s, clip, append);
@@ -260,18 +260,19 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.drawLine(x - r, y - r, x + r, y + r);
 		g.drawLine(x + r, y - r, x - r, y + r);
 	}
-	private void drawTrip(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, boolean append) {
+	private void drawTrip(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, boolean tail) {
 		Point mouse = hover(clip);
 		int moving = draggedStop >= 0 && draggedStop < trip.size() && trip.x(draggedStop) == draggedX && trip.y(draggedStop) == draggedY ? draggedStop : -1;
 		Point drag = draggedPoint;
 		int[] moved = moving >= 0 && drag != null ? map.tile(drag, s) : null;
 		Point movedPoint = moving < 0 || drag == null ? null : moved == null ? drag : map.point(s, moved[0], moved[1], 0.5, 0.5);
-		int remove = moving >= 0 || append ? -1 : stop(mouse, s, clip, trip);
+		int remove = moving >= 0 ? -1 : stop(mouse, s, clip, trip);
 		for (int i = 0; i < trip.size(); i++) {
 			ChartPlotterRoute r = trip.route(i);
 			if (r == null || r.status != ChartPlotterRoute.OK) continue;
 			if (config.sparseRouteDebug() && r.sparseN > 1) drawSparseRoute(g, s, r);
-			drawRoutePath(g, s, r, i >= remove && remove >= 0 ? REMOVE : routeColor(r, i > 0));
+			boolean removing = remove >= 0 && (tail ? i >= remove : i == remove || i == remove + 1);
+			drawRoutePath(g, s, r, removing ? REMOVE : routeColor(r, i > 0));
 		}
 		if (movedPoint != null) {
 			Point old = map.point(s, trip.x(moving), trip.y(moving), 0.5, 0.5);
@@ -285,7 +286,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		for (int i = 0; i < trip.size(); i++) {
 			ChartPlotterRoute r = trip.route(i);
 			Point p = i == moving && movedPoint != null ? movedPoint : map.point(s, trip.x(i), trip.y(i), 0.5, 0.5);
-			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : i >= remove && remove >= 0 ? REMOVE : routeColor(r, i > 0);
+			boolean removing = remove >= 0 && (tail ? i >= remove : i == remove);
+			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : removing ? REMOVE : routeColor(r, i > 0);
 			marker(g, p, c);
 			if (trip.size() > 1) label(g, p, i + 1, c);
 			if (r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, p, r.text());
@@ -303,20 +305,18 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (status != null) tip(g, bounds, p, status);
 			return;
 		}
-		String action = trip.size() == 1 ? "Click: clear destination" : "Click: remove stop " + (stop + 1) + " and later";
-		if (!plugin.isSailing()) {
-			if (status == null) tip(g, bounds, p, action, "Right-click: trip actions");
-			else tip(g, bounds, p, status, action, "Right-click: trip actions");
-			return;
-		}
-		if (!plugin.canAppend()) {
-			if (status == null) tip(g, bounds, p, action, "Drag: move stop", "Right-click: trip actions");
-			else tip(g, bounds, p, status, action, "Drag: move stop", "Right-click: trip actions");
-			return;
-		}
-		String add = (config.worldMapCourseClick() == ChartPlotterWorldMapClick.CLICK ? "Shift+click" : "Ctrl+Shift+click") + ": add stop";
-		if (status == null) tip(g, bounds, p, action, "Drag: move stop", add, "Right-click: trip actions");
-		else tip(g, bounds, p, status, action, "Drag: move stop", add, "Right-click: trip actions");
+		int n = stop + 1;
+		boolean tail = n < trip.size();
+		boolean sailing = plugin.isSailing();
+		boolean append = sailing && !tail && plugin.canAppend();
+		String[] lines = new String[(status == null ? 0 : 1) + 1 + (tail || append ? 1 : 0) + (sailing ? 1 : 0)];
+		int i = 0;
+		if (status != null) lines[i++] = status;
+		lines[i++] = trip.size() == 1 ? "Click: clear destination" : "Click: remove stop " + n;
+		if (tail) lines[i++] = "Shift+click: remove stop " + n + " and later";
+		else if (append) lines[i++] = "Shift+click elsewhere: add stop";
+		if (sailing) lines[i] = trip.size() == 1 ? "Drag: move destination" : "Drag: move stop " + n;
+		tip(g, bounds, p, lines);
 	}
 	private Color routeColor(ChartPlotterRoute r, boolean future) {
 		Color c = r == null ? STATUS_WARN : r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;

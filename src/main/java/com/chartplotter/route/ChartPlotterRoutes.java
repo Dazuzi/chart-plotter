@@ -132,6 +132,30 @@ public final class ChartPlotterRoutes {
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
 		request(s, data, sparseNodes.snapshot(), selected, id, turnBias, effort);
 	}
+	public void remove(int stop) {
+		ChartPlotterTrip old = trip.get();
+		if (stop < 0 || stop >= old.size()) return;
+		int id = cancel();
+		ChartPlotterTrip next = trip.updateAndGet(p -> p.remove(id, stop));
+		if (next.empty()) {
+			paused = false;
+			return;
+		}
+		Start s = startTile();
+		if (s == null) return;
+		boolean[] selected = paused ? all(next) : pending(next);
+		paused = false;
+		if (!any(selected)) return;
+		ChartPlotterRouteEffort effort = config.routeEffort();
+		int turnBias = config.routeShape().bias;
+		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
+		request(s, collisionCache.snapshot(), sparseNodes.snapshot(), selected, id, turnBias, effort);
+	}
+	public void remove(int stop, int x, int y) {
+		ChartPlotterTrip current = trip.get();
+		if (stop < 0 || stop >= current.size() || current.x(stop) != x || current.y(stop) != y) return;
+		remove(stop);
+	}
 	public void truncate(int stop) {
 		ChartPlotterTrip old = trip.get();
 		if (stop < 0 || stop >= old.size()) return;
