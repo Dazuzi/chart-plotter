@@ -102,7 +102,6 @@ public final class ChartPlotterRoutes {
 		paused = false;
 		boolean[] selected = reboard ? all(next) : pending(next);
 		if (data.rev != rev) merge(selected, failed(next));
-		suffix(selected);
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
 		request(s, data, sparseNodes.snapshot(), selected, id, turnBias, effort);
 	}
@@ -126,8 +125,8 @@ public final class ChartPlotterRoutes {
 		paused = false;
 		boolean[] selected = reboard ? all(next) : pending(next);
 		selected[stop] = true;
+		if (stop + 1 < selected.length) selected[stop + 1] = true;
 		if (data.rev != rev) merge(selected, failed(next));
-		suffix(selected);
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
@@ -147,7 +146,6 @@ public final class ChartPlotterRoutes {
 		boolean[] selected = paused ? all(next) : pending(next);
 		paused = false;
 		if (!any(selected)) return;
-		suffix(selected);
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
@@ -327,7 +325,6 @@ public final class ChartPlotterRoutes {
 		if (next.empty()) return;
 		boolean[] selected = reboard ? all(next) : pending(next);
 		selected[0] = true;
-		suffix(selected);
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
@@ -338,7 +335,6 @@ public final class ChartPlotterRoutes {
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		ChartPlotterTrip current = trip.get();
 		if (data.rev != rev) merge(selected, failed(current));
-		suffix(selected);
 		int id = cancel();
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
@@ -358,29 +354,16 @@ public final class ChartPlotterRoutes {
 		FutureTask<Void> next = new FutureTask<>(() -> {
 			try {
 				BooleanSupplier cancel = () -> id != seq.get() || Thread.currentThread().isInterrupted();
-				int first = first(selected);
-				ChartPlotterRoute previous = first > 0 ? snapshot.route(first - 1) : null;
-				for (int i = first; i < selected.length; i++) {
+				for (int i = 0; i < selected.length; i++) {
+					if (!selected[i]) continue;
 					if (cancel.getAsBoolean()) return;
-					int sx = s.x;
-					int sy = s.y;
-					if (i > 0) {
-						if (previous == null || previous.status != ChartPlotterRoute.OK) {
-							for (; i < selected.length; i++) {
-								ChartPlotterRoute r = ChartPlotterRoute.dependent(snapshot.x(i - 1), snapshot.y(i - 1), snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort);
-								if (!update(id, i, r)) return;
-							}
-							return;
-						}
-						sx = endX(previous);
-						sy = endY(previous);
-					}
+					int sx = i == 0 ? s.x : snapshot.x(i - 1);
+					int sy = i == 0 ? s.y : snapshot.y(i - 1);
 					int heading = i == 0 ? s.heading : -1;
 					boolean reverse = i == 0 && s.reverse;
-					ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, s.config, heading, sx, sy, snapshot.x(i), snapshot.y(i), turnBias, reverse, weight, CLEAR_RADIUS, sparse, effort.corridor, cancel).effort(effort);
+					ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, s.config, heading, sx, sy, snapshot.x(i), snapshot.y(i), turnBias, reverse, weight, sparse, effort.corridor, cancel).effort(effort);
 					if (!update(id, i, r)) return;
 					if (i == 0 && id == seq.get()) activeBusy = false;
-					previous = r;
 				}
 			} finally {
 				if (id == seq.get()) activeBusy = false;
@@ -438,29 +421,12 @@ public final class ChartPlotterRoutes {
 		for (boolean on : selected) if (on) return true;
 		return false;
 	}
-	private static int first(boolean[] selected) {
-		for (int i = 0; i < selected.length; i++) if (selected[i]) return i;
-		return selected.length;
-	}
-	private static void suffix(boolean[] selected) {
-		boolean on = false;
-		for (int i = 0; i < selected.length; i++) {
-			on |= selected[i];
-			selected[i] = on;
-		}
-	}
 	static int legStartX(ChartPlotterTrip trip, int stop, int live) {
-		if (stop == 0) return live;
-		ChartPlotterRoute route = trip.route(stop - 1);
-		return route != null && route.status == ChartPlotterRoute.OK ? endX(route) : trip.x(stop - 1);
+		return stop == 0 ? live : trip.x(stop - 1);
 	}
 	static int legStartY(ChartPlotterTrip trip, int stop, int live) {
-		if (stop == 0) return live;
-		ChartPlotterRoute route = trip.route(stop - 1);
-		return route != null && route.status == ChartPlotterRoute.OK ? endY(route) : trip.y(stop - 1);
+		return stop == 0 ? live : trip.y(stop - 1);
 	}
-	private static int endX(ChartPlotterRoute route) {return route.n > 0 ? route.x[route.n - 1] : route.tx;}
-	private static int endY(ChartPlotterRoute route) {return route.n > 0 ? route.y[route.n - 1] : route.ty;}
 	private static void merge(boolean[] dst, boolean[] src) {for (int i = 0; i < dst.length; i++) dst[i] |= src[i];}
 	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= REACH_RADIUS;}
 	private static boolean open(int f) {return (f & ChartPlotterCollisionCache.MOVE) == 0;}

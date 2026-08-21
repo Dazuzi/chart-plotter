@@ -27,8 +27,6 @@ public final class ChartPlotterRouteFinder {
 	private static final int MC_SPARSE = 2;
 	private static final int MC_COMPACT = 3;
 	private static final int PRUNE = 4;
-	private static final int GOAL_REFINE = 4096;
-	private static final int GOAL_EXTRA = 320;
 	private static final int[] DX = ChartPlotterRouteMoves.DX;
 	private static final int[] DY = ChartPlotterRouteMoves.DY;
 	private static final int[] COST = ChartPlotterRouteMoves.COST;
@@ -37,15 +35,15 @@ public final class ChartPlotterRouteFinder {
 	private static final int[][] HY = hitOffsets(false);
 	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
 	private ChartPlotterRouteFinder() {}
-	public static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int targetRadius, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
+	public static ChartPlotterRoute find(ChartPlotterCollisionData data, WorldEntityConfig wc, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, ChartPlotterSparseNodes.Snapshot sparse, int sparseBand, BooleanSupplier cancel) {
 		sparseBand = Math.max(20, Math.min(200, sparseBand));
 		ChartPlotterRouteGrid.Footprint fp = wc == null ? null : new ChartPlotterRouteGrid.Footprint(wc);
-		Path sp = ChartPlotterSparseRouteFinder.path(data, sparse, sx, sy, tx, ty, targetRadius, sparseBand, cancel);
+		Path sp = ChartPlotterSparseRouteFinder.path(data, sparse, sx, sy, tx, ty, sparseBand, cancel);
 		if (sp != null && sp.pending) {
 			return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
 		}
 		if (sp != null) {
-			ChartPlotterRoute r = sparseRoute(data, fp, start, sx, sy, tx, ty, turnBias, reverse, weight, fp == null ? MODE_BASE : MODE_TILE, targetRadius, sparseBand, sp, cancel);
+			ChartPlotterRoute r = sparseRoute(data, fp, start, sx, sy, tx, ty, turnBias, reverse, weight, fp == null ? MODE_BASE : MODE_TILE, sparseBand, sp, cancel);
 			if (r.status == ChartPlotterRoute.PENDING || r.status == ChartPlotterRoute.OK) return r;
 		}
 		return ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, weight);
@@ -134,7 +132,7 @@ public final class ChartPlotterRouteFinder {
 		}
 		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, 0, 250) : ChartPlotterRoute.none(sx, sy, tx, ty, 0, 250);
 	}
-	private static ChartPlotterRoute searchBucket(ChartPlotterRouteGrid data, int start, int sx, int sy, int tx, int ty, int turnBias, ChartPlotterRouteBounds b, int cap, boolean reverse, int weight, int targetRadius, Corridor corridor, BooleanSupplier cancel) {
+	private static ChartPlotterRoute searchBucket(ChartPlotterRouteGrid data, int start, int sx, int sy, int tx, int ty, int turnBias, ChartPlotterRouteBounds b, int cap, boolean reverse, int weight, Corridor corridor, BooleanSupplier cancel) {
 		Work w = WORK.get();
 		BucketHeap q = w.bucket;
 		q.base = weight > 100 ? 0 : h(sx, sy, tx, ty);
@@ -178,11 +176,6 @@ public final class ChartPlotterRouteFinder {
 		}
 		boolean domFirst = dense.dom || compact.dom;
 		if (dom != null) domFirst = true;
-		int goal = -1;
-		int goalDist = Integer.MAX_VALUE;
-		int goalCost = Integer.MAX_VALUE;
-		int goalLimit = Integer.MAX_VALUE;
-		int refine = 0;
 		while (q.hasNext()) {
 			if (cancel.getAsBoolean()) return ChartPlotterRoute.pending(sx, sy, tx, ty, turnBias, weight);
 			int a = q.poll();
@@ -197,15 +190,7 @@ public final class ChartPlotterRouteFinder {
 				if (bg == LongIntMap.MISS || ag != bg) continue;
 			}
 			int td = dist(ax, ay, tx, ty);
-			if (td <= targetRadius) {
-				if (goal < 0) goalLimit = ag + GOAL_EXTRA;
-				if (ag <= goalLimit && (td < goalDist || td == goalDist && ag < goalCost)) {
-					goal = a;
-					goalDist = td;
-					goalCost = ag;
-				}
-			}
-			if (goal >= 0 && ++refine > GOAL_REFINE) return route(data, start, nodes, goal, sx, sy, tx, ty, turnBias, reverse, weight, 1);
+			if (td == 0) return route(data, start, nodes, a, sx, sy, tx, ty, turnBias, reverse, weight, 1);
 			if (db && turn > 0) {
 				if (dense.dominated(pos, ad, ag, turn)) continue;
 			} else if (cb && turn > 0) {
@@ -300,19 +285,18 @@ public final class ChartPlotterRouteFinder {
 				q.add(nodes.add(nx, ny, i, ng, nd, ng + wh(hh, weight), a));
 			}
 		}
-		if (goal >= 0) return route(data, start, nodes, goal, sx, sy, tx, ty, turnBias, reverse, weight, 1);
 		return capped ? ChartPlotterRoute.complex(sx, sy, tx, ty, turnBias, weight) : ChartPlotterRoute.none(sx, sy, tx, ty, turnBias, weight);
 	}
-	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData raw, ChartPlotterRouteGrid.Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int mode, int targetRadius, int sparseBand, Path p, BooleanSupplier cancel) {
+	private static ChartPlotterRoute sparseRoute(ChartPlotterCollisionData raw, ChartPlotterRouteGrid.Footprint fp, int start, int sx, int sy, int tx, int ty, int turnBias, boolean reverse, int weight, int mode, int sparseBand, Path p, BooleanSupplier cancel) {
 		p = ChartPlotterSparseRouteFinder.simplify(raw, p);
 		Corridor c = ChartPlotterSparseRouteFinder.corridor(p, sparseBand);
 		turnBias = Math.max(0, Math.min(10, turnBias));
 		ChartPlotterRouteGrid data = fp == null ? new ChartPlotterRouteGrid(raw) : ChartPlotterRouteGrid.lazy(raw, fp, radius(fp), mode);
 		int sf = data.flag(sx, sy);
-		int tf = targetFlag(data, tx, ty, targetRadius);
+		int tf = data.flag(tx, ty);
 		if (sf == ChartPlotterCollisionCache.UNKNOWN || tf == ChartPlotterCollisionCache.UNKNOWN) return ChartPlotterRoute.uncharted(sx, sy, tx, ty, turnBias, weight);
 		if (blocker(sf) || blocker(tf)) return ChartPlotterRoute.blocked(sx, sy, tx, ty, turnBias, weight);
-		return searchBucket(data, start, sx, sy, tx, ty, turnBias, c.b, c.cap, reverse, weight, targetRadius, c, cancel).sparse(p.x, p.y, p.n, c.band);
+		return searchBucket(data, start, sx, sy, tx, ty, turnBias, c.b, c.cap, reverse, weight, c, cancel).sparse(p.x, p.y, p.n, c.band);
 	}
 	static ChartPlotterRoute localConnect(ChartPlotterCollisionData data, int sx, int sy, int tx, int ty, int band, BooleanSupplier cancel) {
 		int m = Math.max(32, band);
@@ -550,21 +534,6 @@ public final class ChartPlotterRouteFinder {
 		return 1;
 	}
 	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
-	private static boolean near(int ax, int ay, int bx, int by, int r) {return dist(ax, ay, bx, by) <= r;}
-	private static int targetFlag(ChartPlotterRouteGrid data, int tx, int ty, int r) {
-		int f = data.flag(tx, ty);
-		if (f != ChartPlotterCollisionCache.UNKNOWN && !blocker(f)) return f;
-		boolean unknown = f == ChartPlotterCollisionCache.UNKNOWN;
-		for (int y = ty - r; y <= ty + r; y++) {
-			for (int x = tx - r; x <= tx + r; x++) {
-				if (x == tx && y == ty || !near(x, y, tx, ty, r)) continue;
-				int v = data.flag(x, y);
-				if (v == ChartPlotterCollisionCache.UNKNOWN) unknown = true;
-				else if (!blocker(v)) return ChartPlotterCollisionCache.OPEN;
-			}
-		}
-		return unknown ? ChartPlotterCollisionCache.UNKNOWN : ChartPlotterCollisionCache.BLOCKED;
-	}
 	private static int circDist(int a, int b) {int d = Math.abs(a - b); return Math.min(d, DX.length - d);}
 	private static int hd(int x, int y, int tx, int ty, int dir, int turnBias) {
 		return h(x, y, tx, ty) + turn(turnBias) * minTurns(dir, tx - x, ty - y);

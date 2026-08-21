@@ -18,8 +18,8 @@ public final class ChartPlotterSparseRouteFinder {
 	private static final int STEP = 32;
 	private static final int REACH_CHECK = 4095;
 	private ChartPlotterSparseRouteFinder() {}
-	static Path path(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int targetRadius, int sparseBand, BooleanSupplier cancel) {
-		if (nodes == null || nodes.x.length == 0 || near(sx, sy, tx, ty, targetRadius)) return null;
+	static Path path(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int sparseBand, BooleanSupplier cancel) {
+		if (nodes == null || nodes.x.length == 0 || sx == tx && sy == ty) return null;
 		Connector startCon = connector(data, nodes, sx, sy, sparseBand, cancel);
 		Connector targetCon = connector(data, nodes, tx, ty, sparseBand, cancel);
 		if (startCon.pending || targetCon.pending) return Path.pending();
@@ -172,7 +172,6 @@ public final class ChartPlotterSparseRouteFinder {
 	}
 	private static int x(ChartPlotterSparseNodes.Snapshot nodes, int i, int sx, int tx) {return i == 0 ? sx : i == 1 ? tx : nodes.x[i - 2];}
 	private static int y(ChartPlotterSparseNodes.Snapshot nodes, int i, int sy, int ty) {return i == 0 ? sy : i == 1 ? ty : nodes.y[i - 2];}
-	private static boolean near(int ax, int ay, int bx, int by, int r) {return dist(ax, ay, bx, by) <= r;}
 	private static boolean nearSegment(int x, int y, int ax, int ay, int bx, int by, int band) {
 		long dx = bx - ax;
 		long dy = by - ay;

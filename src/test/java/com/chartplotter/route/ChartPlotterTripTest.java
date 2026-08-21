@@ -46,11 +46,11 @@ public class ChartPlotterTripTest {
 		assertSame(trip.route(1), moved.route(1));
 	}
 	@Test
-	public void dependentLegStartsAtReachableRouteEnd() {
+	public void subsequentLegStartsAtWaypoint() {
 		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 10, 20, new int[]{0, 7}, new int[]{0, 12}, 2, 0, 250);
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route);
-		assertEquals(7, ChartPlotterRoutes.legStartX(trip, 1, 5));
-		assertEquals(12, ChartPlotterRoutes.legStartY(trip, 1, 6));
+		assertEquals(10, ChartPlotterRoutes.legStartX(trip, 1, 5));
+		assertEquals(20, ChartPlotterRoutes.legStartY(trip, 1, 6));
 		assertEquals(5, ChartPlotterRoutes.legStartX(trip, 0, 5));
 		assertEquals(6, ChartPlotterRoutes.legStartY(trip, 0, 6));
 	}
