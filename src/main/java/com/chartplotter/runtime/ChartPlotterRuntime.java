@@ -47,10 +47,12 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterRoutes routes;
 	@Inject private ChartPlotterSparseNodes sparseNodes;
 	@Inject private ChartPlotterScene scene;
+	@Inject private ChartPlotterProjection projection;
 	@Inject private Notifier notifier;
 	@Inject private KeyManager keyManager;
 	private boolean collisionActive;
 	private boolean editorCacheActive;
+	private boolean sparseActive;
 	private boolean inputRegistered;
 	private volatile boolean focused = true;
 	private int alertX = Integer.MIN_VALUE;
@@ -68,6 +70,8 @@ public final class ChartPlotterRuntime {
 	private int draggedX;
 	private int draggedY;
 	private boolean stopPress;
+	private int captureTick = Integer.MIN_VALUE;
+	private WorldView captureView;
 	private volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
@@ -186,46 +190,71 @@ public final class ChartPlotterRuntime {
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
+		overlay.clear();
+		minimapOverlay.clear();
 		if (inputRegistered) {
 			mouseManager.unregisterMouseListener(mouse);
 			keyManager.unregisterKeyListener(key);
 			inputRegistered = false;
 		}
 		clearMods();
+		worldMapOverlay.clearEditor();
 		collisionActive = false;
 		editorCacheActive = false;
+		sparseActive = false;
+		resetCapture();
 		features = ChartPlotterFeatures.off();
+		scene.clear();
 		collisionCache.stop();
 		routes.stop();
 		sparseNodes.stop();
 		sailing.reset();
+		projection.clear();
 	}
 	public void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
 	public void varbit(VarbitChanged e) {
 		if (!features.tracking) return;
 		sailing.varbit(e);
-		if (sailing.boarded()) return;
+		if (sailing.boarded()) {
+			sparse(features.chart || features.edit);
+			updateScene();
+			return;
+		}
 		routes.pause();
 		collision(false, null);
+		sparse(features.edit);
 		sailing.clear();
+		scene.clear();
+		projection.clear();
 	}
 	public void state(GameStateChanged e) {
 		if (!features.tracking) return;
 		if (e.getGameState() == GameState.LOGGED_IN) {
 			sailing.sync();
+			sparse(features.edit || features.chart && sailing.boarded());
+			updateScene();
 			return;
 		}
-		if (e.getGameState() == GameState.LOADING) return;
+		if (e.getGameState() == GameState.LOADING) {
+			worldMapOverlay.clearEditor();
+			scene.clear();
+			projection.clear();
+			return;
+		}
 		sailing.reset();
 		routes.clear();
+		worldMapOverlay.clearEditor();
 		collision(false, null);
+		sparse(features.edit);
+		scene.clear();
+		projection.clear();
 	}
 	public void loaded(WorldViewLoaded e) {
 		if (!features.tracking) return;
 		WorldView wv = e.getWorldView();
 		if (wv == null || !wv.isTopLevel()) return;
 		sailing.loaded(wv);
-		if (features.worldOverlay || features.minimapOverlay || features.worldMapOverlay) scene.update(wv);
+		if (features.scene && sailing.boarded()) scene.update(wv);
 		capture(wv);
 	}
 	@SuppressWarnings({"unused", "UnusedParameters"})
@@ -268,18 +297,22 @@ public final class ChartPlotterRuntime {
 		WorldEntity ship = sailing.ship();
 		if (ship == null) {
 			sailing.clear();
+			scene.clear();
+			projection.clear();
 			routes.pause();
 			collision(false, null);
 			return;
 		}
 		LocalPoint loc = sailing.anchorLoc(ship);
 		if (loc == null) {
+			scene.clear();
+			projection.clear();
 			collision(false, null);
 			return;
 		}
 		WorldView top = sailing.top();
 		boolean sceneChanged = top != null && sailing.sceneChanged(top);
-		if (top != null && (features.worldOverlay || features.minimapOverlay || features.worldMapOverlay)) scene.update(top);
+		if (top != null && features.scene) scene.update(top);
 		if (sceneChanged) sailing.scene(ship, loc);
 		boolean normal = features.cache(sailing.boarded()) && top != null;
 		boolean started = collision(normal, top);
@@ -310,10 +343,11 @@ public final class ChartPlotterRuntime {
 			alertY = Integer.MIN_VALUE;
 			return;
 		}
+		if (focused) return;
 		int bx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
 		int by = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(r, bx, by, sailing.speed(), sailing.accel(), sailing.maxSpeed());
-		if (!turn.valid || turn.end || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY || focused) return;
+		if (!turn.valid || turn.end || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY) return;
 		notifier.notify("Sailing: next turn approaching");
 		alertX = turn.x;
 		alertY = turn.y;
@@ -322,18 +356,33 @@ public final class ChartPlotterRuntime {
 		ChartPlotterFeatures prev = features;
 		ChartPlotterFeatures next = ChartPlotterFeatures.of(config);
 		features = next;
-		if (next.worldOverlay) overlayManager.add(overlay);
-		else overlayManager.remove(overlay);
-		if (next.minimapOverlay) overlayManager.add(minimapOverlay);
-		else overlayManager.remove(minimapOverlay);
-		if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
-		else overlayManager.remove(worldMapOverlay);
-		if (!next.chart) {
+		if (next.worldOverlay != prev.worldOverlay) {
+			if (next.worldOverlay) overlayManager.add(overlay);
+			else {
+				overlayManager.remove(overlay);
+				overlay.clear();
+			}
+		}
+		if (next.minimapOverlay != prev.minimapOverlay) {
+			if (next.minimapOverlay) overlayManager.add(minimapOverlay);
+			else {
+				overlayManager.remove(minimapOverlay);
+				minimapOverlay.clear();
+			}
+		}
+		if (next.worldMapOverlay != prev.worldMapOverlay) {
+			if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
+			else overlayManager.remove(worldMapOverlay);
+		}
+		if (next.scene && !prev.scene) {
+			updateScene();
+		} else if (!next.scene && prev.scene) scene.clear();
+		if (prev.chart && !next.chart) {
 			routes.stop();
 			cancelStopDrag();
 		}
-		if (next.chart || next.edit) sparseNodes.start();
-		else sparseNodes.stop();
+		if (prev.edit && !next.edit) worldMapOverlay.clearEditor();
+		sparse(next.edit || next.chart && sailing.boarded());
 		if (next.input && !inputRegistered) {
 			mouseManager.registerMouseListener(mouse);
 			keyManager.registerKeyListener(key);
@@ -352,8 +401,13 @@ public final class ChartPlotterRuntime {
 			if (!collisionActive) collisionCache.stop();
 		}
 		if (!next.cache(sailing.boarded())) collision(false, null);
+		if (prev.course && !next.course) projection.clear();
 		if (!next.tracking) sailing.reset();
-		else if (!prev.tracking) clientThread.invoke(sailing::sync);
+		else if (!prev.tracking) clientThread.invoke(() -> {
+			sailing.sync();
+			sparse(features.edit || features.chart && sailing.boarded());
+			updateScene();
+		});
 	}
 	private void chartCourse(Point m, boolean active, boolean shift) {
 		if (!features.chart || worldMapOverlay.clickBlocked()) return;
@@ -408,12 +462,35 @@ public final class ChartPlotterRuntime {
 			capture(top);
 			return true;
 		}
+		resetCapture();
 		if (!editorCacheActive) collisionCache.stop();
 		return false;
 	}
 	private void capture(WorldView top) {
 		if (!collisionActive && !editorCacheActive) return;
+		int tick = client.getTickCount();
+		if (captureTick == tick && captureView == top) return;
+		captureTick = tick;
+		captureView = top;
 		collisionCache.capture(top);
+	}
+	private void sparse(boolean active) {
+		if (active == sparseActive) return;
+		sparseActive = active;
+		if (active) {
+			sparseNodes.start();
+			sparseNodes.invalidate(collisionCache.snapshot());
+		}
+		else sparseNodes.stop();
+	}
+	private void resetCapture() {
+		captureTick = Integer.MIN_VALUE;
+		captureView = null;
+	}
+	private void updateScene() {
+		if (!features.scene || !sailing.boarded()) return;
+		WorldView top = sailing.top();
+		if (top != null) scene.update(top);
 	}
 	private static int tile(Object value) {
 		if (!(value instanceof Integer)) return -1;

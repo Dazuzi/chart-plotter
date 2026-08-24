@@ -30,7 +30,26 @@ public final class ChartPlotterRouteMoves {
 		return false;
 	}
 	public static boolean solid(int ax, int ay, int bx, int by, double speed) {return speed <= 0 || model(bx - ax, by - ay, speed);}
+	public static boolean solid(int ax, int ay, int bx, int by, Model model) {return model == null || model.matches(bx - ax, by - ay);}
 	public static double speedBucket(double speed) {return Math.round(speed * 2) / 2.0;}
+	public static Model model(double speed) {return speed <= 0 ? null : new Model(speed);}
 	private static int vectorX(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.SINE[o] * speed / 512.0));}
 	private static int vectorY(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.COSINE[o] * speed / 512.0));}
+	public static final class Model {
+		private final int[] x = new int[OR.length];
+		private final int[] y = new int[OR.length];
+		private Model(double speed) {
+			for (int i = 0; i < OR.length; i++) {
+				x[i] = vectorX(speed, OR[i]);
+				y[i] = vectorY(speed, OR[i]);
+			}
+		}
+		private boolean matches(int dx, int dy) {
+			for (int i = 0; i < x.length; i++) {
+				if (x[i] == 0 && y[i] == 0) continue;
+				if ((long) dx * y[i] == (long) dy * x[i] && dx * x[i] + dy * y[i] > 0) return true;
+			}
+			return false;
+		}
+	}
 }

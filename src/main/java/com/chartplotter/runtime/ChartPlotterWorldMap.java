@@ -15,7 +15,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
 import java.awt.geom.Area;
-import java.util.Arrays;
 
 @Singleton
 public final class ChartPlotterWorldMap {
@@ -25,6 +24,8 @@ public final class ChartPlotterWorldMap {
 	private final Client client;
 	private ClipKey clipKey;
 	private Shape cachedClip;
+	private WorldMapData surfaceData;
+	private boolean cachedSurface;
 	private volatile boolean cachedClickBlocked = true;
 	@Inject
 	public ChartPlotterWorldMap(Client client) {
@@ -47,15 +48,23 @@ public final class ChartPlotterWorldMap {
 		int wt = (int) Math.ceil(r.getWidth() / z);
 		int ht = (int) Math.ceil(r.getHeight() / z);
 		double c = z - Math.ceil(z / 2.0);
-		return new State(data, z, r, wt, ht, pos, c, 0, 0);
+		return new State(data, z, r, wt, ht, pos, c);
 	}
 	public int[] tile(Point m) {return tile(m, state());}
 	public int[] tile(Point m, State s) {
 		if (m == null || s == null || !clip(s).contains(m.getX(), m.getY())) return null;
-		double[] p = world(m, s);
-		int wx = (int) Math.floor(p[0]);
-		int wy = (int) Math.floor(p[1]);
+		int wx = (int) Math.floor(worldX(m, s));
+		int wy = (int) Math.floor(worldY(m, s));
 		return s.data.surfaceContainsPosition(wx, wy) ? new int[]{wx, wy} : null;
+	}
+	public boolean tile(Point m, State s, int[] out) {
+		if (m == null || s == null || out == null || out.length < 2 || !clip(s).contains(m.getX(), m.getY())) return false;
+		int wx = (int) Math.floor(worldX(m, s));
+		int wy = (int) Math.floor(worldY(m, s));
+		if (!s.data.surfaceContainsPosition(wx, wy)) return false;
+		out[0] = wx;
+		out[1] = wy;
+		return true;
 	}
 	public boolean clickBlocked() {
 		WorldMap wm = client.getWorldMap();
@@ -69,22 +78,16 @@ public final class ChartPlotterWorldMap {
 		return blocked;
 	}
 	public boolean cachedClickBlocked() {return cachedClickBlocked;}
-	public Point point(State s, int wx, int wy, double fx, double fy) {
-		double x = s.r.getX() + (wx + s.wt / 2.0 - s.pos.getX()) * s.z + s.c + (fx - 0.5) * s.z;
-		double y = s.r.getY() + s.r.getHeight() - ((s.pos.getY() - s.ht / 2.0 - wy - 1) * -1 * s.z - s.c) - (fy - 0.5) * s.z;
-		return new Point((int) Math.round(x), (int) Math.round(y));
-	}
-	public double[] world(Point m, State s) {
-		double wx = (m.getX() - s.r.getX() - s.c) / s.z - s.wt / 2.0 + s.pos.getX() + 0.5;
-		double wy = (s.r.getY() + s.r.getHeight() + s.c - m.getY()) / s.z - 0.5 + s.pos.getY() - s.ht / 2.0;
-		return new double[]{wx, wy};
-	}
-	public int mapX(State s, int lx) {
-		double x = s.baseX + lx / (double) TS;
+	public int pointX(State s, int wx, double fx) {return (int) Math.round(s.r.getX() + (wx + s.wt / 2.0 - s.pos.getX()) * s.z + s.c + (fx - 0.5) * s.z);}
+	public int pointY(State s, int wy, double fy) {return (int) Math.round(s.r.getY() + s.r.getHeight() - ((s.pos.getY() - s.ht / 2.0 - wy - 1) * -1 * s.z - s.c) - (fy - 0.5) * s.z);}
+	public double worldX(Point m, State s) {return (m.getX() - s.r.getX() - s.c) / s.z - s.wt / 2.0 + s.pos.getX() + 0.5;}
+	public double worldY(Point m, State s) {return (s.r.getY() + s.r.getHeight() + s.c - m.getY()) / s.z - 0.5 + s.pos.getY() - s.ht / 2.0;}
+	public int mapX(State s, int baseX, int lx) {
+		double x = baseX + lx / (double) TS;
 		return (int) Math.round(s.r.getX() + (x + s.wt / 2.0 - s.pos.getX() - 0.5) * s.z + s.c);
 	}
-	public int mapY(State s, int ly) {
-		double y = s.baseY + ly / (double) TS;
+	public int mapY(State s, int baseY, int ly) {
+		double y = baseY + ly / (double) TS;
 		return (int) Math.round(s.r.getY() + s.r.getHeight() - (y + s.ht / 2.0 - s.pos.getY() + 0.5) * s.z + s.c);
 	}
 	public int pathCap(WorldView wv, LocalPoint anchor, State s) {
@@ -95,8 +98,8 @@ public final class ChartPlotterWorldMap {
 		return (int) Math.ceil(Math.max(dx, dy) * 8) + 64;
 	}
 	public Shape clip(State s) {
+		if (clipKey != null && clipKey.same(client, s)) return cachedClip;
 		ClipKey k = new ClipKey(client, s);
-		if (k.same(clipKey)) return cachedClip;
 		Rectangle r = new Rectangle(s.r.x + 1, s.r.y + 1, Math.max(1, s.r.width - 2), Math.max(1, s.r.height - 2));
 		Area a = new Area(r);
 		boolean cut = false;
@@ -114,11 +117,13 @@ public final class ChartPlotterWorldMap {
 		Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
 		return map == null || map.isHidden() ? null : map;
 	}
-	private static boolean surface(WorldMapData data) {
+	private boolean surface(WorldMapData data) {
+		if (surfaceData == data) return cachedSurface;
+		surfaceData = data;
 		for (int[] p : SURFACE) {
-			if (!data.surfaceContainsPosition(p[0], p[1])) return false;
+			if (!data.surfaceContainsPosition(p[0], p[1])) return cachedSurface = false;
 		}
-		return true;
+		return cachedSurface = true;
 	}
 	private boolean blocked(WorldMapData data) {return data == null || !surface(data) || client.getVarcIntValue(VarClientID.WORLDMAP_INTERMAPLINK) > 0;}
 	public static final class State {
@@ -129,9 +134,7 @@ public final class ChartPlotterWorldMap {
 		public final int ht;
 		public final Point pos;
 		public final double c;
-		public final int baseX;
-		public final int baseY;
-		public State(WorldMapData data, float z, Rectangle r, int wt, int ht, Point pos, double c, int baseX, int baseY) {
+		public State(WorldMapData data, float z, Rectangle r, int wt, int ht, Point pos, double c) {
 			this.data = data;
 			this.z = z;
 			this.r = r;
@@ -139,10 +142,7 @@ public final class ChartPlotterWorldMap {
 			this.ht = ht;
 			this.pos = pos;
 			this.c = c;
-			this.baseX = baseX;
-			this.baseY = baseY;
 		}
-		public State base(WorldView wv) {return new State(data, z, r, wt, ht, pos, c, wv.getBaseX(), wv.getBaseY());}
 	}
 	private static final class ClipKey {
 		final int[] v;
@@ -168,6 +168,20 @@ public final class ChartPlotterWorldMap {
 				v[i++] = b.height;
 			}
 		}
-		boolean same(ClipKey k) {return k != null && Arrays.equals(v, k.v);}
+		boolean same(Client client, State s) {
+			int i = 0;
+			if (v[i++] != s.r.x || v[i++] != s.r.y || v[i++] != s.r.width || v[i++] != s.r.height) return false;
+			for (int id : BLOCK) {
+				Widget w = client.getWidget(id);
+				if (w == null || w.isHidden()) {
+					if (v[i] != 0) return false;
+					i += 5;
+					continue;
+				}
+				Rectangle b = w.getBounds();
+				if (v[i++] != 1 || v[i++] != b.x || v[i++] != b.y || v[i++] != b.width || v[i++] != b.height) return false;
+			}
+			return true;
+		}
 	}
 }

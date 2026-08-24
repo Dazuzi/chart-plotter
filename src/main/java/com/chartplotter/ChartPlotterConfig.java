@@ -1,27 +1,30 @@
 package com.chartplotter;
 
 import net.runelite.client.config.*;
-import net.runelite.client.util.ColorUtil;
 
 import java.awt.*;
 
 @SuppressWarnings("SameReturnValue")
 @ConfigGroup("chartplotter")
 public interface ChartPlotterConfig extends Config {
+	Color DEFAULT_LINE_COLOR = new Color(140, 220, 255, 185);
+	Color DEFAULT_POTENTIAL_COLOR = new Color(80, 255, 120, 185);
+	Color DEFAULT_CHART_COLOR = new Color(255, 101, 255, 185);
+	Color DEFAULT_BLOCKED_COLOR = new Color(255, 80, 60, 140);
 	@ConfigSection(name = "Colors", description = "Shared overlay colors.", position = 0)
 	String colorsSection = "colorsSection";
 	@Alpha
 	@ConfigItem(keyName = "lineColor", name = "Current color", description = "Line for the boat's active heading or selected course.", section = colorsSection, position = 0)
-	default Color lineColor() {return ColorUtil.colorWithAlpha(new Color(140, 220, 255), 185);}
+	default Color lineColor() {return DEFAULT_LINE_COLOR;}
 	@Alpha
 	@ConfigItem(keyName = "potentialColor", name = "Projected color", description = "Line previewing the heading under the cursor.", section = colorsSection, position = 1)
-	default Color potentialColor() {return ColorUtil.colorWithAlpha(new Color(80, 255, 120), 185);}
+	default Color potentialColor() {return DEFAULT_POTENTIAL_COLOR;}
 	@Alpha
 	@ConfigItem(keyName = "chartColor", name = "Charted color", description = "Lines and markers for charted trips.", section = colorsSection, position = 2)
-	default Color chartColor() {return ColorUtil.colorWithAlpha(new Color(255, 101, 255), 185);}
+	default Color chartColor() {return DEFAULT_CHART_COLOR;}
 	@Alpha
 	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Line section after the first blocked tile.", section = colorsSection, position = 3)
-	default Color blockedColor() {return ColorUtil.colorWithAlpha(new Color(255, 80, 60), 140);}
+	default Color blockedColor() {return DEFAULT_BLOCKED_COLOR;}
 	@ConfigSection(name = "World", description = "World overlay settings.", position = 1)
 	String worldSection = "worldSection";
 	@ConfigItem(keyName = "worldLineMode", name = "Current line", description = "Draw the active heading or selected course; blocked extends past collisions.", section = worldSection, position = 0)

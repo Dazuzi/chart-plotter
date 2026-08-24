@@ -10,6 +10,7 @@ import javax.inject.Singleton;
 public final class ChartPlotterScene {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private Slot cache;
+	public void clear() {cache = null;}
 	public void update(WorldView wv) {
 		Tile[][] tiles = tiles(wv);
 		Slot s = cache;

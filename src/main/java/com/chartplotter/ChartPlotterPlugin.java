@@ -74,6 +74,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public boolean hasNextStop() {return routes.trip().size() > 1;}
 	public boolean canAppend() {return routes.canAppend();}
 	public ChartPlotterRoutes.Preview coursePreview(int tx, int ty, boolean append) {return routes.preview(tx, ty, append);}
+	public void clearCoursePreview() {routes.clearPreview();}
 	public boolean suppressPotential(Point m) {return sailing.suppress(m);}
 	public boolean courseLine(WorldView wv) {return sailing.courseLine(wv);}
 	public int heading(WorldEntity ship) {return sailing.heading(ship);}

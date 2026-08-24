@@ -20,6 +20,7 @@ import java.util.Map;
 @Singleton
 public final class ChartPlotterNodeEditor {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
+	private static final int[] EMPTY = new int[0];
 	private static final int LINK_DIST = 128;
 	private static final int HIT = 2;
 	private static final int DOT = 5;
@@ -37,21 +38,23 @@ public final class ChartPlotterNodeEditor {
 	private final ChartPlotterCollisionCache collisionCache;
 	private final ChartPlotterSparseNodes sparseNodes;
 	private final ChartPlotterWorldMap map;
-	private boolean alt;
+	private volatile boolean alt;
 	private volatile boolean moving;
 	private int moveX;
 	private int moveY;
 	private int moveN;
-	private int[] moveLinkX = new int[0];
-	private int[] moveLinkY = new int[0];
+	private int[] moveLinkX = EMPTY;
+	private int[] moveLinkY = EMPTY;
 	private ChartPlotterSparseNodes.Snapshot webNodes;
 	private long webDataRev = Long.MIN_VALUE;
 	private long webNodeVersion = Long.MIN_VALUE;
 	private int webN;
-	private int[] webAX = new int[256];
-	private int[] webAY = new int[256];
-	private int[] webBX = new int[256];
-	private int[] webBY = new int[256];
+	private int[] webAX = EMPTY;
+	private int[] webAY = EMPTY;
+	private int[] webBX = EMPTY;
+	private int[] webBY = EMPTY;
+	private Ellipse2D.Double ellipse;
+	private final int[] tile = new int[2];
 	@Inject
 	private ChartPlotterNodeEditor(Client client, ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterSparseNodes sparseNodes, ChartPlotterWorldMap map) {
 		this.client = client;
@@ -125,8 +128,8 @@ public final class ChartPlotterNodeEditor {
 		drawWeb(g, s);
 		if (moving) drawMove(g, s, data, nodes);
 		else if (mode()) {
-			int[] t = map.tile(client.getMouseCanvasPosition(), s);
-			if (t != null) {
+			if (map.tile(client.getMouseCanvasPosition(), s, tile)) {
+				int[] t = tile;
 				g.setColor(LINK);
 				int i = nodeAt(nodes, t[0], t[1]);
 				if (i >= 0) drawNodeLinks(g, s, data, nodes, i);
@@ -194,7 +197,7 @@ public final class ChartPlotterNodeEditor {
 	}
 	private void ensureWeb(int c) {
 		if (webAX.length >= c) return;
-		int n = webAX.length;
+		int n = Math.max(256, webAX.length);
 		while (n < c) n <<= 1;
 		webAX = grow(webAX, n);
 		webAY = grow(webAY, n);
@@ -202,7 +205,22 @@ public final class ChartPlotterNodeEditor {
 		webBY = grow(webBY, n);
 	}
 	boolean moving() {return moving;}
-	void alt(boolean on) {alt = on;}
+	void alt(boolean on) {if (alt != on) alt = on;}
+	void clear() {
+		alt = false;
+		clearMove();
+		moveLinkX = EMPTY;
+		moveLinkY = EMPTY;
+		webNodes = null;
+		webDataRev = Long.MIN_VALUE;
+		webNodeVersion = Long.MIN_VALUE;
+		webN = 0;
+		webAX = EMPTY;
+		webAY = EMPTY;
+		webBX = EMPTY;
+		webBY = EMPTY;
+		ellipse = null;
+	}
 	private void drawNodeLinks(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int i) {
 		for (int j = 0; j < nodes.x.length; j++) {
 			if (j == i) continue;
@@ -210,10 +228,10 @@ public final class ChartPlotterNodeEditor {
 		}
 	}
 	private void drawMove(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes) {
-		int[] t = map.tile(client.getMouseCanvasPosition(), s);
-		boolean ok = t != null && canMove(data, nodes, t[0], t[1]);
-		int wx = ok ? t[0] : moveX;
-		int wy = ok ? t[1] : moveY;
+		boolean tileValid = map.tile(client.getMouseCanvasPosition(), s, tile);
+		boolean ok = tileValid && canMove(data, nodes, tile[0], tile[1]);
+		int wx = ok ? tile[0] : moveX;
+		int wy = ok ? tile[1] : moveY;
 		g.setColor(ok ? LINK : BLOCK_LINK);
 		for (int i = 0; i < moveN; i++) {
 			if (has(nodes, moveLinkX[i], moveLinkY[i])) line(g, s, wx, wy, moveLinkX[i], moveLinkY[i]);
@@ -221,23 +239,26 @@ public final class ChartPlotterNodeEditor {
 		dot(g, s, wx, wy, ok ? LINK_DOT : BLOCK_DOT, DOT + 2);
 	}
 	private void line(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by) {
-		if (!s.data.surfaceContainsPosition(ax, ay) || !s.data.surfaceContainsPosition(bx, by)) return;
 		if (!lineVisible(s, ax, ay, bx, by)) return;
-		Point a = map.point(s, ax, ay, 0.5, 0.5);
-		Point b = map.point(s, bx, by, 0.5, 0.5);
-		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+		if (!s.data.surfaceContainsPosition(ax, ay) || !s.data.surfaceContainsPosition(bx, by)) return;
+		g.drawLine(map.pointX(s, ax, 0.5), map.pointY(s, ay, 0.5), map.pointX(s, bx, 0.5), map.pointY(s, by, 0.5));
 	}
 	private void dot(Graphics2D g, ChartPlotterWorldMap.State s, int wx, int wy, Color c, int r) {
-		if (!s.data.surfaceContainsPosition(wx, wy)) return;
 		if (!pointVisible(s, wx, wy)) return;
-		Point p = map.point(s, wx, wy, 0.5, 0.5);
+		if (!s.data.surfaceContainsPosition(wx, wy)) return;
+		int x = map.pointX(s, wx, 0.5);
+		int y = map.pointY(s, wy, 0.5);
+		if (ellipse == null) ellipse = new Ellipse2D.Double();
 		g.setColor(DOT_RING);
-		g.fill(new Ellipse2D.Double(p.getX() - r / 2.0 - 1, p.getY() - r / 2.0 - 1, r + 2, r + 2));
+		ellipse.setFrame(x - r / 2.0 - 1, y - r / 2.0 - 1, r + 2, r + 2);
+		g.fill(ellipse);
 		g.setColor(c);
-		g.fill(new Ellipse2D.Double(p.getX() - r / 2.0, p.getY() - r / 2.0, r, r));
+		ellipse.setFrame(x - r / 2.0, y - r / 2.0, r, r);
+		g.fill(ellipse);
 		int cr = Math.max(3, r - 2);
 		g.setColor(Color.RED);
-		g.fill(new Ellipse2D.Double(p.getX() - cr / 2.0, p.getY() - cr / 2.0, cr, cr));
+		ellipse.setFrame(x - cr / 2.0, y - cr / 2.0, cr, cr);
+		g.fill(ellipse);
 	}
 	private boolean clear(ChartPlotterCollisionData data, int ax, int ay, int bx, int by) {
 		int lax = ax * TS + TS / 2;

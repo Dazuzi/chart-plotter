@@ -16,7 +16,6 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.TextComponent;
-import net.runelite.client.util.ColorUtil;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -29,6 +28,7 @@ public class ChartPlotterOverlay extends Overlay {
 	private static final double TICK = 0.6;
 	private static final float[] DASH = {8, 6};
 	private static final Stroke CACHE_STROKE = new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER);
+	private static final Color CACHE_EDGE = new Color(0, 210, 120, 150);
 	private final Client client;
 	private final ChartPlotterPlugin plugin;
 	private final ChartPlotterConfig config;
@@ -43,6 +43,30 @@ public class ChartPlotterOverlay extends Overlay {
 	private final int[] py = new int[4];
 	private final Path2D.Double path = new Path2D.Double();
 	private final Path2D.Double line = new Path2D.Double();
+	private final float[] rx = new float[4];
+	private final float[] ry = new float[4];
+	private double routeSpeed = Double.NaN;
+	private ChartPlotterRouteMoves.Model routeModel;
+	private final int[] headingLX = new int[16];
+	private final int[] headingLY = new int[16];
+	private final float[] headingX = {0, 0};
+	private final float[] headingY = {1000, -1000};
+	private final float[] headingZ = {0, 0};
+	private final int[] headingCX = new int[2];
+	private final int[] headingCY = new int[2];
+	private final TextComponent marker = new TextComponent();
+	private final java.awt.Point markerPosition = new java.awt.Point();
+	private final int[] colorKey = new int[8];
+	private final Color[][] colorCache = new Color[colorKey.length][];
+	private int colorNext;
+	private ChartPlotterRoute turnRoute;
+	private long turnBX;
+	private long turnBY;
+	private long turnSpeed;
+	private long turnAccel;
+	private long turnMax;
+	private long turnMotion = Long.MIN_VALUE;
+	private ChartPlotterRoutes.Turn cachedTurn = ChartPlotterRoutes.Turn.NONE;
 	private int etaX = Integer.MIN_VALUE;
 	private int etaY = Integer.MIN_VALUE;
 	private int etaSeconds = -1;
@@ -90,14 +114,14 @@ public class ChartPlotterOverlay extends Overlay {
 			if (showChart) {
 				ChartPlotterTrip trip = plugin.trip();
 				Color color = config.chartColor();
-				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color));
-				drawRoute(g, top, trip.active(), area, color);
+				ChartPlotterRouteMoves.Model model = routeModel();
+				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color), model);
+				drawRoute(g, top, trip.active(), area, color, model);
 				if (trip.size() > 1) waypointVisible = drawWaypoint(g, top, area, trip.active(), trip.x(0), trip.y(0), color);
 			}
 			if (showCourse || showProjected) {
 				WorldEntityConfig wc = ship.getConfig();
-				float[] rx = ChartPlotterProjection.rectX(wc);
-				float[] ry = ChartPlotterProjection.rectY(wc);
+				ChartPlotterProjection.rect(wc, rx, ry);
 				int from = plugin.heading(ship);
 				int course = plugin.course(ship);
 				int mouse = showProjected ? hoverHeading(top, center) : -1;
@@ -112,6 +136,11 @@ public class ChartPlotterOverlay extends Overlay {
 		if (showTurn) drawNextTurn(g, top, area, center, turnEta, waypointVisible);
 		return null;
 	}
+	public void clear() {
+		turnRoute = null;
+		cachedTurn = ChartPlotterRoutes.Turn.NONE;
+		resetEta();
+	}
 	private void draw(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color, int skip) {
 		if (p.n < 2 || skip >= p.n) {
 			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, rx, ry, color);
@@ -121,7 +150,7 @@ public class ChartPlotterOverlay extends Overlay {
 		int sA = color.getAlpha();
 		Color blockedColor = config.blockedColor();
 		int sBA = blockedColor.getAlpha();
-		for (int i = 0; i < p.n; i++) {
+		for (int i = Math.max(0, skip - 1); i < p.n; i++) {
 			if (missing(wv, p, i, rx, ry, z, cx, cy)) {
 				have = false;
 				continue;
@@ -134,9 +163,9 @@ public class ChartPlotterOverlay extends Overlay {
 			boolean inBlock = i >= p.blockedAt;
 			Color base = inBlock ? blockedColor : color;
 			int a = alpha(inBlock ? sBA : sA, i, p.n);
-			boolean slide = p.slid[i];
+			boolean slide = p.slid(i);
 			if (a > 0) {
-				g.setColor(ColorUtil.colorWithAlpha(base, a));
+				g.setColor(alpha(base, a));
 				path.reset();
 				boolean d = false;
 				if (have && p.o[i] == p.prev(i)) {
@@ -169,7 +198,7 @@ public class ChartPlotterOverlay extends Overlay {
 		double bx = wv.getBaseX() + center.getX() / (double) TS;
 		double by = wv.getBaseY() + center.getY() / (double) TS;
 		double speed = plugin.reversing() ? -plugin.speed() : plugin.speed();
-		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(plugin.route(), bx, by, speed, plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
+		ChartPlotterRoutes.Turn turn = turn(bx, by, speed, plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
 		if (!turn.valid) {
 			resetEta();
 			return;
@@ -187,6 +216,23 @@ public class ChartPlotterOverlay extends Overlay {
 			s = p + " in " + turn.ticks + "t";
 		} else s = p + " in " + seconds(turn) + "s";
 		drawMarker(g, at, s, config.chartColor());
+	}
+	private ChartPlotterRoutes.Turn turn(double bx, double by, double speed, double accel, double max, long motion) {
+		ChartPlotterRoute route = plugin.route();
+		long x = Double.doubleToLongBits(bx);
+		long y = Double.doubleToLongBits(by);
+		long s = Double.doubleToLongBits(speed);
+		long a = Double.doubleToLongBits(accel);
+		long m = Double.doubleToLongBits(max);
+		if (route == turnRoute && x == turnBX && y == turnBY && s == turnSpeed && a == turnAccel && m == turnMax && motion == turnMotion) return cachedTurn;
+		turnRoute = route;
+		turnBX = x;
+		turnBY = y;
+		turnSpeed = s;
+		turnAccel = a;
+		turnMax = m;
+		turnMotion = motion;
+		return cachedTurn = ChartPlotterRoutes.turn(route, bx, by, speed, accel, max, motion);
 	}
 	private int seconds(ChartPlotterRoutes.Turn turn) {
 		if (turn.x != etaX || turn.y != etaY || turn.end != etaEnd || turn.updated != etaTick) {
@@ -221,20 +267,27 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return Perspective.localToCanvas(client, new LocalPoint(ax, ay, wv), 0);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color, ChartPlotterRouteMoves.Model model) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2 || area == null) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.worldLineWidth());
 		Stroke dash = routeStroke.dashed(config.worldLineWidth());
 		g.setColor(color);
-		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
 		for (int i = 1; i < r.n; i++) {
 			line.reset();
-			routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i]);
-			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed) ? solid : dash);
+			if (!routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i])) continue;
+			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], model) ? solid : dash);
 			g.draw(line);
 		}
 		g.setStroke(old);
+	}
+	private ChartPlotterRouteMoves.Model routeModel() {
+		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
+		if (Double.doubleToLongBits(speed) != Double.doubleToLongBits(routeSpeed)) {
+			routeSpeed = speed;
+			routeModel = ChartPlotterRouteMoves.model(speed);
+		}
+		return routeModel;
 	}
 	private boolean drawWaypoint(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, ChartPlotterRoute route, int wx, int wy, Color color) {
 		if (area == null) return false;
@@ -243,26 +296,41 @@ public class ChartPlotterOverlay extends Overlay {
 		if (route != null && route.status == ChartPlotterRoute.OK && route.n > 0 && (route.x[route.n - 1] != wx || route.y[route.n - 1] != wy)) {
 			Stroke old = g.getStroke();
 			line.reset();
-			routeSegment(line, wv, area, route.x[route.n - 1], route.y[route.n - 1], wx, wy);
-			g.setStroke(routeStroke.dashed(config.worldLineWidth()));
-			g.setColor(faded(faded(color)));
-			g.draw(line);
+			if (routeSegment(line, wv, area, route.x[route.n - 1], route.y[route.n - 1], wx, wy)) {
+				g.setStroke(routeStroke.dashed(config.worldLineWidth()));
+				g.setColor(faded(faded(color)));
+				g.draw(line);
+			}
 			g.setStroke(old);
 		}
 		drawMarker(g, point, "Waypoint ahead", color);
 		return true;
 	}
-	private static void drawMarker(Graphics2D g, Point point, String text, Color color) {
+	private void drawMarker(Graphics2D g, Point point, String text, Color color) {
 		g.setColor(color);
 		g.fillOval(point.getX() - 3, point.getY() - 3, 6, 6);
-		TextComponent marker = new TextComponent();
 		marker.setText(text);
 		marker.setColor(color);
-		marker.setPosition(new java.awt.Point(point.getX() - g.getFontMetrics().stringWidth(text) / 2, point.getY() - 8));
+		markerPosition.setLocation(point.getX() - g.getFontMetrics().stringWidth(text) / 2, point.getY() - 8);
+		marker.setPosition(markerPosition);
 		marker.render(g);
 	}
-	private static Color faded(Color color) {return new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() * 3 / 5);}
-	private void routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, int ax, int ay, int bx, int by) {
+	private Color faded(Color color) {return alpha(color, color.getAlpha() * 3 / 5);}
+	private Color alpha(Color color, int alpha) {
+		int key = color.getRGB() & 0xffffff;
+		for (int i = 0; i < colorCache.length; i++) {
+			Color[] cache = colorCache[i];
+			if (cache == null || colorKey[i] != key) continue;
+			Color result = cache[alpha];
+			if (result == null) cache[alpha] = result = new Color(key | alpha << 24, true);
+			return result;
+		}
+		int i = colorNext++ & colorCache.length - 1;
+		colorKey[i] = key;
+		Color[] cache = colorCache[i] = new Color[256];
+		return cache[alpha] = new Color(key | alpha << 24, true);
+	}
+	private boolean routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, int ax, int ay, int bx, int by) {
 		double x0 = ax + 0.5;
 		double y0 = ay + 0.5;
 		double dx = bx - ax;
@@ -274,7 +342,7 @@ public class ChartPlotterOverlay extends Overlay {
 		double maxX = area.maxWX();
 		double maxY = area.maxWY();
 		if (dx == 0) {
-			if (x0 < minX || x0 > maxX) return;
+			if (x0 < minX || x0 > maxX) return false;
 		} else {
 			double a = (minX - x0) / dx;
 			double b = (maxX - x0) / dx;
@@ -285,10 +353,10 @@ public class ChartPlotterOverlay extends Overlay {
 			}
 			if (a > t0) t0 = a;
 			if (b < t1) t1 = b;
-			if (t0 > t1) return;
+			if (t0 > t1) return false;
 		}
 		if (dy == 0) {
-			if (y0 < minY || y0 > maxY) return;
+			if (y0 < minY || y0 > maxY) return false;
 		} else {
 			double a = (minY - y0) / dy;
 			double b = (maxY - y0) / dy;
@@ -299,15 +367,19 @@ public class ChartPlotterOverlay extends Overlay {
 			}
 			if (a > t0) t0 = a;
 			if (b < t1) t1 = b;
-			if (t0 > t1) return;
+			if (t0 > t1) return false;
 		}
 		int n = (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * (t1 - t0));
 		if (n < 1) n = 1;
 		boolean have = false;
+		boolean drawn = false;
 		for (int i = 0; i <= n; i++) {
 			double t = t0 + (t1 - t0) * i / n;
-			have = routePoint(line, wv, area, x0 + dx * t, y0 + dy * t, have);
+			boolean next = routePoint(line, wv, area, x0 + dx * t, y0 + dy * t, have);
+			if (have && next) drawn = true;
+			have = next;
 		}
+		return drawn;
 	}
 	private boolean routePoint(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, double wx, double wy, boolean have) {
 		Point q = routeCanvas(wv, area, wx, wy);
@@ -329,7 +401,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Stroke old = g.getStroke();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		g.setStroke(CACHE_STROKE);
-		g.setColor(new Color(0, 210, 120, 150));
+		g.setColor(CACHE_EDGE);
 		for (int i = 0; i < area.n; i++) {
 			int cx = area.cx[i];
 			int cy = area.cy[i];
@@ -385,7 +457,7 @@ public class ChartPlotterOverlay extends Overlay {
 		if (!open) p.lineTo(x[0], y[0]);
 	}
 	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != p.prev(i);}
-	private static boolean open(ChartPlotterProjection.Path p, int i) {return i + 1 < p.n && !p.slid[i + 1] && p.o[i + 1] == p.o[i];}
+	private static boolean open(ChartPlotterProjection.Path p, int i) {return i + 1 < p.n && !p.slid(i + 1) && p.o[i + 1] == p.o[i];}
 	private static void copy(int[] sx, int[] sy, int[] dx, int[] dy) {
 		for (int i = 0; i < 4; i++) {
 			dx[i] = sx[i];
@@ -402,7 +474,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Point m = eligibleMouse(client, plugin);
 		if (m == null) return -1;
 		if (outsideViewport(client, m) || headingInactive(client, wv)) return -1;
-		return sceneHeading(client, wv, anchor, m);
+		return sceneHeading(client, wv, anchor, m, headingLX, headingLY, headingX, headingY, headingZ, headingCX, headingCY);
 	}
 	public static Point eligibleMouse(Client client, ChartPlotterPlugin plugin) {
 		Point m = client.getMouseCanvasPosition();
@@ -425,16 +497,12 @@ public class ChartPlotterOverlay extends Overlay {
 		return sceneHeading(client, wv, anchor, mouse);
 	}
 	private static int sceneHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
+		return sceneHeading(client, wv, anchor, mouse, new int[16], new int[16], new float[]{0, 0}, new float[]{1000, -1000}, new float[]{0, 0}, new int[2], new int[2]);
+	}
+	private static int sceneHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse, int[] lx, int[] ly, float[] x, float[] y, float[] z, int[] cx, int[] cy) {
 		Point center = Perspective.localToCanvas(client, anchor, 0);
 		if (center == null || mouse == null) return -1;
 		int n = 16;
-		int[] lx = new int[n];
-		int[] ly = new int[n];
-		float[] x = new float[]{0, 0};
-		float[] y = new float[]{1000, -1000};
-		float[] z = new float[]{0, 0};
-		int[] cx = new int[2];
-		int[] cy = new int[2];
 		for (int i = 0; i < n; i++) {
 			cx[0] = 0;
 			cx[1] = 0;

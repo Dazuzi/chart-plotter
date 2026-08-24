@@ -1,6 +1,7 @@
 package com.chartplotter.route;
 import com.chartplotter.ChartPlotterRouteEffort;
 public final class ChartPlotterRoute {
+	private static final int[] EMPTY = new int[0];
 	public static final int PENDING = 0;
 	public static final int OK = 1;
 	public static final int UNCHARTED = 2;
@@ -47,7 +48,7 @@ public final class ChartPlotterRoute {
 	}
 	private static ChartPlotterRoute empty(int status, int sx, int sy, int tx, int ty, int turnBias, int weight) {
 		long now = System.currentTimeMillis();
-		return new ChartPlotterRoute(status, sx, sy, tx, ty, new int[0], new int[0], 0, new int[0], new int[0], 0, 0, turnBias, weight, null, now, now);
+		return new ChartPlotterRoute(status, sx, sy, tx, ty, EMPTY, EMPTY, 0, EMPTY, EMPTY, 0, 0, turnBias, weight, null, now, now);
 	}
 	public static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(PENDING, sx, sy, tx, ty, turnBias, weight);}
 	public static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(UNCHARTED, sx, sy, tx, ty, turnBias, weight);}
@@ -56,7 +57,7 @@ public final class ChartPlotterRoute {
 	public static ChartPlotterRoute blocked(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(BLOCKED, sx, sy, tx, ty, turnBias, weight);}
 	public static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, int weight) {
 		long now = System.currentTimeMillis();
-		return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, new int[0], new int[0], 0, 0, turnBias, weight, null, now, now);
+		return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, EMPTY, EMPTY, 0, 0, turnBias, weight, null, now, now);
 	}
 	public ChartPlotterRoute sparse(int[] x, int[] y, int n, int band) {return new ChartPlotterRoute(status, sx, sy, tx, ty, this.x, this.y, this.n, x, y, n, band, turnBias, weight, effort, time, updated);}
 	public ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, sparseX, sparseY, sparseN, sparseBand, turnBias, weight, effort, time, updated);}

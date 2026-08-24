@@ -23,7 +23,6 @@ import java.awt.*;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
-import java.util.Arrays;
 
 public class ChartPlotterMinimapOverlay extends Overlay {
 	private static final int DIST = 32768;
@@ -37,6 +36,11 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 	private volatile Shape clip;
 	private ClipKey clipKey;
 	private Shape cachedClip;
+	private double routeSpeed = Double.NaN;
+	private ChartPlotterRouteMoves.Model routeModel;
+	private Path2D.Double line;
+	private int fadeKey;
+	private Color fadeColor;
 	@Inject
 	ChartPlotterMinimapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection) {
 		this.client = client;
@@ -80,8 +84,9 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		if (showChart) {
 			ChartPlotterTrip trip = plugin.trip();
 			Color color = config.chartColor();
-			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color));
-			drawRoute(g, top, trip.active(), color);
+			ChartPlotterRouteMoves.Model model = routeModel();
+			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color), model);
+			drawRoute(g, top, trip.active(), color, model);
 		}
 		if (showCourse || showProjected) {
 			int from = plugin.heading(ship);
@@ -99,6 +104,7 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		return null;
 	}
 	public boolean overMinimap(Point p) {return p != null && clip != null && clip.contains(p.getX(), p.getY());}
+	public void clear() {clip = null;}
 	public static int mouseHeading(Client client, LocalPoint anchor, Point mouse) {
 		Widget w = minimap(client);
 		if (w == null || w.isHidden()) return -1;
@@ -138,7 +144,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		if (mid < p.n) segment(g, wv, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
 	}
 	private void segment(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color, int from, int to) {
-		Path2D.Double line = new Path2D.Double();
+		if (line == null) line = new Path2D.Double();
+		line.reset();
 		boolean have = false;
 		for (int i = from; i < to; i++) {
 			Point q = Perspective.localToMinimap(client, new LocalPoint(p.x[i], p.y[i], wv), DIST);
@@ -163,23 +170,46 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
 		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.minimapLineWidth());
 		Stroke dash = routeStroke.dashed(config.minimapLineWidth());
 		g.setColor(color);
-		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
-		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], speed, solid, dash);
+		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], model, solid, dash);
 		g.setStroke(old);
 	}
-	private static Color faded(Color color) {return new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() * 3 / 5);}
-	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, double speed, Stroke solid, Stroke dash) {
+	private Color faded(Color color) {
+		int key = color.getRGB();
+		if (fadeColor == null || fadeKey != key) {
+			fadeKey = key;
+			fadeColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() * 3 / 5);
+		}
+		return fadeColor;
+	}
+	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash) {
+		if (!routeVisible(wv, ax, ay, bx, by)) return;
 		Point a = routePoint(wv, ax, ay);
 		Point b = routePoint(wv, bx, by);
 		if (a == null || b == null) return;
-		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, speed) ? solid : dash);
+		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, model) ? solid : dash);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+	}
+	private static boolean routeVisible(WorldView wv, int ax, int ay, int bx, int by) {
+		int pad = DIST / Perspective.LOCAL_TILE_SIZE + 2;
+		int minX = wv.getBaseX() - pad;
+		int minY = wv.getBaseY() - pad;
+		int maxX = wv.getBaseX() + wv.getSizeX() + pad;
+		int maxY = wv.getBaseY() + wv.getSizeY() + pad;
+		return Math.max(ax, bx) >= minX && Math.min(ax, bx) <= maxX && Math.max(ay, by) >= minY && Math.min(ay, by) <= maxY;
+	}
+	private ChartPlotterRouteMoves.Model routeModel() {
+		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
+		if (Double.doubleToLongBits(speed) != Double.doubleToLongBits(routeSpeed)) {
+			routeSpeed = speed;
+			routeModel = ChartPlotterRouteMoves.model(speed);
+		}
+		return routeModel;
 	}
 	private Point routePoint(WorldView wv, int wx, int wy) {
 		int lx = (wx - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
@@ -193,8 +223,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		return mouseHeading(client, anchor, m, w, clip);
 	}
 	private Shape clip(Widget minimap) {
+		if (clipKey != null && clipKey.same(client, minimap)) return cachedClip;
 		ClipKey k = new ClipKey(client, minimap);
-		if (k.same(clipKey)) return cachedClip;
 		Shape c = clip(client, minimap);
 		clipKey = k;
 		cachedClip = c;
@@ -236,6 +266,21 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 				v[i++] = b.height;
 			}
 		}
-		boolean same(ClipKey k) {return k != null && Arrays.equals(v, k.v);}
+		boolean same(Client client, Widget minimap) {
+			int i = 0;
+			java.awt.Rectangle b = minimap.getBounds();
+			if (v[i++] != b.x || v[i++] != b.y || v[i++] != b.width || v[i++] != b.height || v[i++] != (client.isResized() ? 1 : 0)) return false;
+			for (int id : ORBS) {
+				Widget w = client.getWidget(id);
+				if (w == null || w.isHidden()) {
+					if (v[i] != 0) return false;
+					i += 5;
+					continue;
+				}
+				b = w.getBounds();
+				if (v[i++] != 1 || v[i++] != b.x || v[i++] != b.y || v[i++] != b.width || v[i++] != b.height) return false;
+			}
+			return true;
+		}
 	}
 }

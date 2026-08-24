@@ -5,6 +5,8 @@ import com.chartplotter.collision.ChartPlotterCollisionData;
 import net.runelite.api.Perspective;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 import static com.chartplotter.route.ChartPlotterRouteUtil.*;
@@ -16,21 +18,28 @@ public final class ChartPlotterSparseRouteFinder {
 	private static final int SPARSE_LOCAL_LINK = 256;
 	private static final int SPARSE_LOCAL_TRIES = 8;
 	private static final int STEP = 32;
-	private static final int REACH_CHECK = 4095;
+	private static final int REACH_CHECK = 255;
+	private static final ThreadLocal<Index> INDEX = ThreadLocal.withInitial(Index::new);
+	private static final ThreadLocal<Work> WORK = ThreadLocal.withInitial(Work::new);
+	private static final ThreadLocal<MaskBuffer> MASK = ThreadLocal.withInitial(MaskBuffer::new);
 	private ChartPlotterSparseRouteFinder() {}
 	static Path path(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty, int sparseBand, BooleanSupplier cancel) {
 		if (nodes == null || nodes.x.length == 0 || sx == tx && sy == ty) return null;
-		Connector startCon = connector(data, nodes, sx, sy, sparseBand, cancel);
-		Connector targetCon = connector(data, nodes, tx, ty, sparseBand, cancel);
-		if (startCon.pending || targetCon.pending) return Path.pending();
-		if (startCon.n == 0 || targetCon.n == 0) return null;
+		Index index = INDEX.get();
+		if (!index.reset(nodes, cancel)) return Path.pending();
+		Work work = WORK.get();
+		work.reset(nodes.x.length + 2);
+		Connector startCon = connector(data, nodes, index, work.start, sx, sy, sparseBand, cancel);
+		if (startCon.pending) return Path.pending();
+		if (startCon.n == 0) return null;
+		Connector targetCon = connector(data, nodes, index, work.target, tx, ty, sparseBand, cancel);
+		if (targetCon.pending) return Path.pending();
+		if (targetCon.n == 0) return null;
 		int n = nodes.x.length + 2;
-		int[] g = new int[n];
-		int[] prev = new int[n];
-		boolean[] done = new boolean[n];
-		Heap q = new Heap(n);
-		Arrays.fill(g, Integer.MIN_VALUE);
-		Arrays.fill(prev, -1);
+		int[] g = work.g;
+		int[] prev = work.prev;
+		boolean[] done = work.done;
+		Heap q = work.q;
 		g[0] = 0;
 		q.add(0, h(sx, sy, tx, ty));
 		int seen = 0;
@@ -38,48 +47,61 @@ public final class ChartPlotterSparseRouteFinder {
 			if ((seen++ & REACH_CHECK) == 0 && cancel.getAsBoolean()) return Path.pending();
 			int a = q.poll();
 			if (done[a]) continue;
-			if (a == 1) return Path.of(nodes, prev, g[1], sx, sy, tx, ty);
+			if (a == 1) return Path.of(nodes, prev, g[1], sx, sy, tx, ty, cancel);
 			done[a] = true;
 			int ax = x(nodes, a, sx, tx);
 			int ay = y(nodes, a, sy, ty);
 			int ag = g[a];
-			for (int b = 1; b < n; b++) {
-				if (b == a || done[b]) continue;
+			if (a == 0) {
+				for (int b = 1; b < n; b++) {
+					if (done[b]) continue;
+					int bx = x(nodes, b, sx, tx);
+					int by = y(nodes, b, sy, ty);
+					relax(b, edge(data, a, b, ax, ay, bx, by, startCon, targetCon), bx, by, ag, tx, ty, g, prev, q, a);
+				}
+				continue;
+			}
+			if (!done[1]) relax(1, targetCon.cost[a - 2], tx, ty, ag, tx, ty, g, prev, q, a);
+			int[] links = index.links[a - 2];
+			for (int node : links) {
+				int b = node + 2;
+				if (done[b]) continue;
 				int bx = x(nodes, b, sx, tx);
 				int by = y(nodes, b, sy, ty);
-				int edge = edge(data, a, b, ax, ay, bx, by, startCon, targetCon);
-				if (edge == Integer.MIN_VALUE) continue;
-				int ng = ag + edge;
-				if (g[b] != Integer.MIN_VALUE && g[b] <= ng) continue;
-				g[b] = ng;
-				prev[b] = a;
-				q.add(b, ng + h(bx, by, tx, ty));
+				relax(b, index.edge(data, a - 2, node), bx, by, ag, tx, ty, g, prev, q, a);
 			}
 		}
 		return null;
 	}
-	static Path simplify(ChartPlotterCollisionData data, Path p) {
+	private static void relax(int b, int edge, int bx, int by, int ag, int tx, int ty, int[] g, int[] prev, Heap q, int a) {
+		if (edge == Integer.MIN_VALUE) return;
+		int ng = ag + edge;
+		if (g[b] != Integer.MIN_VALUE && g[b] <= ng) return;
+		g[b] = ng;
+		prev[b] = a;
+		q.add(b, ng + h(bx, by, tx, ty));
+	}
+	static Path simplify(ChartPlotterCollisionData data, Path p, BooleanSupplier cancel) {
 		if (p.n < 3) return p;
-		int[] x = new int[p.n];
-		int[] y = new int[p.n];
-		int n = 0;
+		int n = 1;
 		int i = 0;
-		x[n] = p.x[0];
-		y[n++] = p.y[0];
 		while (i < p.n - 1) {
+			if (cancel.getAsBoolean()) return null;
 			int best = i + 1;
 			for (int j = p.n - 1; j > i + 1; j--) {
+				if ((j & REACH_CHECK) == 0 && cancel.getAsBoolean()) return null;
 				if (clear(data, p.x[i], p.y[i], p.x[j], p.y[j]) != 1) continue;
 				best = j;
 				break;
 			}
-			x[n] = p.x[best];
-			y[n++] = p.y[best];
+			p.x[n] = p.x[best];
+			p.y[n++] = p.y[best];
 			i = best;
 		}
-		return n == p.n ? p : new Path(Arrays.copyOf(x, n), Arrays.copyOf(y, n), n, cost(x, y, n), false);
+		return n == p.n ? p : new Path(Arrays.copyOf(p.x, n), Arrays.copyOf(p.y, n), n, cost(p.x, p.y, n), false);
 	}
-	static Corridor corridor(Path p, int band) {
+	static Corridor corridor(Path p, int band, BooleanSupplier cancel) {
+		if (cancel.getAsBoolean()) return null;
 		int minX = p.x[0];
 		int minY = p.y[0];
 		int maxX = minX;
@@ -93,7 +115,8 @@ public final class ChartPlotterSparseRouteFinder {
 			if (y > maxY) maxY = y;
 		}
 		int c = Math.max(cap(p.x[0], p.y[0], p.x[p.n - 1], p.y[p.n - 1], band), p.cost * 3 / 2 + band * 8 + 1200);
-		return new Corridor(p.x, p.y, p.n, new ChartPlotterRouteBounds(minX - band, minY - band, maxX + band, maxY + band), c, band);
+		Corridor corridor = new Corridor(p.x, p.y, p.n, new ChartPlotterRouteBounds(minX - band, minY - band, maxX + band, maxY + band), c, band);
+		return corridor.fill(cancel) ? corridor : null;
 	}
 	private static int edge(ChartPlotterCollisionData data, int a, int b, int ax, int ay, int bx, int by, Connector startCon, Connector targetCon) {
 		if (a == 0 && b > 1) return startCon.cost[b - 2];
@@ -102,15 +125,17 @@ public final class ChartPlotterSparseRouteFinder {
 		if (dist(ax, ay, bx, by) > link || clear(data, ax, ay, bx, by) != 1) return Integer.MIN_VALUE;
 		return h(ax, ay, bx, by);
 	}
-	private static Connector connector(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int band, BooleanSupplier cancel) {
-		Connector c = new Connector(nodes.x.length);
-		int[] ci = new int[SPARSE_LOCAL_TRIES];
-		int[] cd = new int[SPARSE_LOCAL_TRIES];
-		Arrays.fill(ci, -1);
-		Arrays.fill(cd, Integer.MAX_VALUE);
-		for (int i = 0; i < nodes.x.length; i++) {
+	private static Connector connector(ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot nodes, Index index, Connector c, int sx, int sy, int band, BooleanSupplier cancel) {
+		c.reset(nodes.x.length);
+		int candidates = index.query(sx, sy, SPARSE_LOCAL_LINK);
+		for (int p = 0; p < candidates; p++) {
+			if ((p & REACH_CHECK) == 0 && cancel.getAsBoolean()) {
+				c.pending = true;
+				return c;
+			}
+			int i = index.query[p];
 			int d = dist(sx, sy, nodes.x[i], nodes.y[i]);
-			if (d <= SPARSE_LOCAL_LINK) insert(ci, cd, i, d);
+			insert(c.ci, c.cd, i, d);
 			if (d > SPARSE_CONNECT) continue;
 			int r = clear(data, sx, sy, nodes.x[i], nodes.y[i]);
 			if (r == 1) {
@@ -119,7 +144,7 @@ public final class ChartPlotterSparseRouteFinder {
 			}
 		}
 		if (c.los == 0) {
-			for (int p : ci) {
+			for (int p : c.ci) {
 				if (p < 0 || c.cost[p] != Integer.MIN_VALUE) continue;
 				ChartPlotterRoute r = ChartPlotterRouteFinder.localConnect(data, sx, sy, nodes.x[p], nodes.y[p], band, cancel);
 				if (r.status == ChartPlotterRoute.PENDING) {
@@ -186,17 +211,120 @@ public final class ChartPlotterSparseRouteFinder {
 		return cross * cross <= (long) band * band * len;
 	}
 	private static final class Connector {
-		final int[] cost;
+		int[] cost = new int[0];
+		final int[] ci = new int[SPARSE_LOCAL_TRIES];
+		final int[] cd = new int[SPARSE_LOCAL_TRIES];
 		int n;
 		int los;
 		boolean pending;
-		private Connector(int n) {
-			cost = new int[n];
-			Arrays.fill(cost, Integer.MIN_VALUE);
+		void reset(int size) {
+			if (cost.length < size) cost = new int[size];
+			Arrays.fill(cost, 0, size, Integer.MIN_VALUE);
+			Arrays.fill(ci, -1);
+			Arrays.fill(cd, Integer.MAX_VALUE);
+			n = 0;
+			los = 0;
+			pending = false;
 		}
 		void add(int i, int c) {
 			if (cost[i] == Integer.MIN_VALUE) n++;
 			cost[i] = c;
+		}
+	}
+	private static final class Work {
+		int[] g = new int[0];
+		int[] prev = new int[0];
+		boolean[] done = new boolean[0];
+		final Heap q = new Heap();
+		final Connector start = new Connector();
+		final Connector target = new Connector();
+		void reset(int n) {
+			if (g.length < n) {
+				g = new int[n];
+				prev = new int[n];
+				done = new boolean[n];
+			}
+			Arrays.fill(g, 0, n, Integer.MIN_VALUE);
+			Arrays.fill(prev, 0, n, -1);
+			Arrays.fill(done, 0, n, false);
+			q.clear();
+		}
+	}
+	private static final class Index {
+		ChartPlotterSparseNodes.Snapshot nodes;
+		int[][] links;
+		Map<Long, Bucket> buckets;
+		int[] query = new int[32];
+		ChartPlotterCollisionData edgeData;
+		final LongIntMap edges = new LongIntMap(1024);
+		boolean reset(ChartPlotterSparseNodes.Snapshot nodes, BooleanSupplier cancel) {
+			if (this.nodes == nodes) return true;
+			Map<Long, Bucket> buckets = new HashMap<>();
+			for (int i = 0; i < nodes.x.length; i++) {
+				if ((i & REACH_CHECK) == 0 && cancel.getAsBoolean()) return false;
+				int bx = Math.floorDiv(nodes.x[i], SPARSE_LINK);
+				int by = Math.floorDiv(nodes.y[i], SPARSE_LINK);
+				buckets.computeIfAbsent(ChartPlotterCollisionData.key(bx, by), ignored -> new Bucket()).add(i);
+			}
+			this.nodes = nodes;
+			this.buckets = buckets;
+			links = new int[nodes.x.length][];
+			for (int i = 0; i < nodes.x.length; i++) {
+				if ((i & REACH_CHECK) == 0 && cancel.getAsBoolean()) {
+					this.nodes = null;
+					return false;
+				}
+				int n = query(nodes.x[i], nodes.y[i], SPARSE_LINK);
+				int p = 0;
+				for (int j = 0; j < n; j++) if (query[j] != i) query[p++] = query[j];
+				links[i] = Arrays.copyOf(query, p);
+			}
+			edgeData = null;
+			edges.clear();
+			return true;
+		}
+		int query(int x, int y, int limit) {
+			int bx = Math.floorDiv(x, SPARSE_LINK);
+			int by = Math.floorDiv(y, SPARSE_LINK);
+			int r = (limit + SPARSE_LINK - 1) / SPARSE_LINK;
+			int n = 0;
+			for (int dx = -r; dx <= r; dx++) {
+				for (int dy = -r; dy <= r; dy++) {
+					Bucket bucket = buckets.get(ChartPlotterCollisionData.key(bx + dx, by + dy));
+					if (bucket == null) continue;
+					for (int p = 0; p < bucket.n; p++) {
+						int i = bucket.v[p];
+						if (dist(x, y, nodes.x[i], nodes.y[i]) > limit) continue;
+						if (n == query.length) query = Arrays.copyOf(query, query.length << 1);
+						query[n++] = i;
+					}
+				}
+			}
+			Arrays.sort(query, 0, n);
+			return n;
+		}
+		int edge(ChartPlotterCollisionData data, int a, int b) {
+			if (edgeData != data) {
+				edgeData = data;
+				edges.clear();
+			}
+			int lo = Math.min(a, b);
+			int hi = Math.max(a, b);
+			long key = (long) lo << 32 ^ hi & 0xffffffffL;
+			int clear = edges.get(key);
+			if (clear == LongIntMap.MISS) {
+				clear = clear(data, nodes.x[a], nodes.y[a], nodes.x[b], nodes.y[b]);
+				edges.put(key, clear);
+			}
+			return clear == 1 ? h(nodes.x[a], nodes.y[a], nodes.x[b], nodes.y[b]) : Integer.MIN_VALUE;
+		}
+	}
+	private static final class Bucket {
+		int[] v = new int[8];
+		int n;
+		void add(int i) {
+			if (n == v.length) v = Arrays.copyOf(v, v.length << 1);
+			v[n++] = i;
 		}
 	}
 	static final class Path {
@@ -213,13 +341,17 @@ public final class ChartPlotterSparseRouteFinder {
 			this.pending = pending;
 		}
 		static Path pending() {return new Path(null, null, 0, 0, true);}
-		static Path of(ChartPlotterSparseNodes.Snapshot nodes, int[] prev, int cost, int sx, int sy, int tx, int ty) {
+		static Path of(ChartPlotterSparseNodes.Snapshot nodes, int[] prev, int cost, int sx, int sy, int tx, int ty, BooleanSupplier cancel) {
 			int n = 0;
-			for (int i = 1; i >= 0; i = prev[i]) n++;
+			for (int i = 1; i >= 0; i = prev[i]) {
+				if ((n & 4095) == 0 && cancel.getAsBoolean()) return pending();
+				n++;
+			}
 			int[] x = new int[n];
 			int[] y = new int[n];
 			int p = n;
 			for (int i = 1; i >= 0; i = prev[i]) {
+				if ((p & 4095) == 0 && cancel.getAsBoolean()) return pending();
 				p--;
 				x[p] = ChartPlotterSparseRouteFinder.x(nodes, i, sx, tx);
 				y[p] = ChartPlotterSparseRouteFinder.y(nodes, i, sy, ty);
@@ -235,7 +367,9 @@ public final class ChartPlotterSparseRouteFinder {
 		final int cap;
 		final int band;
 		final int width;
+		final int size;
 		final byte[] mask;
+		final byte maskMark;
 		int cells;
 		private Corridor(int[] x, int[] y, int n, ChartPlotterRouteBounds b, int cap, int band) {
 			this.x = x;
@@ -245,10 +379,13 @@ public final class ChartPlotterSparseRouteFinder {
 			this.cap = cap;
 			this.band = band;
 			width = b.maxX - b.minX + 1;
-			mask = new byte[width * (b.maxY - b.minY + 1)];
-			fill();
+			size = width * (b.maxY - b.minY + 1);
+			MaskBuffer buffer = MASK.get();
+			mask = buffer.reset(size);
+			maskMark = buffer.mark;
 		}
-		private void fill() {
+		private boolean fill(BooleanSupplier cancel) {
+			int seen = 0;
 			for (int i = 1; i < n; i++) {
 				int ax = x[i - 1];
 				int ay = y[i - 1];
@@ -261,24 +398,27 @@ public final class ChartPlotterSparseRouteFinder {
 				for (int py = minY; py <= maxY; py++) {
 					int row = (py - b.minY) * width;
 					for (int px = minX; px <= maxX; px++) {
+						if ((seen++ & REACH_CHECK) == 0 && cancel.getAsBoolean()) return false;
 						if (!nearSegment(px, py, ax, ay, bx, by, band)) continue;
 						int p = px - b.minX + row;
-						if (mask[p] != 0) continue;
-						mask[p] = 1;
+						if (mask[p] == maskMark) continue;
+						mask[p] = maskMark;
 						cells++;
 					}
 				}
 			}
+			return true;
 		}
 	}
 	private static final class Heap {
 		int[] id;
 		int[] f;
 		int n;
-		private Heap(int size) {
-			id = new int[size];
-			f = new int[size];
+		private Heap() {
+			id = new int[16];
+			f = new int[16];
 		}
+		void clear() {n = 0;}
 		boolean hasNext() {return n != 0;}
 		void add(int v, int ff) {
 			if (n == id.length) {
@@ -330,5 +470,21 @@ public final class ChartPlotterSparseRouteFinder {
 			f[i] = vf;
 		}
 		private static boolean less(int af, int ai, int bf, int bi) {return af != bf ? af < bf : ai < bi;}
+	}
+	private static final class MaskBuffer {
+		byte[] data = new byte[0];
+		byte mark;
+		byte[] reset(int n) {
+			if (data.length < n) {
+				data = new byte[n];
+				mark = 1;
+				return data;
+			}
+			if (++mark == 0) {
+				Arrays.fill(data, (byte) 0);
+				mark = 1;
+			}
+			return data;
+		}
 	}
 }

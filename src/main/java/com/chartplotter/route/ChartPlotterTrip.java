@@ -2,6 +2,8 @@ package com.chartplotter.route;
 import com.chartplotter.ChartPlotterRouteEffort;
 import java.util.Arrays;
 public final class ChartPlotterTrip {
+	private static final int[] EMPTY_INT = new int[0];
+	private static final ChartPlotterRoute[] EMPTY_ROUTE = new ChartPlotterRoute[0];
 	private final int generation;
 	private final int[] x;
 	private final int[] y;
@@ -12,13 +14,14 @@ public final class ChartPlotterTrip {
 		this.y = y;
 		this.routes = routes;
 	}
-	static ChartPlotterTrip empty(int generation) {return new ChartPlotterTrip(generation, new int[0], new int[0], new ChartPlotterRoute[0]);}
+	static ChartPlotterTrip empty(int generation) {return new ChartPlotterTrip(generation, EMPTY_INT, EMPTY_INT, EMPTY_ROUTE);}
 	static ChartPlotterTrip single(int generation, int x, int y, ChartPlotterRoute route) {return new ChartPlotterTrip(generation, new int[]{x}, new int[]{y}, new ChartPlotterRoute[]{route});}
 	public int size() {return x.length;}
 	public boolean empty() {return x.length == 0;}
 	public int x(int i) {return x[i];}
 	public int y(int i) {return y[i];}
 	public ChartPlotterRoute route(int i) {return routes[i];}
+	public Object stopKey() {return x;}
 	public ChartPlotterRoute active() {return routes.length == 0 ? null : routes[0];}
 	int generation() {return generation;}
 	ChartPlotterTrip append(int generation, int tx, int ty, ChartPlotterRoute route) {

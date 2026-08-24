@@ -11,6 +11,7 @@ public final class ChartPlotterFeatures {
 	public final boolean worldOverlay;
 	public final boolean minimapOverlay;
 	public final boolean worldMapOverlay;
+	public final boolean scene;
 	public final boolean input;
 	public final boolean tracking;
 	private ChartPlotterFeatures(boolean wc, boolean wp, boolean wch, boolean mc, boolean mp, boolean mch, boolean wmc, boolean wmp, boolean wmch, ChartPlotterCacheOverlay cache, boolean edit, boolean nextTurn) {
@@ -25,7 +26,8 @@ public final class ChartPlotterFeatures {
 		worldOverlay = world || cache.world || nextTurn;
 		minimapOverlay = minimap;
 		worldMapOverlay = worldMap || chart || cache.worldMap || edit;
-		input = routes || edit;
+		scene = worldOverlay || mc || mp;
+		input = chart || edit || minimapOverlay;
 		tracking = routes || cacheView || edit || nextTurn;
 	}
 	public static ChartPlotterFeatures of(ChartPlotterConfig config) {return of(config.worldLineMode().on, config.worldProjectedLineMode().on, config.worldChartLine(), config.minimapLineMode().on, config.minimapProjectedLineMode().on, config.minimapChartLine(), config.worldMapLineMode().on, config.worldMapProjectedLineMode().on, config.worldMapChartLine(), config.cacheOverlay(), config.nodeEditor(), config.courseTurnEta() != ChartPlotterTurnEta.OFF);}

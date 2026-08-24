@@ -18,6 +18,7 @@ public final class ChartPlotterRouteGrid {
 	private static final int STEP = 32;
 	private static final int MODE_TILE = 1;
 	private static final int[] OR = ChartPlotterRouteMoves.OR;
+	private static final ThreadLocal<Buffers> BUFFERS = ThreadLocal.withInitial(Buffers::new);
 	final ChartPlotterCollisionData data;
 	final int radius;
 	final LongIntMap cache;
@@ -27,6 +28,9 @@ public final class ChartPlotterRouteGrid {
 	byte[] cached;
 	byte[] cachedDirs;
 	byte[] raw;
+	int cachedMark;
+	int dirMark;
+	int rawMark;
 	int minX;
 	int minY;
 	int width;
@@ -66,20 +70,24 @@ public final class ChartPlotterRouteGrid {
 		rawWidth = width + r * 2;
 		rawHeight = height + r * 2;
 		long rawArea = (long) rawWidth * rawHeight;
-		if (rawArea > 0 && rawArea <= max) raw = new byte[(int) rawArea];
+		Buffers buffers = BUFFERS.get();
+		raw = rawArea > 0 && rawArea <= max ? buffers.raw((int) rawArea) : null;
+		rawMark = buffers.rawMark;
 		if (dirs > max) return;
 		stride = (int) area;
-		cached = new byte[stride];
-		cachedDirs = new byte[(int) dirs];
+		cached = buffers.cached(stride);
+		cachedMark = buffers.cachedMark;
+		cachedDirs = buffers.dirs((int) dirs);
+		dirMark = buffers.dirMark;
 	}
 	int flag(int x, int y) {
 		if (radius != 0) {
 			int i = index(x, y);
 			if (i >= 0) {
-				int v = cached[i];
+				int v = get(cached, i, cachedMark);
 				if (v != 0) return flag((byte) (v - 1));
 				byte f = inflated(x, y);
-				cached[i] = (byte) (f + 1);
+				put(cached, i, cachedMark, f + 1);
 				return flag(f);
 			}
 			long key = ChartPlotterCollisionData.key(x, y);
@@ -97,10 +105,10 @@ public final class ChartPlotterRouteGrid {
 			int i = index(x, y);
 			if (i >= 0) {
 				int p = i + dir * stride;
-				int v = cachedDirs[p];
+				int v = get(cachedDirs, p, dirMark);
 				if (v != 0) return flag((byte) (v - 1));
 				byte f = stand(x, y, dir);
-				cachedDirs[p] = (byte) (f + 1);
+				put(cachedDirs, p, dirMark, f + 1);
 				return flag(f);
 			}
 			long key = state(x, y, dir);
@@ -115,10 +123,10 @@ public final class ChartPlotterRouteGrid {
 	int baseFlag(int x, int y) {
 		int i = rawIndex(x, y);
 		if (i >= 0) {
-			int v = raw[i];
+			int v = get(raw, i, rawMark);
 			if (v != 0) return flag((byte) (v - 1));
 			byte f = base(x, y);
-			raw[i] = (byte) (f + 1);
+			put(raw, i, rawMark, f + 1);
 			return flag(f);
 		}
 		return rawFlag(x, y);
@@ -190,6 +198,8 @@ public final class ChartPlotterRouteGrid {
 		return dx < 0 || dy < 0 || dx >= rawWidth || dy >= rawHeight ? -1 : dx + dy * rawWidth;
 	}
 	private static int flag(byte v) {return v == 0 ? ChartPlotterCollisionCache.OPEN : v == 1 ? ChartPlotterCollisionCache.UNKNOWN : ChartPlotterCollisionCache.BLOCKED;}
+	private static int get(byte[] data, int i, int mark) {int v = data[i] & 255; return (v & 252) == mark ? v & 3 : 0;}
+	private static void put(byte[] data, int i, int mark, int value) {data[i] = (byte) (mark | value);}
 	private static boolean blocker(int f) {return (f & ChartPlotterCollisionCache.MOVE) != 0;}
 	static final class Footprint {
 		final int minX;
@@ -278,4 +288,32 @@ public final class ChartPlotterRouteGrid {
 	private static int next(int v, int max) {return Math.min(v + STEP, max);}
 	private static boolean edge(int x, int y, int minX, int maxX, int minY, int maxY) {return x == minX || x == maxX || y == minY || y == maxY;}
 	private static int span(int min, int max) {return (max - min + STEP - 1) / STEP + 1;}
+	private static final class Buffers {
+		byte[] raw = new byte[0];
+		byte[] cached = new byte[0];
+		byte[] dirs = new byte[0];
+		int rawMark;
+		int cachedMark;
+		int dirMark;
+		byte[] raw(int n) {
+			if (raw.length < n) {rawMark = 0; return raw = new byte[n];}
+			rawMark = next(raw, rawMark);
+			return raw;
+		}
+		byte[] cached(int n) {
+			if (cached.length < n) {cachedMark = 0; return cached = new byte[n];}
+			cachedMark = next(cached, cachedMark);
+			return cached;
+		}
+		byte[] dirs(int n) {
+			if (dirs.length < n) {dirMark = 0; return dirs = new byte[n];}
+			dirMark = next(dirs, dirMark);
+			return dirs;
+		}
+		private static int next(byte[] data, int mark) {
+			mark = mark + 4 & 252;
+			if (mark == 0) Arrays.fill(data, (byte) 0);
+			return mark;
+		}
+	}
 }

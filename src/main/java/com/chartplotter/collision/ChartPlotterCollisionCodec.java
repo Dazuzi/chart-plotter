@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.StringTokenizer;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -21,12 +22,14 @@ public final class ChartPlotterCollisionCodec {
 		try (DataInputStream in = new DataInputStream(new GZIPInputStream(new BufferedInputStream(new FileInputStream(file))))) {
 			if (in.readByte() != VERSION) return data;
 			int n = in.readInt();
+			if (n < 0) return data;
 			for (int i = 0; i < n; i++) {
+				if ((i & 1023) == 0 && Thread.currentThread().isInterrupted()) return new HashMap<>();
 				int cx = in.readUnsignedShort();
 				int cy = in.readUnsignedShort();
 				long mask = in.readLong();
 				long blocked = in.readLong();
-				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(mask, blocked & mask));
+				if (mask != 0) data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(mask, blocked & mask));
 			}
 		} catch (Exception ignored) {
 		}
@@ -38,17 +41,19 @@ public final class ChartPlotterCollisionCodec {
 		try (BufferedReader in = new BufferedReader(new InputStreamReader(src, StandardCharsets.UTF_8))) {
 			String s;
 			while ((s = in.readLine()) != null) {
-				String[] p = s.trim().split("\\s+");
-				if (p.length == 2 && "data".equals(p[0])) {
-					version = p[1];
+				if (Thread.currentThread().isInterrupted()) return null;
+				StringTokenizer p = new StringTokenizer(s);
+				int n = p.countTokens();
+				if (n == 2 && "data".equals(p.nextToken())) {
+					version = p.nextToken();
 					continue;
 				}
-				if (p.length != 3 && p.length != 4) continue;
-				int cx = Integer.parseInt(p[0]);
-				int cy = Integer.parseInt(p[1]);
+				if (n != 3 && n != 4) continue;
+				int cx = Integer.parseInt(p.nextToken());
+				int cy = Integer.parseInt(p.nextToken());
 				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) continue;
-				long known = p.length == 3 ? -1L : Long.parseUnsignedLong(p[2], 16);
-				long blocked = Long.parseUnsignedLong(p[p.length - 1], 16);
+				long known = n == 3 ? -1L : Long.parseUnsignedLong(p.nextToken(), 16);
+				long blocked = Long.parseUnsignedLong(p.nextToken(), 16);
 				if (known == 0L) continue;
 				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(known, blocked & known));
 			}
@@ -57,17 +62,30 @@ public final class ChartPlotterCollisionCodec {
 		}
 		return version == null ? null : new Text(data, version);
 	}
-	public static boolean write(File dir, File file, Map<Long, Chunk> data) {
+	public static String readVersion(InputStream src) {
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(src, StandardCharsets.UTF_8))) {
+			String s;
+			while ((s = in.readLine()) != null) {
+				StringTokenizer p = new StringTokenizer(s);
+				if (p.countTokens() == 2 && "data".equals(p.nextToken())) return p.nextToken();
+			}
+		} catch (Exception ignored) {
+		}
+		return null;
+	}
+	public static boolean write(File dir, File file, ChartPlotterCollisionData data) {
 		File tmp = new File(dir, "collision.bin.tmp");
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return false;}
 		try (DataOutputStream out = new DataOutputStream(new GZIPOutputStream(new BufferedOutputStream(new FileOutputStream(tmp))))) {
 			out.writeByte(VERSION);
-			out.writeInt(count(data));
-			for (Map.Entry<Long, Chunk> e : data.entrySet()) {
-				Chunk c = e.getValue();
-				if (c.empty()) continue;
-				int cx = (int) (e.getKey() >> 32);
-				int cy = (int) (long) e.getKey();
+			out.writeInt(data.size());
+			for (int i = 0; i < data.capacity(); i++) {
+				if (Thread.currentThread().isInterrupted()) return false;
+				Chunk c = data.chunkAt(i);
+				if (c == null) continue;
+				long key = data.keyAt(i);
+				int cx = (int) (key >> 32);
+				int cy = (int) key;
 				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) return false;
 				out.writeShort(cx);
 				out.writeShort(cy);
@@ -77,12 +95,8 @@ public final class ChartPlotterCollisionCodec {
 		} catch (Exception ignored) {
 			return false;
 		}
+		if (Thread.currentThread().isInterrupted()) return false;
 		return ChartPlotterFiles.replace(tmp, file);
-	}
-	private static int count(Map<Long, Chunk> data) {
-		int n = 0;
-		for (Chunk c : data.values()) if (!c.empty()) n++;
-		return n;
 	}
 	public static final class Text {
 		public final Map<Long, Chunk> data;

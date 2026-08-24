@@ -15,10 +15,7 @@ import net.runelite.api.coords.LocalPoint;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -34,7 +31,7 @@ public final class ChartPlotterRoutes {
 	private static final int PRUNE = 2;
 	private static final int CLEAR_RADIUS = 10;
 	private static final int REACH_RADIUS = 14;
-	private static final int MAX_STOPS = 32;
+	public static final int MAX_STOPS = 32;
 	private static final int MODE_TILE = 1;
 	private static final int ETA_CAP = 600;
 	public static final int PV_NONE = 0;
@@ -51,8 +48,12 @@ public final class ChartPlotterRoutes {
 	private volatile boolean paused;
 	private volatile long rev;
 	private volatile long sparseRev;
-	private ExecutorService exec;
+	private ThreadPoolExecutor exec;
 	private final AtomicReference<Future<?>> work = new AtomicReference<>();
+	private PreviewSlot previewSlot;
+	private ChartPlotterCollisionData previewData;
+	private WorldEntityConfig previewConfig;
+	private ChartPlotterRouteGrid previewGrid;
 	@Inject
 	private ChartPlotterRoutes(ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterSparseNodes sparseNodes, ChartPlotterSailing sailing) {
 		this.config = config;
@@ -139,6 +140,7 @@ public final class ChartPlotterRoutes {
 		ChartPlotterTrip next = trip.updateAndGet(p -> p.remove(id, stop));
 		if (next.empty()) {
 			paused = false;
+			idle();
 			return;
 		}
 		Start s = startTile();
@@ -163,6 +165,7 @@ public final class ChartPlotterRoutes {
 		ChartPlotterTrip next = trip.updateAndGet(p -> p.truncate(id, stop));
 		if (next.empty()) {
 			paused = false;
+			idle();
 			return;
 		}
 		Start s = startTile();
@@ -181,21 +184,38 @@ public final class ChartPlotterRoutes {
 		truncate(stop);
 	}
 	public Preview preview(int tx, int ty, boolean append) {
-		Start s = startTile();
-		if (s == null) return new Preview(PV_NONE, tx, ty);
+		if (!sailing.boarded()) return new Preview(PV_NONE, tx, ty);
+		WorldView top = sailing.top();
+		WorldEntity ship = sailing.ship();
+		if (top == null || ship == null) return new Preview(PV_NONE, tx, ty);
+		LocalPoint loc = sailing.anchorLoc(ship);
+		if (loc == null) return new Preview(PV_NONE, tx, ty);
+		WorldEntityConfig wc = ship.getConfig();
+		int liveX = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
+		int liveY = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
 		ChartPlotterTrip p = trip.get();
-		int sx = append && !p.empty() ? legStartX(p, p.size(), s.x) : s.x;
-		int sy = append && !p.empty() ? legStartY(p, p.size(), s.y) : s.y;
-		if (append && p.size() >= MAX_STOPS) return new Preview(PV_BAD, tx, ty);
-		ChartPlotterRouteGrid grid = grid(collisionCache.snapshot(), s.config);
-		int f = grid.flag(tx, ty);
-		if (f == ChartPlotterCollisionCache.UNKNOWN) return new Preview(PV_SNAP, tx, ty);
-		if (open(f)) return new Preview(append && ChartPlotterMath.chebyshev(sx, sy, tx, ty) <= CLEAR_RADIUS ? PV_BAD : PV_OK, tx, ty);
-		long t = target(grid, tx, ty, sx, sy);
-		int rx = (int) (t >> 32);
-		int ry = (int) t;
-		if (append && ChartPlotterMath.chebyshev(sx, sy, rx, ry) <= CLEAR_RADIUS) return new Preview(PV_BAD, rx, ry);
-		return rx == tx && ry == ty ? new Preview(PV_BAD, tx, ty) : new Preview(PV_SNAP, rx, ry);
+		ChartPlotterCollisionData data = collisionCache.snapshot();
+		int sx = append && !p.empty() ? legStartX(p, p.size(), liveX) : liveX;
+		int sy = append && !p.empty() ? legStartY(p, p.size(), liveY) : liveY;
+		PreviewSlot cached = previewSlot;
+		if (cached != null && cached.same(tx, ty, append, sx, sy, wc, p, data)) return cached.preview;
+		Preview result;
+		if (append && p.size() >= MAX_STOPS) result = new Preview(PV_BAD, tx, ty);
+		else {
+			ChartPlotterRouteGrid grid = previewGrid(data, wc);
+			int f = grid.flag(tx, ty);
+			if (f == ChartPlotterCollisionCache.UNKNOWN) result = new Preview(PV_SNAP, tx, ty);
+			else if (open(f)) result = new Preview(append && ChartPlotterMath.chebyshev(sx, sy, tx, ty) <= CLEAR_RADIUS ? PV_BAD : PV_OK, tx, ty);
+			else {
+				long t = target(grid, tx, ty, sx, sy);
+				int rx = (int) (t >> 32);
+				int ry = (int) t;
+				if (append && ChartPlotterMath.chebyshev(sx, sy, rx, ry) <= CLEAR_RADIUS) result = new Preview(PV_BAD, rx, ry);
+				else result = rx == tx && ry == ty ? new Preview(PV_BAD, tx, ty) : new Preview(PV_SNAP, rx, ry);
+			}
+		}
+		previewSlot = new PreviewSlot(tx, ty, append, sx, sy, wc, p, data, result);
+		return result;
 	}
 	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
 		ChartPlotterTrip p = trip.get();
@@ -269,6 +289,7 @@ public final class ChartPlotterRoutes {
 		paused = false;
 		rev = 0;
 		sparseRev = 0;
+		idle();
 	}
 	public void pause() {
 		if (paused || trip.get().empty()) return;
@@ -277,16 +298,18 @@ public final class ChartPlotterRoutes {
 		paused = true;
 		rev = 0;
 		sparseRev = 0;
+		idle();
 	}
-	public void stop() {
-		clear();
-		if (exec == null) return;
-		exec.shutdownNow();
-		exec = null;
-	}
+	public void stop() {clear();}
 	public ChartPlotterRoute route() {return trip.get().active();}
 	public ChartPlotterTrip trip() {return trip.get();}
 	public boolean canAppend() {return trip.get().size() < MAX_STOPS;}
+	public void clearPreview() {
+		previewSlot = null;
+		previewData = null;
+		previewConfig = null;
+		previewGrid = null;
+	}
 	private LocalPoint routeLoc(WorldView top, WorldEntity ship, LocalPoint loc) {
 		WorldEntityConfig wc = ship.getConfig();
 		if (wc == null) return loc;
@@ -303,13 +326,27 @@ public final class ChartPlotterRoutes {
 		int by = ty;
 		long bs = Long.MAX_VALUE;
 		for (int r = 1; r <= CLEAR_RADIUS; r++) {
-			for (int y = ty - r; y <= ty + r; y++) {
-				for (int x = tx - r; x <= tx + r; x++) {
-					if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) != r || data.flag(x, y) != ChartPlotterCollisionCache.OPEN) continue;
-					long dx = x - sx;
-					long dy = y - sy;
-					long s = dx * dx + dy * dy;
-					if (s >= bs) continue;
+			int minX = tx - r;
+			int minY = ty - r;
+			int maxX = tx + r;
+			int maxY = ty + r;
+			int d = r << 1;
+			for (int i = 0; i < d << 2; i++) {
+				int x;
+				int y;
+				if (i <= d) {
+					x = minX + i;
+					y = minY;
+				} else if (i < d * 3 - 1) {
+					int p = i - d - 1;
+					x = (p & 1) == 0 ? minX : maxX;
+					y = minY + 1 + (p >> 1);
+				} else {
+					x = minX + i - (d * 3 - 1);
+					y = maxY;
+				}
+				long s = targetScore(data, x, y, sx, sy);
+				if (s < bs) {
 					bx = x;
 					by = y;
 					bs = s;
@@ -319,10 +356,24 @@ public final class ChartPlotterRoutes {
 		}
 		return ChartPlotterCollisionData.key(tx, ty);
 	}
+	private static long targetScore(ChartPlotterRouteGrid data, int x, int y, int sx, int sy) {
+		if (data.flag(x, y) != ChartPlotterCollisionCache.OPEN) return Long.MAX_VALUE;
+		long dx = x - sx;
+		long dy = y - sy;
+		return dx * dx + dy * dy;
+	}
 	private static ChartPlotterRouteGrid grid(ChartPlotterCollisionData data, WorldEntityConfig wc) {
 		if (wc == null) return new ChartPlotterRouteGrid(data);
 		ChartPlotterRouteGrid.Footprint fp = new ChartPlotterRouteGrid.Footprint(wc);
 		return ChartPlotterRouteGrid.lazy(data, fp, radius(fp), MODE_TILE);
+	}
+	private ChartPlotterRouteGrid previewGrid(ChartPlotterCollisionData data, WorldEntityConfig config) {
+		if (previewGrid == null || previewData != data || previewConfig != config) {
+			previewData = data;
+			previewConfig = config;
+			previewGrid = grid(data, config);
+		}
+		return previewGrid;
 	}
 	private static int radius(ChartPlotterRouteGrid.Footprint fp) {
 		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
@@ -346,7 +397,10 @@ public final class ChartPlotterRoutes {
 		int id = cancel();
 		paused = false;
 		ChartPlotterTrip next = trip.updateAndGet(p -> p.advance(id));
-		if (next.empty()) return;
+		if (next.empty()) {
+			idle();
+			return;
+		}
 		boolean[] selected = reboard ? all(next) : pending(next);
 		selected[0] = true;
 		ChartPlotterRouteEffort effort = config.routeEffort();
@@ -409,17 +463,30 @@ public final class ChartPlotterRoutes {
 	private int cancel() {
 		int id = seq.incrementAndGet();
 		Future<?> old = work.getAndSet(null);
-		if (old != null) old.cancel(true);
+		if (old != null) {
+			old.cancel(true);
+			ThreadPoolExecutor ex = exec;
+			if (ex != null && old instanceof Runnable) ex.remove((Runnable) old);
+		}
 		activeBusy = false;
 		return id;
 	}
 	private void start() {
 		if (exec != null) return;
-		exec = Executors.newSingleThreadExecutor(r -> {
+		exec = new ThreadPoolExecutor(1, 1, 5, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), r -> {
 			Thread t = new Thread(r, "chart-plotter-route");
 			t.setDaemon(true);
 			return t;
 		});
+		exec.allowCoreThreadTimeOut(true);
+	}
+	private void idle() {
+		ThreadPoolExecutor ex = exec;
+		if (ex != null) {
+			ex.shutdownNow();
+			exec = null;
+		}
+		clearPreview();
 	}
 	private static boolean[] pending(ChartPlotterTrip p) {
 		boolean[] selected = new boolean[p.size()];
@@ -467,6 +534,29 @@ public final class ChartPlotterRoutes {
 			this.heading = heading;
 			this.reverse = reverse;
 		}
+	}
+	private static final class PreviewSlot {
+		final int tx;
+		final int ty;
+		final boolean append;
+		final int sx;
+		final int sy;
+		final WorldEntityConfig config;
+		final Object stops;
+		final ChartPlotterCollisionData data;
+		final Preview preview;
+		private PreviewSlot(int tx, int ty, boolean append, int sx, int sy, WorldEntityConfig config, ChartPlotterTrip trip, ChartPlotterCollisionData data, Preview preview) {
+			this.tx = tx;
+			this.ty = ty;
+			this.append = append;
+			this.sx = sx;
+			this.sy = sy;
+			this.config = config;
+			stops = trip.stopKey();
+			this.data = data;
+			this.preview = preview;
+		}
+		boolean same(int tx, int ty, boolean append, int sx, int sy, WorldEntityConfig config, ChartPlotterTrip trip, ChartPlotterCollisionData data) {return this.tx == tx && this.ty == ty && this.append == append && this.sx == sx && this.sy == sy && this.config == config && stops == trip.stopKey() && this.data == data;}
 	}
 	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max) {
 		return turn(r, bx, by, speed, accel, max, 0);

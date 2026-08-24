@@ -7,10 +7,11 @@ final class LongIntMap {
 	byte[] u;
 	int n;
 	int mask;
+	byte mark = 1;
 	LongIntMap(int size) {init(size);}
 	int get(long key) {
 		int i = hash(key) & mask;
-		while (u[i] != 0) {
+		while (u[i] == mark) {
 			if (k[i] == key) return v[i];
 			i = i + 1 & mask;
 		}
@@ -19,20 +20,23 @@ final class LongIntMap {
 	void put(long key, int val) {
 		if (n * 2 >= k.length) grow();
 		int i = hash(key) & mask;
-		while (u[i] != 0) {
+		while (u[i] == mark) {
 			if (k[i] == key) {
 				v[i] = val;
 				return;
 			}
 			i = i + 1 & mask;
 		}
-		u[i] = 1;
+		u[i] = mark;
 		k[i] = key;
 		v[i] = val;
 		n++;
 	}
 	void clear() {
-		Arrays.fill(u, (byte) 0);
+		if (++mark == 0) {
+			Arrays.fill(u, (byte) 0);
+			mark = 1;
+		}
 		n = 0;
 	}
 	private void init(int size) {
@@ -43,14 +47,16 @@ final class LongIntMap {
 		u = new byte[c];
 		mask = c - 1;
 		n = 0;
+		mark = 1;
 	}
 	private void grow() {
 		long[] ok = k;
 		int[] ov = v;
 		byte[] ou = u;
+		byte om = mark;
 		init(k.length << 1);
 		for (int i = 0; i < ok.length; i++) {
-			if (ou[i] != 0) put(ok[i], ov[i]);
+			if (ou[i] == om) put(ok[i], ov[i]);
 		}
 	}
 	private static int hash(long x) {

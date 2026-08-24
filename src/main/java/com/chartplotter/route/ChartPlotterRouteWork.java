@@ -13,27 +13,50 @@ public final class ChartPlotterRouteWork {
 	private static final int INITIAL_SIZE = 1 << 15;
 	private static final int[] DX = ChartPlotterRouteMoves.DX;
 	private ChartPlotterRouteWork() {}
+	private static int next(byte[] data, int mark) {
+		mark = mark + 4 & 252;
+		if (mark == 0) Arrays.fill(data, (byte) 0);
+		return mark;
+	}
+	private static int get(byte[] data, int i, int mark) {int v = data[i] & 255; return (v & 252) == mark ? v & 3 : 0;}
+	private static void put(byte[] data, int i, int mark, int value) {data[i] = (byte) (mark | value);}
 	static final class Work {
-		final Nodes ba = new Nodes();
-		final BucketHeap bucket = new BucketHeap(ba);
-		final LongIntMap bg = new LongIntMap(INITIAL_SIZE);
-		final DenseCost bbest = new DenseCost();
-		final CompactCost cbest = new CompactCost();
-		final BaseMoveCache bmoves = new BaseMoveCache();
-		final DomCost dom = new DomCost();
+		Nodes ba;
+		BucketHeap bucket;
+		LongIntMap bg;
+		DenseCost bbest;
+		CompactCost cbest;
+		BaseMoveCache bmoves;
+		DomCost dom;
 		final int[] tileDelta = new int[DX.length];
 		final int[] bestDelta = new int[DX.length];
 		final int[] moveDelta = new int[DX.length];
-		final Nodes a = new Nodes();
-		final Heap aq = new Heap(a);
-		final LongIntMap ag = new LongIntMap(INITIAL_SIZE);
-		final DenseBest best = new DenseBest();
-		final MoveCache moves = new MoveCache();
+		Nodes a;
+		Heap aq;
+		LongIntMap ag;
+		DenseBest best;
+		MoveCache moves;
 		void clear() {
+			if (a == null) {
+				a = new Nodes();
+				aq = new Heap(a);
+				ag = new LongIntMap(INITIAL_SIZE);
+				best = new DenseBest();
+				moves = new MoveCache();
+			}
 			a.clear();
 			aq.clear();
 		}
 		void clearBase() {
+			if (ba == null) {
+				ba = new Nodes();
+				bucket = new BucketHeap(ba);
+				bg = new LongIntMap(INITIAL_SIZE);
+				bbest = new DenseCost();
+				cbest = new CompactCost();
+				bmoves = new BaseMoveCache();
+				dom = new DomCost();
+			}
 			ba.clear();
 			bucket.clear();
 		}
@@ -248,6 +271,7 @@ public final class ChartPlotterRouteWork {
 		int width;
 		int area;
 		int mode;
+		int mark;
 		boolean on;
 		void reset(ChartPlotterRouteBounds b, ChartPlotterSparseRouteFinder.Corridor c) {
 			minX = b.minX;
@@ -263,8 +287,8 @@ public final class ChartPlotterRouteWork {
 			}
 			if (n <= EDGE_MAX) {
 				area = (int) cells;
-				if (v == null || v.length < n) v = new byte[(int) n];
-				else Arrays.fill(v, 0, (int) n, (byte) 0);
+				if (v == null || v.length < n) {v = new byte[(int) n]; mark = 0;}
+				else mark = next(v, mark);
 				mode = MC_DENSE;
 				on = true;
 				return;
@@ -273,13 +297,13 @@ public final class ChartPlotterRouteWork {
 				long compact = (long) c.cells * DX.length;
 				if (compact > 0 && compact <= EDGE_MAX) {
 					area = c.cells;
-					if (v == null || v.length < compact) v = new byte[(int) compact];
-					else Arrays.fill(v, 0, (int) compact, (byte) 0);
-					if (index == null || index.length < c.mask.length) index = new int[c.mask.length];
-					else Arrays.fill(index, 0, c.mask.length, 0);
+					if (v == null || v.length < compact) {v = new byte[(int) compact]; mark = 0;}
+					else mark = next(v, mark);
+					if (index == null || index.length < c.size) index = new int[c.size];
+					else Arrays.fill(index, 0, c.size, 0);
 					int p = 0;
-					for (int i = 0; i < c.mask.length; i++) {
-						if (c.mask[i] != 0) index[i] = ++p;
+					for (int i = 0; i < c.size; i++) {
+						if (c.mask[i] == c.maskMark) index[i] = ++p;
 					}
 					mode = MC_COMPACT;
 					on = true;
@@ -293,7 +317,7 @@ public final class ChartPlotterRouteWork {
 		}
 		int get(int x, int y, int dir) {
 			if (mode == MC_SPARSE) return sparse.get(state(x, y, dir));
-			int p = v[x - minX + (y - minY) * width + dir * area];
+			int p = ChartPlotterRouteWork.get(v, x - minX + (y - minY) * width + dir * area, mark);
 			return p == 0 ? LongIntMap.MISS : p - 2;
 		}
 		void put(int x, int y, int dir, int p) {
@@ -301,8 +325,10 @@ public final class ChartPlotterRouteWork {
 				if (sparse.n < SPARSE_MOVE_MAX) sparse.put(state(x, y, dir), p);
 				return;
 			}
-			v[x - minX + (y - minY) * width + dir * area] = (byte) (p + 2);
+			ChartPlotterRouteWork.put(v, x - minX + (y - minY) * width + dir * area, mark, p + 2);
 		}
+		int getAt(int i) {int p = ChartPlotterRouteWork.get(v, i, mark); return p == 0 ? LongIntMap.MISS : p - 2;}
+		void putAt(int i, int p) {ChartPlotterRouteWork.put(v, i, mark, p + 2);}
 	}
 	static final class MoveCache {
 		byte[] v;
@@ -312,6 +338,7 @@ public final class ChartPlotterRouteWork {
 		int width;
 		int area;
 		int mode;
+		int mark;
 		boolean on;
 		void reset(ChartPlotterRouteBounds b) {
 			minX = b.minX;
@@ -327,8 +354,8 @@ public final class ChartPlotterRouteWork {
 			}
 			if (n <= DENSE_MAX) {
 				area = (int) cells;
-				if (v == null || v.length < n) v = new byte[(int) n];
-				else Arrays.fill(v, 0, (int) n, (byte) 0);
+				if (v == null || v.length < n) {v = new byte[(int) n]; mark = 0;}
+				else mark = next(v, mark);
 				mode = MC_DENSE;
 				on = true;
 				return;
@@ -340,7 +367,7 @@ public final class ChartPlotterRouteWork {
 		}
 		int get(int x, int y, int dir) {
 			if (mode == MC_SPARSE) return sparse.get(state(x, y, dir));
-			int p = v[x - minX + (y - minY) * width + dir / 2 * area];
+			int p = ChartPlotterRouteWork.get(v, x - minX + (y - minY) * width + dir / 2 * area, mark);
 			return p == 0 ? LongIntMap.MISS : p - 2;
 		}
 		void put(int x, int y, int dir, int p) {
@@ -348,7 +375,7 @@ public final class ChartPlotterRouteWork {
 				if (sparse.n < SPARSE_MOVE_MAX) sparse.put(state(x, y, dir), p);
 				return;
 			}
-			v[x - minX + (y - minY) * width + dir / 2 * area] = (byte) (p + 2);
+			ChartPlotterRouteWork.put(v, x - minX + (y - minY) * width + dir / 2 * area, mark, p + 2);
 		}
 	}
 	static final class Nodes {
