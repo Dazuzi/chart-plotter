@@ -3,6 +3,7 @@ package com.chartplotter.runtime;
 import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterWorldMapClick;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
+import com.chartplotter.overlay.ChartPlotterInfoOverlay;
 import com.chartplotter.overlay.ChartPlotterMinimapOverlay;
 import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
@@ -40,6 +41,7 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterOverlay overlay;
 	@Inject private ChartPlotterMinimapOverlay minimapOverlay;
 	@Inject private ChartPlotterWorldMapOverlay worldMapOverlay;
+	@Inject private ChartPlotterInfoOverlay infoOverlay;
 	@Inject private MouseManager mouseManager;
 	@Inject private ChartPlotterConfig config;
 	@Inject private ChartPlotterCollisionCache collisionCache;
@@ -190,6 +192,8 @@ public final class ChartPlotterRuntime {
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
+		overlayManager.remove(infoOverlay);
+		infoOverlay.clear();
 		overlay.clear();
 		minimapOverlay.clear();
 		if (inputRegistered) {
@@ -209,6 +213,7 @@ public final class ChartPlotterRuntime {
 		routes.stop();
 		sparseNodes.stop();
 		sailing.reset();
+		sailing.average(false);
 		projection.clear();
 	}
 	public void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
@@ -305,6 +310,7 @@ public final class ChartPlotterRuntime {
 		}
 		LocalPoint loc = sailing.anchorLoc(ship);
 		if (loc == null) {
+			sailing.clear();
 			scene.clear();
 			projection.clear();
 			collision(false, null);
@@ -356,6 +362,8 @@ public final class ChartPlotterRuntime {
 		ChartPlotterFeatures prev = features;
 		ChartPlotterFeatures next = ChartPlotterFeatures.of(config);
 		features = next;
+		sailing.average(config.infoTripEta() || config.infoStopEta());
+		infoOverlay.clear();
 		if (next.worldOverlay != prev.worldOverlay) {
 			if (next.worldOverlay) overlayManager.add(overlay);
 			else {
@@ -373,6 +381,10 @@ public final class ChartPlotterRuntime {
 		if (next.worldMapOverlay != prev.worldMapOverlay) {
 			if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
 			else overlayManager.remove(worldMapOverlay);
+		}
+		if (next.infoOverlay != prev.infoOverlay) {
+			if (next.infoOverlay) overlayManager.add(infoOverlay);
+			else overlayManager.remove(infoOverlay);
 		}
 		if (next.scene && !prev.scene) {
 			updateScene();

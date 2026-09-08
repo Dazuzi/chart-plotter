@@ -4,6 +4,47 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 public class ChartPlotterTripTest {
 	@Test
+	public void stopNumberAdvancesWhileTotalRemainsStable() {
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40)).append(3, 50, 60, route(30, 40, 50, 60));
+		ChartPlotterTrip original = trip;
+		for (int i = 1; i <= 3; i++) {
+			assertEquals(i, trip.stopNumber());
+			assertEquals(3, trip.totalStops());
+			trip = trip.advance(i + 3);
+		}
+		assertTrue(trip.empty());
+		assertEquals(0, trip.stopNumber());
+		assertEquals(0, trip.totalStops());
+		assertEquals(1, original.stopNumber());
+		assertEquals(3, original.totalStops());
+		trip = ChartPlotterTrip.single(7, 70, 80, route(50, 60, 70, 80));
+		assertEquals(1, trip.stopNumber());
+		assertEquals(1, trip.totalStops());
+	}
+	@Test
+	public void editingRemainingStopsUpdatesTotalWithoutAdvancingProgress() {
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40)).append(3, 50, 60, route(30, 40, 50, 60)).advance(4);
+		trip = trip.append(5, 70, 80, route(50, 60, 70, 80));
+		assertEquals(2, trip.stopNumber());
+		assertEquals(4, trip.totalStops());
+		ChartPlotterTrip removed = trip.remove(6, 0);
+		assertEquals(2, removed.stopNumber());
+		assertEquals(3, removed.totalStops());
+		ChartPlotterTrip truncated = trip.truncate(7, 1);
+		assertEquals(2, truncated.stopNumber());
+		assertEquals(2, truncated.totalStops());
+		assertEquals(0, truncated.remove(8, 0).totalStops());
+		assertEquals(0, trip.truncate(9, 0).totalStops());
+	}
+	@Test
+	public void movingAndReplanningStopsPreservesProgress() {
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40)).append(3, 50, 60, route(30, 40, 50, 60)).advance(4);
+		trip = trip.move(5, 0, 35, 45).pending(6, 10, 20, 0, ChartPlotterRouteEffort.HIGH.weight, ChartPlotterRouteEffort.HIGH, new boolean[]{true, true});
+		trip = trip.route(0, route(10, 20, 35, 45)).generation(7);
+		assertEquals(2, trip.stopNumber());
+		assertEquals(3, trip.totalStops());
+	}
+	@Test
 	public void truncatesClickedStopAndTail() {
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20));
 		trip = trip.append(2, 30, 40, route(10, 20, 30, 40));
@@ -104,6 +145,32 @@ public class ChartPlotterTripTest {
 		assertTrue(trip.route(1).start(10, 20));
 		assertEquals(30, trip.route(1).tx);
 		assertEquals(40, trip.route(1).ty);
+	}
+	@Test
+	public void remainingDistanceFollowsTurnsAndIncludesLaterStops() {
+		ChartPlotterRoute first = ChartPlotterRoute.ok(0, 0, 3, 4, new int[]{0, 3, 3}, new int[]{0, 0, 4}, 3, 0, 250);
+		ChartPlotterRoute second = ChartPlotterRoute.ok(3, 4, 6, 8, new int[]{3, 6}, new int[]{4, 8}, 2, 0, 250);
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 3, 4, first).append(2, 6, 8, second);
+		assertEquals(6, trip.distance(1.5, 0.5, false), 1e-9);
+		assertEquals(11, trip.distance(1.5, 0.5, true), 1e-9);
+		assertEquals(5, trip.advance(3).distance(3.5, 4.5, true), 1e-9);
+	}
+	@Test
+	public void unresolvedLaterLegDoesNotHideNextStopDistance() {
+		ChartPlotterRoute first = ChartPlotterRoute.ok(0, 0, 3, 4, new int[]{0, 3}, new int[]{0, 4}, 2, 0, 250);
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 3, 4, first).append(2, 6, 8, route(3, 4, 6, 8));
+		assertEquals(5, trip.distance(0.5, 0.5, false), 1e-9);
+		assertTrue(Double.isNaN(trip.distance(0.5, 0.5, true)));
+		assertTrue(Double.isNaN(trip.route(1, null).distance(0.5, 0.5, true)));
+		assertTrue(Double.isNaN(trip.route(0, ChartPlotterRoute.none(0, 0, 3, 4, 0, 250)).distance(0.5, 0.5, false)));
+		assertTrue(Double.isNaN(ChartPlotterTrip.empty(1).distance(0.5, 0.5, true)));
+	}
+	@Test
+	public void remainingDistanceHandlesPrunedFinalPoint() {
+		ChartPlotterRoute route = ChartPlotterRoute.ok(3, 4, 3, 4, new int[]{3}, new int[]{4}, 1, 0, 250);
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 3, 4, route);
+		assertEquals(1.5, trip.distance(2, 4.5, true), 1e-9);
+		assertEquals(0, trip.distance(3.5, 4.5, true), 0);
 	}
 	private static ChartPlotterRoute route(int sx, int sy, int tx, int ty) {return ChartPlotterRoute.pending(sx, sy, tx, ty, 0, 250);}
 }

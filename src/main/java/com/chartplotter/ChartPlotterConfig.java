@@ -25,7 +25,19 @@ public interface ChartPlotterConfig extends Config {
 	@Alpha
 	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Line section after the first blocked tile.", section = colorsSection, position = 3)
 	default Color blockedColor() {return DEFAULT_BLOCKED_COLOR;}
-	@ConfigSection(name = "World", description = "World overlay settings.", position = 1)
+	@ConfigSection(name = "Info panel", description = "Movable sailing information panel.", position = 1)
+	String infoSection = "infoSection";
+	@ConfigItem(keyName = "infoStopProgress", name = "Stop progress", description = "Show the stop you are heading toward out of the trip total; the total updates when stops are added or removed.", section = infoSection, position = 0)
+	default boolean infoStopProgress() {return false;}
+	@ConfigItem(keyName = "infoTripEta", name = "Trip ETA", description = "Estimate sailing time through all remaining stops using the last 5 ticks of speed; excludes time spent at stops.", section = infoSection, position = 1)
+	default boolean infoTripEta() {return false;}
+	@ConfigItem(keyName = "infoStopEta", name = "Next stop", description = "Estimate sailing time to the next stop using the last 5 ticks of speed.", section = infoSection, position = 2)
+	default boolean infoStopEta() {return false;}
+	@ConfigItem(keyName = "infoTurnEta", name = "Next turn", description = "Show time to the next turn before the next stop in the info panel.", section = infoSection, position = 3)
+	default boolean infoTurnEta() {return false;}
+	@ConfigItem(keyName = "infoBoatSpeed", name = "Speed", description = "Show current measured boat speed in tiles per tick, including when no trip is charted.", section = infoSection, position = 4)
+	default boolean infoBoatSpeed() {return false;}
+	@ConfigSection(name = "World", description = "World overlay settings.", position = 2)
 	String worldSection = "worldSection";
 	@ConfigItem(keyName = "worldLineMode", name = "Current line", description = "Draw the active heading or selected course; blocked extends past collisions.", section = worldSection, position = 0)
 	default ChartPlotterLineMode worldLineMode() {return ChartPlotterLineMode.BLOCKED;}
@@ -36,7 +48,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "lineWidth", name = "Line width", description = "Stroke width in pixels.", section = worldSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int worldLineWidth() {return 1;}
-	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 2)
+	@ConfigSection(name = "Minimap", description = "Minimap overlay settings.", position = 3)
 	String minimapSection = "minimapSection";
 	@ConfigItem(keyName = "minimapLineMode", name = "Current line", description = "Draw the active heading or selected course; blocked extends past collisions.", section = minimapSection, position = 0)
 	default ChartPlotterLineMode minimapLineMode() {return ChartPlotterLineMode.OFF;}
@@ -47,7 +59,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "minimapLineWidth", name = "Line width", description = "Stroke width in pixels.", section = minimapSection, position = 3)
 	@Range(min = 1, max = 10)
 	default int minimapLineWidth() {return 1;}
-	@ConfigSection(name = "World Map", description = "World map overlay settings.", position = 3)
+	@ConfigSection(name = "World Map", description = "World map overlay settings.", position = 4)
 	String worldMapSection = "worldMapSection";
 	@ConfigItem(keyName = "worldMapLineMode", name = "Current line", description = "Draw the active heading or selected course; blocked extends past collisions.", section = worldMapSection, position = 0)
 	default ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.ON;}
@@ -62,7 +74,7 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterWorldMapClick worldMapCourseClick() {return ChartPlotterWorldMapClick.CLICK;}
 	@ConfigItem(keyName = "worldMapTripHints", name = "Trip control hints", description = "Show trip controls while hovering a destination.", section = worldMapSection, position = 5)
 	default boolean worldMapTripHints() {return true;}
-	@ConfigSection(name = "Charting", description = "Trip route settings.", position = 4)
+	@ConfigSection(name = "Charting", description = "Trip route settings.", position = 5)
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
@@ -72,7 +84,7 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.SECONDS;}
 	@ConfigItem(keyName = "courseTurnAlert", name = "Turn alert", description = "Notify when the next turn is under 5 seconds away while unfocused.", section = chartingSection, position = 3)
 	default boolean courseTurnAlert() {return true;}
-	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 5, closedByDefault = true)
+	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 6, closedByDefault = true)
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision-cache coverage.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}

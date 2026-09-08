@@ -5,24 +5,48 @@ public final class ChartPlotterTrip {
 	private static final int[] EMPTY_INT = new int[0];
 	private static final ChartPlotterRoute[] EMPTY_ROUTE = new ChartPlotterRoute[0];
 	private final int generation;
+	private final int completed;
 	private final int[] x;
 	private final int[] y;
 	private final ChartPlotterRoute[] routes;
-	private ChartPlotterTrip(int generation, int[] x, int[] y, ChartPlotterRoute[] routes) {
+	private ChartPlotterTrip(int generation, int completed, int[] x, int[] y, ChartPlotterRoute[] routes) {
 		this.generation = generation;
+		this.completed = completed;
 		this.x = x;
 		this.y = y;
 		this.routes = routes;
 	}
-	static ChartPlotterTrip empty(int generation) {return new ChartPlotterTrip(generation, EMPTY_INT, EMPTY_INT, EMPTY_ROUTE);}
-	static ChartPlotterTrip single(int generation, int x, int y, ChartPlotterRoute route) {return new ChartPlotterTrip(generation, new int[]{x}, new int[]{y}, new ChartPlotterRoute[]{route});}
+	static ChartPlotterTrip empty(int generation) {return new ChartPlotterTrip(generation, 0, EMPTY_INT, EMPTY_INT, EMPTY_ROUTE);}
+	static ChartPlotterTrip single(int generation, int x, int y, ChartPlotterRoute route) {return new ChartPlotterTrip(generation, 0, new int[]{x}, new int[]{y}, new ChartPlotterRoute[]{route});}
 	public int size() {return x.length;}
 	public boolean empty() {return x.length == 0;}
+	public int stopNumber() {return empty() ? 0 : completed + 1;}
+	public int totalStops() {return completed + x.length;}
 	public int x(int i) {return x[i];}
 	public int y(int i) {return y[i];}
 	public ChartPlotterRoute route(int i) {return routes[i];}
 	public Object stopKey() {return x;}
 	public ChartPlotterRoute active() {return routes.length == 0 ? null : routes[0];}
+	public double distance(double bx, double by, boolean total) {
+		if (empty()) return Double.NaN;
+		double distance = 0;
+		for (int i = 0; i < (total ? routes.length : 1); i++) {
+			ChartPlotterRoute route = routes[i];
+			if (route == null || route.status != ChartPlotterRoute.OK || route.n == 0) return Double.NaN;
+			if (i > 0) {
+				bx = route.x[0] + 0.5;
+				by = route.y[0] + 0.5;
+			}
+			for (int j = Math.min(1, route.n - 1); j < route.n; j++) {
+				double x = route.x[j] + 0.5;
+				double y = route.y[j] + 0.5;
+				distance += Math.hypot(x - bx, y - by);
+				bx = x;
+				by = y;
+			}
+		}
+		return distance;
+	}
 	int generation() {return generation;}
 	ChartPlotterTrip append(int generation, int tx, int ty, ChartPlotterRoute route) {
 		int n = x.length;
@@ -32,11 +56,11 @@ public final class ChartPlotterTrip {
 		nx[n] = tx;
 		ny[n] = ty;
 		nr[n] = route;
-		return new ChartPlotterTrip(generation, nx, ny, nr);
+		return new ChartPlotterTrip(generation, completed, nx, ny, nr);
 	}
 	ChartPlotterTrip truncate(int generation, int n) {
 		if (n <= 0) return empty(generation);
-		return new ChartPlotterTrip(generation, Arrays.copyOf(x, n), Arrays.copyOf(y, n), Arrays.copyOf(routes, n));
+		return new ChartPlotterTrip(generation, completed, Arrays.copyOf(x, n), Arrays.copyOf(y, n), Arrays.copyOf(routes, n));
 	}
 	ChartPlotterTrip remove(int generation, int i) {
 		if (x.length <= 1) return empty(generation);
@@ -51,20 +75,20 @@ public final class ChartPlotterTrip {
 		System.arraycopy(y, i + 1, ny, i, n - i);
 		System.arraycopy(routes, i + 1, nr, i, n - i);
 		if (i < n) nr[i] = null;
-		return new ChartPlotterTrip(generation, nx, ny, nr);
+		return new ChartPlotterTrip(generation, completed, nx, ny, nr);
 	}
 	ChartPlotterTrip advance(int generation) {
 		if (x.length <= 1) return empty(generation);
-		return new ChartPlotterTrip(generation, Arrays.copyOfRange(x, 1, x.length), Arrays.copyOfRange(y, 1, y.length), Arrays.copyOfRange(routes, 1, routes.length));
+		return new ChartPlotterTrip(generation, completed + 1, Arrays.copyOfRange(x, 1, x.length), Arrays.copyOfRange(y, 1, y.length), Arrays.copyOfRange(routes, 1, routes.length));
 	}
 	ChartPlotterTrip move(int generation, int i, int tx, int ty) {
 		int[] nx = x.clone();
 		int[] ny = y.clone();
 		nx[i] = tx;
 		ny[i] = ty;
-		return new ChartPlotterTrip(generation, nx, ny, routes);
+		return new ChartPlotterTrip(generation, completed, nx, ny, routes);
 	}
-	ChartPlotterTrip generation(int generation) {return new ChartPlotterTrip(generation, x, y, routes);}
+	ChartPlotterTrip generation(int generation) {return new ChartPlotterTrip(generation, completed, x, y, routes);}
 	ChartPlotterTrip pending(int generation, int sx, int sy, int turnBias, int weight, ChartPlotterRouteEffort effort, boolean[] selected) {
 		ChartPlotterRoute[] nr = routes.clone();
 		for (int i = 0; i < nr.length; i++) {
@@ -73,11 +97,11 @@ public final class ChartPlotterTrip {
 			int ay = i == 0 ? sy : y[i - 1];
 			nr[i] = ChartPlotterRoute.pending(ax, ay, x[i], y[i], turnBias, weight).effort(effort);
 		}
-		return new ChartPlotterTrip(generation, x, y, nr);
+		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
 	ChartPlotterTrip route(int i, ChartPlotterRoute route) {
 		ChartPlotterRoute[] nr = routes.clone();
 		nr[i] = route;
-		return new ChartPlotterTrip(generation, x, y, nr);
+		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
 }

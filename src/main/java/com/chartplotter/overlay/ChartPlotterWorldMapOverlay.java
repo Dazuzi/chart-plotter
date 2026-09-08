@@ -72,6 +72,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private final int[] colorKey = new int[8];
 	private final Color[][] colorCache = new Color[colorKey.length][];
 	private final String[] stopLabels = new String[ChartPlotterRoutes.MAX_STOPS];
+	private int stopLabelStart;
 	private final int[] tile = new int[2];
 	private int colorNext;
 	private boolean previewActive;
@@ -307,6 +308,11 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.drawLine(x + r, y - r, x - r, y + r);
 	}
 	private void drawTrip(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, boolean tail) {
+		int first = config.infoStopProgress() ? trip.stopNumber() : 1;
+		if (stopLabelStart != first) {
+			stopLabelStart = first;
+			Arrays.fill(stopLabels, null);
+		}
 		Point mouse = hover(clip);
 		int moving = draggedStop >= 0 && draggedStop < trip.size() && trip.x(draggedStop) == draggedX && trip.y(draggedStop) == draggedY ? draggedStop : -1;
 		Point drag = draggedPoint;
@@ -338,10 +344,10 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			boolean removing = remove >= 0 && (tail ? i >= remove : i == remove);
 			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : removing ? REMOVE : routeColor(r, i > 0);
 			marker(g, px, py, c);
-			if (trip.size() > 1) label(g, px, py, i + 1, c);
+			if (trip.size() > 1 || first > 1) label(g, px, py, i, c);
 			if (r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, px, py, r.text());
 		}
-		if (moving >= 0 && movedPoint) tip(g, s.r, movedPX, movedPY, moved == null ? "Release to cancel" : "Release to move stop " + (moving + 1));
+		if (moving >= 0 && movedPoint) tip(g, s.r, movedPX, movedPY, moved == null ? "Release to cancel" : "Release to move stop " + (moving + first));
 		else if (remove >= 0) {
 			tripTip(g, s.r, map.pointX(s, trip.x(remove), 0.5), map.pointY(s, trip.y(remove), 0.5), trip, remove);
 		}
@@ -353,8 +359,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			if (status != null) tip(g, bounds, x, y, status);
 			return;
 		}
-		int n = stop + 1;
-		boolean tail = n < trip.size();
+		int n = stop + stopLabelStart;
+		boolean tail = stop + 1 < trip.size();
 		boolean sailing = plugin.isSailing();
 		boolean append = sailing && !tail && plugin.canAppend();
 		String[] lines = new String[(status == null ? 0 : 1) + 1 + (tail || append ? 1 : 0) + (sailing ? 1 : 0)];
@@ -370,9 +376,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Color c = r == null ? STATUS_WARN : r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
 		return future ? faded(c) : c;
 	}
-	private void label(Graphics2D g, int px, int py, int n, Color c) {
-		String text = stopLabels[n - 1];
-		if (text == null) stopLabels[n - 1] = text = Integer.toString(n);
+	private void label(Graphics2D g, int px, int py, int i, Color c) {
+		String text = stopLabels[i];
+		if (text == null) stopLabels[i] = text = Integer.toString(stopLabelStart + i);
 		int x = px + 10;
 		int y = py + g.getFontMetrics().getAscent() / 2;
 		g.setColor(alpha(Color.BLACK, c.getAlpha()));

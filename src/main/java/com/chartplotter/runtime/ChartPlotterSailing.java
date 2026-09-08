@@ -23,6 +23,7 @@ public final class ChartPlotterSailing {
 	private int lastMoveMode = 2;
 	private double speed;
 	private double lastSpeed;
+	private volatile SpeedAverage speedAverage;
 	private int motionHold;
 	private int stillTicks;
 	private int turnDir;
@@ -42,7 +43,7 @@ public final class ChartPlotterSailing {
 	private long motionTime;
 	private boolean potentialBlocked;
 	@Inject
-	private ChartPlotterSailing(Client client) {
+	ChartPlotterSailing(Client client) {
 		this.client = client;
 	}
 	public void sync() {
@@ -114,13 +115,19 @@ public final class ChartPlotterSailing {
 				else stillTicks = 0;
 				double s = ChartPlotterMath.speed(vx, vy);
 				double a = s - lastSpeed;
-				if (a < 10) {
-					speed = s;
-					lastSpeed = speed;
-				}
+				if (a < 10) sample(s);
 			}
 		} else if (!skip) lastAngle = heading(ship);
 		lastLoc = loc;
+	}
+	public void average(boolean enabled) {
+		if (enabled == (speedAverage == null)) speedAverage = enabled ? new SpeedAverage() : null;
+	}
+	void sample(double value) {
+		speed = value;
+		lastSpeed = value;
+		SpeedAverage average = speedAverage;
+		if (average != null) average.add(value);
 	}
 	public void setCourse(Point m) {
 		if (!boarded) return;
@@ -172,6 +179,10 @@ public final class ChartPlotterSailing {
 	public int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
 	public int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
 	public double speed() {return speed;}
+	public double averageSpeed() {
+		SpeedAverage average = speedAverage;
+		return average == null ? 0 : average.value;
+	}
 	public double accel() {return accel;}
 	public int moveMode() {return moveMode;}
 	public int turnDir() {return turnDir;}
@@ -200,6 +211,8 @@ public final class ChartPlotterSailing {
 		shipCache = null;
 	}
 	private void resetMotion() {
+		SpeedAverage average = speedAverage;
+		if (average != null) average.clear();
 		speed = 0;
 		lastSpeed = 0;
 		motionTime = 0;
@@ -224,5 +237,26 @@ public final class ChartPlotterSailing {
 			if (wv != null && wv.getId() == pid) return we;
 		}
 		return null;
+	}
+	private static final class SpeedAverage {
+		private final double[] samples = new double[5];
+		private double total;
+		private int count;
+		private int index;
+		private volatile double value;
+		void add(double speed) {
+			if (count == samples.length) total -= samples[index];
+			else count++;
+			total += speed;
+			samples[index] = speed;
+			index = (index + 1) % samples.length;
+			value = total / count;
+		}
+		void clear() {
+			total = 0;
+			count = 0;
+			index = 0;
+			value = 0;
+		}
 	}
 }
