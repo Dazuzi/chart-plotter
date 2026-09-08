@@ -26,6 +26,7 @@ public final class ChartPlotterSailing {
 	private volatile SpeedAverage speedAverage;
 	private int motionHold;
 	private int stillTicks;
+	private int courseTicks;
 	private int turnDir;
 	private int lastAngle;
 	private int lastBaseX = Integer.MIN_VALUE;
@@ -43,6 +44,7 @@ public final class ChartPlotterSailing {
 	private long motionTime;
 	private boolean potentialBlocked;
 	@Inject
+	@SuppressWarnings("SameParameterValue")
 	ChartPlotterSailing(Client client) {
 		this.client = client;
 	}
@@ -98,15 +100,19 @@ public final class ChartPlotterSailing {
 		course = -1;
 		motionHold = MOTION_HOLD;
 		lastLoc = loc;
-		lastAngle = heading(ship);
+		lastAngle = targetHeading(ship);
 	}
 	public void motion(WorldEntity ship, LocalPoint loc, boolean skip) {
 		motionTime = System.currentTimeMillis();
 		if (!skip && lastLoc != null) {
 			int vx = loc.getX() - lastLoc.getX();
 			int vy = loc.getY() - lastLoc.getY();
-			int angle = heading(ship);
+			int angle = targetHeading(ship);
 			turnDir = ChartPlotterMath.angleDir(lastAngle, angle, 0);
+			if (course >= 0) {
+				courseTicks = angle == lastAngle ? courseTicks + 1 : 0;
+				if (angle == course || courseTicks >= COURSE_STALL) course = -1;
+			}
 			lastAngle = angle;
 			if (vx == 0 && vy == 0 && motionHold > 0 && lastSpeed > 0) motionHold--;
 			else {
@@ -117,7 +123,7 @@ public final class ChartPlotterSailing {
 				double a = s - lastSpeed;
 				if (a < 10) sample(s);
 			}
-		} else if (!skip) lastAngle = heading(ship);
+		} else if (!skip) lastAngle = targetHeading(ship);
 		lastLoc = loc;
 	}
 	public void average(boolean enabled) {
@@ -137,9 +143,7 @@ public final class ChartPlotterSailing {
 		if (loc == null) return;
 		int h = ChartPlotterOverlay.mouseHeading(client, top, loc, m);
 		if (h < 0) return;
-		course = h;
-		stillTicks = 0;
-		block(m);
+		setCourse(h, m);
 	}
 	public void tick() {resetShip();}
 	public boolean sceneChanged(WorldView wv) {
@@ -218,10 +222,14 @@ public final class ChartPlotterSailing {
 		motionTime = 0;
 		motionHold = 0;
 		stillTicks = 0;
+		courseTicks = 0;
 		turnDir = 0;
 		lastLoc = null;
 	}
-	private void block(Point m) {
+	void setCourse(int heading, Point m) {
+		course = heading;
+		stillTicks = 0;
+		courseTicks = 0;
 		if (m == null) return;
 		potentialBlocked = true;
 		potentialX = m.getX();

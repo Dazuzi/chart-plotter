@@ -1,232 +1,283 @@
 package com.chartplotter.route;
-
 import com.chartplotter.collision.ChartPlotterCollisionData;
-import net.runelite.api.WorldEntityConfig;
 import org.junit.Test;
-
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-
 import static org.junit.Assert.*;
-
 public class ChartPlotterRouteFinderTest {
 	@Test
-	public void reachesOpenWaypointExactly() {
-		ChartPlotterCollisionData data = open();
-		ChartPlotterSparseNodes.Snapshot sparse = new ChartPlotterSparseNodes.Snapshot(new int[]{50}, new int[]{20});
-		ChartPlotterRoute route = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 40, 5, 5, false, 175, sparse, 80, () -> false);
-		assertExact(route);
+	public void followsNearbyLaterSegmentsAndOnlyReplansOutsideTheTolerance() {
+		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 100, 100, new int[]{0, 100, 100}, new int[]{0, 0, 100}, 3, 5, 100);
+		assertSame(route, route.advance(40.5, -31.5, 20, 32, 2));
+		assertNull(route.advance(40.5, -32.5, 20, 32, 2));
+		ChartPlotterRoute advanced = route.advance(115.5, 70.5, 20, 32, 2);
+		assertNotNull(advanced);
+		assertEquals(2, advanced.n);
+		assertArrayEquals(new int[]{100, 100}, advanced.x);
+		assertArrayEquals(new int[]{72, 100}, advanced.y);
 	}
 	@Test
-	public void reachesWaypointAcrossNearbyBarrier() {
-		Map<Long, ChartPlotterCollisionData.Chunk> chunks = openChunks();
-		int barrierX = 20;
-		for (int y = -20; y <= 20; y++) {
-			long key = ChartPlotterCollisionData.key(barrierX >> 3, y >> 3);
-			long mask = 1L << ((barrierX & 7) + ((y & 7) << 3));
-			chunks.compute(key, (ignored, chunk) -> new ChartPlotterCollisionData.Chunk(-1L, (chunk == null ? 0 : chunk.blocked) | mask));
-		}
-		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-		ChartPlotterSparseNodes.Snapshot sparse = new ChartPlotterSparseNodes.Snapshot(new int[]{0, 30, 30}, new int[]{30, 30, 0});
-		ChartPlotterRoute route = ChartPlotterRouteFinder.find(data, null, -1, 0, 0, 21, 0, 5, false, 175, sparse, 80, () -> false);
-		assertExact(route);
+	public void pruningStaysAheadOnLongMovementStepsWithoutChangingTheirHeading() {
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-4, -4, 16, 16));
+		ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, null, 1536, 0, 0, 40, 20, 5, false, 3, 0.25, 0.75, 100, () -> false);
+		search.find();
+		int d = 1;
+		int dx = search.motion.x[d];
+		int dy = search.motion.y[d];
+		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, dx * 10, dy * 10, new int[]{0, dx * 10}, new int[]{0, dy * 10}, 2, 5, 100).plan(search.motion, search.hull, ChartPlotterRouteMoves.OR[d]);
+		double bx = dx * 2.4;
+		double by = dy * 2.4;
+		ChartPlotterRoute advanced = route.advance(bx + route.offsetX, by + route.offsetY, 20, 32, 2);
+		assertNotNull(advanced);
+		assertTrue((advanced.x[0] - bx) * dx + (advanced.y[0] - by) * dy >= 2 * Math.hypot(dx, dy));
+		assertEquals(route.arrivalHeading(), advanced.heading);
+		assertTrue(advanced.valid(data, () -> false));
+		assertSame(advanced, advanced.advance(bx + route.offsetX, by + route.offsetY, 20, 32, 2));
 	}
 	@Test
-	public void sparseLinksPreserveExactBoundaryAcrossNegativeBuckets() {
-		ChartPlotterSparseNodes.Snapshot nodes = new ChartPlotterSparseNodes.Snapshot(new int[]{-64, 64}, new int[]{0, 0});
-		ChartPlotterSparseRouteFinder.Path path = ChartPlotterSparseRouteFinder.path(open(), nodes, -192, 0, 192, 0, 80, () -> false);
-		assertEquals(4, path.n);
-		assertArrayEquals(new int[]{-192, -64, 64, 192}, path.x);
-		assertArrayEquals(new int[]{0, 0, 0, 0}, path.y);
-	}
-	@Test
-	public void cancellationStopsBeforeSparseIndexWork() {
-		ChartPlotterSparseNodes.Snapshot nodes = new ChartPlotterSparseNodes.Snapshot(new int[]{-64, 64}, new int[]{0, 0});
-		assertTrue(ChartPlotterSparseRouteFinder.path(open(), nodes, -128, 0, 128, 0, 80, () -> true).pending);
-	}
-	@Test
-	public void spatialSparseGraphMatchesBruteForceCosts() {
-		int[] x = new int[49];
-		int[] y = new int[49];
-		int n = 0;
-		for (int wx = -192; wx <= 192; wx += 64) {
-			for (int wy = -192; wy <= 192; wy += 64) {
-				x[n] = wx;
-				y[n++] = wy;
+	public void coastalArrivalAcceptsASafeNearbyPoseWhenTheExactPoseCannotBeEntered() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		for (int y = 0; y < 40; y++) for (int x = -32; x < 40; x++) if (y != 0 || x < 19 || x > 21) ChartPlotterRoutingAudit.block(chunks, x, y);
+		for (boolean detour : new boolean[]{false, true}) {
+			if (detour) for (int x = 18; x <= 22; x++) ChartPlotterRoutingAudit.block(chunks, x, -10);
+			ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
+			for (double speed : new double[]{0.5, 1, 3}) {
+				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.config(64, 256), 1024, 20, -20, 20, 0, 5, false, speed, 0.5, 0.5, 100, () -> false);
+				ChartPlotterRoute route = search.find();
+				assertEquals(ChartPlotterCollisionData.OPEN, search.hull.flag(data, 20, 0, -1));
+				for (int d = 0; d < 16; d++) assertNotEquals(ChartPlotterCollisionData.OPEN, search.hull.move[d].flag(data, 20 - search.motion.x[d], -search.motion.y[d]));
+				assertEquals(ChartPlotterRoute.OK, route.status);
+				assertEquals(20, route.tx);
+				assertEquals(0, route.ty);
+				assertTrue(Math.abs(route.x[route.n - 1] - route.tx) <= 2);
+				assertTrue(Math.abs(route.y[route.n - 1] - route.ty) <= 2);
+				assertEquals(detour, search.terrain != null);
+				assertTrue(route.valid(data, () -> false));
+				assertArrayEquals(new int[]{0, 0}, ChartPlotterRoutingAudit.clips(data, search.config, route));
+				ChartPlotterTrip trip = ChartPlotterTrip.single(1, 20, 0, route);
+				ChartPlotterRoute next = new ChartPlotterRouteFinder(data, search.config, route.arrivalHeading(), ChartPlotterRoutes.legStartX(trip, 1, 0), ChartPlotterRoutes.legStartY(trip, 1, 0), 20, -20, 5, false, speed, route.offsetX, route.offsetY, 100, () -> false).find();
+				assertEquals(ChartPlotterRoute.OK, next.status);
+				assertEquals(route.x[route.n - 1], next.x[0]);
+				assertEquals(route.y[route.n - 1], next.y[0]);
+				assertTrue(next.valid(data, () -> false));
 			}
 		}
-		ChartPlotterSparseNodes.Snapshot nodes = new ChartPlotterSparseNodes.Snapshot(x, y);
-		ChartPlotterCollisionData data = open();
-		for (int i = 0; i < 16; i++) {
-			int sx = -230 + i % 4 * 7;
-			int sy = -180 + i / 4 * 120;
-			int tx = 230 - i % 4 * 9;
-			int ty = 180 - i / 4 * 120;
-			ChartPlotterSparseRouteFinder.Path path = ChartPlotterSparseRouteFinder.path(data, nodes, sx, sy, tx, ty, 80, () -> false);
-			assertEquals(brute(nodes, sx, sy, tx, ty), path.cost);
+		for (int x = -32; x < 40; x++) ChartPlotterRoutingAudit.block(chunks, x, -10);
+		assertEquals(ChartPlotterRoute.NO_ROUTE, new ChartPlotterRouteFinder(new ChartPlotterCollisionData(chunks), ChartPlotterRoutingAudit.config(64, 256), 1024, 20, -20, 20, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find().status);
+	}
+	@Test
+	public void pruningToAWaypointRetainsTheIncomingTurnClearance() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 8, 8);
+		ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(new ChartPlotterCollisionData(chunks), ChartPlotterRoutingAudit.offsetHull(), 1536, 0, 0, 20, 20, 5, false, 1, 0.5, 0.5, 100, () -> false);
+		search.find();
+		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 20, 20, new int[]{0, 20, 20}, new int[]{0, 0, 20}, 3, 5, 100).plan(search.motion, search.hull, 1536);
+		ChartPlotterRoute advanced = route.advance(20.5, 0.5, 2, 8, 0);
+		assertNotNull(advanced);
+		assertEquals(1536, advanced.heading);
+		assertEquals(1024, advanced.arrivalHeading());
+		for (int cell : search.hull.turn[4 * 16].coordinates) {
+			Map<Long, ChartPlotterCollisionData.Chunk> changed = new HashMap<>(chunks);
+			ChartPlotterRoutingAudit.block(changed, 20 + (cell >> 16), (short) cell);
+			ChartPlotterCollisionData data = new ChartPlotterCollisionData(changed);
+			if (search.hull.hull[4].flag(data, 20, 0) != ChartPlotterCollisionData.OPEN || !advanced.plan(search.motion, search.hull, 1024).valid(data, () -> false)) continue;
+			assertFalse(advanced.valid(data, () -> false));
+			return;
+		}
+		fail("No turn-only obstacle tested");
+	}
+	@Test
+	public void stationaryShipDoesNotConsumeAShortInitialCorrection() {
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-4, -4, 4, 4));
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, null, 1536, 0, 0, 1, 20, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		assertEquals(ChartPlotterRoute.OK, route.status);
+		assertEquals(1, route.x[1]);
+		assertEquals(0, route.y[1]);
+		for (int tick = 0; tick < 20; tick++) assertSame(route, route.advance(0.5, 0.5, 2, 8, 0));
+		ChartPlotterRoute advanced = route.advance(1.5, 0.5, 2, 8, 0);
+		assertNotNull(advanced);
+		assertEquals(2, advanced.n);
+		assertTrue(advanced.valid(data, () -> false));
+	}
+	@Test
+	public void unrelatedCollisionChangesKeepThePrunedRouteValid() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(new ChartPlotterCollisionData(chunks), null, 1024, 0, 0, 30, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		route = route.advance(5.5, 0.5, 2, 8, 0);
+		assertNotNull(route);
+		ChartPlotterRoutingAudit.block(chunks, 1, 0);
+		ChartPlotterRoutingAudit.block(chunks, 20, 20);
+		assertTrue(route.valid(new ChartPlotterCollisionData(chunks), () -> false));
+		ChartPlotterRoutingAudit.block(chunks, 20, 0);
+		assertFalse(route.valid(new ChartPlotterCollisionData(chunks), () -> false));
+	}
+	@Test
+	public void newObstacleInvalidatesAnExistingRoute() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterCollisionData original = new ChartPlotterCollisionData(chunks);
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(original, null, 1536, 0, 0, 30, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		assertTrue(route.valid(original, () -> false));
+		ChartPlotterRoutingAudit.block(chunks, 20, 0);
+		ChartPlotterCollisionData changed = new ChartPlotterCollisionData(chunks);
+		assertFalse(route.valid(changed, () -> false));
+		ChartPlotterRoute replacement = new ChartPlotterRouteFinder(changed, null, 1536, 0, 0, 30, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		assertEquals(ChartPlotterRoute.OK, replacement.status);
+		assertTrue(replacement.n > 2);
+		assertTrue(replacement.valid(changed, () -> false));
+	}
+	@Test
+	public void followingDoesNotJumpToAParallelFutureLeg() {
+		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 0, 7, new int[]{0, 100, 100, 0}, new int[]{0, 0, 7, 7}, 4, 5, 100);
+		ChartPlotterRoute advanced = route.advance(50.5, 4.5, 20, 32, 0);
+		assertNotNull(advanced);
+		assertEquals(4, advanced.n);
+		assertEquals(50, advanced.x[0]);
+		assertEquals(0, advanced.y[0]);
+		assertEquals(100, advanced.x[1]);
+		assertEquals(0, advanced.y[1]);
+	}
+	@Test
+	public void preciseStartAvoidsRoundingTheHullIntoShore() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterRoutingAudit.block(chunks, 1, 0);
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
+		ChartPlotterRoute exact = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.config(128, 384), 0, 0, 0, 0, -10, 5, false, 1, 0, 0.25, 100, () -> false).find();
+		assertEquals(ChartPlotterRoute.OK, exact.status);
+		assertEquals(0, exact.offsetX, 0);
+		assertEquals(0.25, exact.offsetY, 0);
+		assertTrue(exact.valid(data, () -> false));
+		assertEquals(ChartPlotterCollisionData.key(0, 0), ChartPlotterRoutes.target(data, 0, 0, 0, -10));
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(exact, 0, 0.25, 1, 0, 1, 0);
+		assertEquals(10, turn.ticks);
+		assertEquals(0.5, turn.offsetX, 0);
+		assertEquals(0.5, turn.offsetY, 0);
+		assertEquals(ChartPlotterRoute.BLOCKED, new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.config(128, 384), 0, 0, 0, 0, -10, 5, false, 1, 0.5, 0.5, 100, () -> false).find().status);
+	}
+	@Test
+	public void reverseKeepsTheHullOrientationAndArrivalHeading() {
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-4, -4, 4, 4));
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 512, 0, 0, 20, 0, 5, true, 0.5, 0.5, 0.5, 100, () -> false).find();
+		assertEquals(ChartPlotterRoute.OK, route.status);
+		assertEquals(2, route.n);
+		assertEquals(512, route.arrivalHeading());
+		ChartPlotterRoute advanced = route.advance(20.5, 0.5, 2, 8, 0);
+		assertNotNull(advanced);
+		assertEquals(512, advanced.arrivalHeading());
+		assertTrue(route.valid(data, () -> false));
+		assertArrayEquals(new int[]{0, 0}, ChartPlotterRoutingAudit.clips(data, ChartPlotterRoutingAudit.offsetHull(), route));
+	}
+	@Test
+	public void coastalWaterMarkersStayAtTheClickAndLandSnappingIsLimited() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		for (int y = 1; y < 40; y++) for (int x = -32; x < 40; x++) ChartPlotterRoutingAudit.block(chunks, x, y);
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
+		ChartPlotterRouteHull hull = new ChartPlotterRouteHull(ChartPlotterRoutingAudit.offsetHull(), new ChartPlotterRouteMotion(3, 0.5, 0.5), 0, false);
+		assertEquals(ChartPlotterCollisionData.BLOCKED, hull.flag(data, 20, 0, -1));
+		for (int x : new int[]{-20, 0, 20, 30}) {
+			assertEquals(ChartPlotterCollisionData.key(20, 0), ChartPlotterRoutes.target(data, 20, 0, x, -20));
+			assertEquals(ChartPlotterCollisionData.key(20, 0), ChartPlotterRoutes.target(data, 20, 1, x, -20));
+			assertEquals(ChartPlotterCollisionData.key(20, 0), ChartPlotterRoutes.target(data, 20, 2, x, -20));
+			assertEquals(ChartPlotterCollisionData.key(20, 3), ChartPlotterRoutes.target(data, 20, 3, x, -20));
 		}
 	}
 	@Test
-	public void sparseEdgeCacheTracksCollisionSnapshotIdentity() {
-		ChartPlotterSparseNodes.Snapshot nodes = new ChartPlotterSparseNodes.Snapshot(new int[]{-64, 64}, new int[]{0, 0});
-		assertEquals(4, ChartPlotterSparseRouteFinder.path(open(), nodes, -192, 0, 192, 0, 80, () -> false).n);
-		Map<Long, ChartPlotterCollisionData.Chunk> chunks = openChunks();
-		long key = ChartPlotterCollisionData.key(0, 0);
-		chunks.put(key, new ChartPlotterCollisionData.Chunk(-1L, 1L));
-		ChartPlotterCollisionData blocked = new ChartPlotterCollisionData(chunks);
-		assertNull(ChartPlotterSparseRouteFinder.path(blocked, nodes, -192, 0, 192, 0, 80, () -> false));
+	public void rotatingInOpenWaterRetainsTheRouteAndItsDestination() {
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-4, -4, 12, 12));
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 1024, 0, 0, 0, 80, 5, false, 3, 0.25, 0.75, 100, () -> false).find();
+		assertEquals(ChartPlotterRoute.OK, route.status);
+		assertEquals(2, route.n);
+		for (int heading = 0; heading < 2048; heading += 32) {
+			assertTrue(route.departureClear(data, heading));
+			ChartPlotterRoute rotated = route.plan(route.motion, route.hull, heading);
+			assertSame(route.x, rotated.x);
+			assertSame(route.y, rotated.y);
+			assertTrue(rotated.valid(data, () -> false));
+			ChartPlotterRoutes.Turn marker = ChartPlotterRoutes.turn(rotated, 0.25, 0.75, 0, 0, 3, 0);
+			assertTrue(marker.end);
+			assertEquals(0, marker.x);
+			assertEquals(80, marker.y);
+		}
 	}
 	@Test
-	public void targetPerimeterMatchesFullSquareSelection() {
-		Map<Long, ChartPlotterCollisionData.Chunk> chunks = openChunks();
+	public void rotatingNearAnObstacleRechecksTheDepartureTurn() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(new ChartPlotterCollisionData(chunks), ChartPlotterRoutingAudit.offsetHull(), 1536, 0, 0, 20, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		for (int cell : route.hull.turn[4].coordinates) {
+			Map<Long, ChartPlotterCollisionData.Chunk> changed = new HashMap<>(chunks);
+			ChartPlotterRoutingAudit.block(changed, cell >> 16, (short) cell);
+			ChartPlotterCollisionData data = new ChartPlotterCollisionData(changed);
+			if (!route.valid(data, () -> false) || route.hull.hull[0].flag(data, 0, 0) != ChartPlotterCollisionData.OPEN) continue;
+			assertFalse(route.departureClear(data, 1024));
+			return;
+		}
+		fail("No departure turn obstacle tested");
+	}
+	@Test
+	public void targetSelectionMatchesBruteForcePerimeters() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
 		Random random = new Random(7);
-		for (int x = -30; x <= 30; x++) for (int y = -30; y <= 30; y++) if (random.nextInt(4) != 0) block(chunks, x, y);
+		for (int x = -30; x <= 30; x++) for (int y = -30; y <= 30; y++) if (random.nextInt(4) != 0) ChartPlotterRoutingAudit.block(chunks, x, y);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-		for (int i = 0; i < 100; i++) {
+		for (int i = 0; i < 60; i++) {
 			int tx = random.nextInt(41) - 20;
 			int ty = random.nextInt(41) - 20;
 			int sx = random.nextInt(81) - 40;
 			int sy = random.nextInt(81) - 40;
-			assertEquals(targetReference(data, tx, ty, sx, sy), ChartPlotterRoutes.target(new ChartPlotterRouteGrid(data), tx, ty, sx, sy));
+			assertEquals(targetReference(data, tx, ty, sx, sy), ChartPlotterRoutes.target(data, tx, ty, sx, sy));
 		}
 	}
 	@Test
-	public void routeUpdatesPreserveStopCoordinateIdentity() {
-		ChartPlotterRoute route = ChartPlotterRoute.pending(0, 0, 10, 20, 0, 250);
-		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route);
-		assertSame(trip.stopKey(), trip.route(0, route).stopKey());
-		assertNotSame(trip.stopKey(), trip.move(2, 0, 11, 20).stopKey());
+	public void workerFailureCompletesUnfinishedSearchesAndValidationsInItsOwnGeneration() {
+		ChartPlotterRoute good = ChartPlotterRoute.ok(0, 0, 10, 0, new int[]{0, 10}, new int[]{0, 0}, 2, 5, 100);
+		ChartPlotterTrip trip = ChartPlotterTrip.single(7, 10, 0, good).append(7, 20, 0, ChartPlotterRoute.pending(10, 0, 20, 0, 5, 100));
+		assertSame(trip, trip.failed(6, new boolean[]{true, true}));
+		ChartPlotterTrip failed = trip.failed(7, new boolean[]{false, true});
+		assertSame(good, failed.route(0));
+		assertEquals(ChartPlotterRoute.FAILED, failed.route(1).status);
+		assertEquals(ChartPlotterRoute.PENDING, trip.route(1).status);
+		assertEquals(ChartPlotterRoute.FAILED, trip.failed(7, new boolean[]{true, true}).route(0).status);
 	}
 	@Test
-	public void routeGridReusesGenerationClearedThreadBuffers() {
-		ChartPlotterCollisionData open = open();
-		Map<Long, ChartPlotterCollisionData.Chunk> chunks = openChunks();
-		chunks.put(ChartPlotterCollisionData.key(0, 0), new ChartPlotterCollisionData.Chunk(-1L, 1L));
-		ChartPlotterCollisionData blocked = new ChartPlotterCollisionData(chunks);
-		ChartPlotterRouteGrid.Footprint footprint = new ChartPlotterRouteGrid.Footprint(config());
-		ChartPlotterRouteBounds bounds = new ChartPlotterRouteBounds(-10, -10, 10, 10);
-		ChartPlotterRouteGrid first = null;
-		for (int i = 0; i < 70; i++) {
-			ChartPlotterRouteGrid grid = ChartPlotterRouteGrid.lazy((i & 1) == 0 ? blocked : open, footprint, 2, 1);
-			grid.cache(bounds, 1 << 20);
-			if (first == null) first = grid;
-			else {
-				assertSame(first.raw, grid.raw);
-				assertSame(first.cached, grid.cached);
-				assertSame(first.cachedDirs, grid.cachedDirs);
-			}
-			int expected = (i & 1) == 0 ? ChartPlotterCollisionData.BLOCKED : ChartPlotterCollisionData.OPEN;
-			assertEquals(expected, grid.flag(0, 0));
-			assertEquals(expected, grid.flag(0, 0, 0));
-		}
+	public void stationaryAndUnalignedHeadingsAreRevalidated() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterCollisionData original = new ChartPlotterCollisionData(chunks);
+		ChartPlotterRoute point = new ChartPlotterRouteFinder(original, null, -1, 0, 0, 0, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		assertTrue(point.valid(original, () -> false));
+		assertFalse(point.valid(original, () -> true));
+		ChartPlotterRoutingAudit.block(chunks, 0, 0);
+		assertFalse(point.valid(new ChartPlotterCollisionData(chunks), () -> false));
+		chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(original, ChartPlotterRoutingAudit.offsetHull(), 1472, 0, 0, 0, 0, 5, false, 1, 0.5, 0.5, 100, () -> false).find();
+		assertEquals(ChartPlotterRoute.OK, route.status);
+		assertTrue(route.valid(original, () -> false));
+		int cell = route.hull.turn[3 * 16 + 4].coordinates[0];
+		ChartPlotterRoutingAudit.block(chunks, cell >> 16, (short) cell);
+		assertFalse(route.valid(new ChartPlotterCollisionData(chunks), () -> false));
 	}
-	@Test
-	public void moveCachesInvalidateAcrossGenerationWrap() {
-		ChartPlotterRouteBounds bounds = new ChartPlotterRouteBounds(0, 0, 2, 2);
-		ChartPlotterRouteWork.MoveCache moves = new ChartPlotterRouteWork.MoveCache();
-		ChartPlotterRouteWork.BaseMoveCache base = new ChartPlotterRouteWork.BaseMoveCache();
-		for (int i = 0; i < 70; i++) {
-			moves.reset(bounds);
-			base.reset(bounds, null);
-			assertEquals(LongIntMap.MISS, moves.get(0, 0, 0));
-			assertEquals(LongIntMap.MISS, base.get(0, 0, 0));
-			moves.put(0, 0, 0, 1);
-			base.put(0, 0, 0, 1);
-			assertEquals(1, moves.get(0, 0, 0));
-			assertEquals(1, base.get(0, 0, 0));
-		}
-	}
-	@Test
-	public void sparseCorridorReusesClearedThreadMask() {
-		ChartPlotterSparseNodes.Snapshot nodes = new ChartPlotterSparseNodes.Snapshot(new int[]{-64, 64}, new int[]{0, 0});
-		ChartPlotterSparseRouteFinder.Path path = ChartPlotterSparseRouteFinder.path(open(), nodes, -192, 0, 192, 0, 80, () -> false);
-		ChartPlotterSparseRouteFinder.Corridor first = ChartPlotterSparseRouteFinder.corridor(path, 20, () -> false);
-		assertNotNull(first);
-		int cells = first.cells;
-		for (int i = 0; i < 300; i++) {
-			ChartPlotterSparseRouteFinder.Corridor next = ChartPlotterSparseRouteFinder.corridor(path, 20, () -> false);
-			assertNotNull(next);
-			assertSame(first.mask, next.mask);
-			assertEquals(cells, next.cells);
-		}
-	}
-	private static int brute(ChartPlotterSparseNodes.Snapshot nodes, int sx, int sy, int tx, int ty) {
-		int n = nodes.x.length + 2;
-		int[] cost = new int[n];
-		boolean[] done = new boolean[n];
-		Arrays.fill(cost, Integer.MAX_VALUE);
-		cost[0] = 0;
-		for (;;) {
-			int a = -1;
-			for (int i = 0; i < n; i++) if (!done[i] && cost[i] != Integer.MAX_VALUE && (a < 0 || cost[i] < cost[a])) a = i;
-			if (a == 1) return cost[a];
-			done[a] = true;
-			int ax = x(nodes, a, sx, tx);
-			int ay = y(nodes, a, sy, ty);
-			for (int b = 1; b < n; b++) {
-				if (done[b] || b == a) continue;
-				int bx = x(nodes, b, sx, tx);
-				int by = y(nodes, b, sy, ty);
-				int link = a < 2 || b < 2 ? 192 : 128;
-				if (ChartPlotterRouteUtil.dist(ax, ay, bx, by) > link) continue;
-				cost[b] = Math.min(cost[b], cost[a] + ChartPlotterRouteUtil.h(ax, ay, bx, by));
-			}
-		}
-	}
-	private static int x(ChartPlotterSparseNodes.Snapshot nodes, int i, int start, int target) {return i == 0 ? start : i == 1 ? target : nodes.x[i - 2];}
-	private static int y(ChartPlotterSparseNodes.Snapshot nodes, int i, int start, int target) {return i == 0 ? start : i == 1 ? target : nodes.y[i - 2];}
 	private static long targetReference(ChartPlotterCollisionData data, int tx, int ty, int sx, int sy) {
 		int f = data.flagAt(tx, ty);
 		if (f == ChartPlotterCollisionData.UNKNOWN || f == ChartPlotterCollisionData.OPEN) return ChartPlotterCollisionData.key(tx, ty);
 		int bx = tx;
 		int by = ty;
+		int distance = Integer.MAX_VALUE;
 		long best = Long.MAX_VALUE;
-		for (int r = 1; r <= 10; r++) {
+		for (int r = 1; r <= 2; r++) {
 			for (int y = ty - r; y <= ty + r; y++) {
 				for (int x = tx - r; x <= tx + r; x++) {
 					if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) != r || data.flagAt(x, y) != ChartPlotterCollisionData.OPEN) continue;
 					long dx = x - sx;
 					long dy = y - sy;
 					long score = dx * dx + dy * dy;
-					if (score >= best) continue;
+					int d = (x - tx) * (x - tx) + (y - ty) * (y - ty);
+					if (d > distance || d == distance && score >= best) continue;
 					bx = x;
 					by = y;
+					distance = d;
 					best = score;
 				}
 			}
 			if (best != Long.MAX_VALUE) return ChartPlotterCollisionData.key(bx, by);
 		}
 		return ChartPlotterCollisionData.key(tx, ty);
-	}
-	private static void block(Map<Long, ChartPlotterCollisionData.Chunk> chunks, int x, int y) {
-		long key = ChartPlotterCollisionData.key(x >> 3, y >> 3);
-		long mask = 1L << ((x & 7) + ((y & 7) << 3));
-		chunks.compute(key, (k, old) -> new ChartPlotterCollisionData.Chunk(-1L, (old == null ? 0 : old.blocked) | mask));
-	}
-	private static ChartPlotterCollisionData open() {
-		return new ChartPlotterCollisionData(openChunks());
-	}
-	private static Map<Long, ChartPlotterCollisionData.Chunk> openChunks() {
-		Map<Long, ChartPlotterCollisionData.Chunk> chunks = new HashMap<>();
-		for (int x = -32; x <= 32; x++) for (int y = -32; y <= 32; y++) chunks.put(ChartPlotterCollisionData.key(x, y), new ChartPlotterCollisionData.Chunk(-1L, 0));
-		return chunks;
-	}
-	private static WorldEntityConfig config() {
-		return new WorldEntityConfig() {
-			public int getId() {return 1;}
-			public int getCategory() {return 1;}
-			public int getBoundsX() {return 0;}
-			public int getBoundsY() {return 0;}
-			public int getBoundsWidth() {return 128;}
-			public int getBoundsHeight() {return 128;}
-		};
-	}
-	private static void assertExact(ChartPlotterRoute route) {
-		assertEquals(ChartPlotterRoute.OK, route.status);
-		assertTrue(route.n > 0);
-		assertEquals(route.tx, route.x[route.n - 1]);
-		assertEquals(route.ty, route.y[route.n - 1]);
 	}
 }

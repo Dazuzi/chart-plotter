@@ -4,6 +4,64 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 public class ChartPlotterTripTest {
 	@Test
+	public void recalculationKeepsTheVisibleRouteUntilItsReplacementArrives() {
+		ChartPlotterRoute original = ChartPlotterRoute.ok(0, 0, 100, 0, new int[]{0, 100}, new int[]{0, 0}, 2, 5, 100);
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 100, 0, original);
+		ChartPlotterTrip pending = trip.pending(2, 20, 20, 5, 100, ChartPlotterRouteEffort.MAXIMUM, new boolean[]{true});
+		ChartPlotterRoute pendingRoute = pending.active();
+		assertNotNull(pendingRoute);
+		assertEquals(ChartPlotterRoute.OK, pendingRoute.status);
+		assertSame(original.x, pendingRoute.x);
+		assertSame(original.y, pendingRoute.y);
+		assertTrue(pendingRoute.recalculating);
+		assertEquals(2, pending.generation());
+		ChartPlotterRoute replacement = ChartPlotterRoute.ok(20, 20, 100, 0, new int[]{20, 60, 100}, new int[]{20, 0, 0}, 3, 5, 100);
+		assertSame(replacement, pending.route(0, replacement).active());
+		assertFalse(replacement.recalculating);
+		assertSame(pendingRoute, pending.active());
+		ChartPlotterTrip appended = pending.append(3, 200, 0, route(100, 0, 200, 0));
+		ChartPlotterRoute appendedRoute = appended.active();
+		assertNotNull(appendedRoute);
+		assertTrue(appendedRoute.recalculating);
+		ChartPlotterRoute advanced = appendedRoute.advance(20.5, 0.5, 20, 32, 2);
+		assertNotNull(advanced);
+		assertTrue(advanced.recalculating);
+		ChartPlotterTrip retry = appended.route(0, advanced).route(0, route(20, 0, 100, 0));
+		ChartPlotterRoute retryRoute = retry.active();
+		assertNotNull(retryRoute);
+		assertSame(advanced.x, retryRoute.x);
+		assertTrue(retryRoute.recalculating);
+		ChartPlotterTrip moved = trip.move(3, 0, 100, 100).pending(3, 20, 20, 5, 100, ChartPlotterRouteEffort.MAXIMUM, new boolean[]{true});
+		ChartPlotterRoute movedRoute = moved.active();
+		assertNotNull(movedRoute);
+		assertEquals(ChartPlotterRoute.PENDING, movedRoute.status);
+		assertEquals(100, movedRoute.ty);
+	}
+	@Test
+	public void destinationMarkersStayFixedWhenTheArrivalPositionChanges() {
+		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 100, 100, new int[]{0, 97}, new int[]{0, 95}, 2, 5, 100).plan(new ChartPlotterRouteMotion(3, 0.25, 0.75), null, 1536);
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 100, 100, route);
+		assertEquals(100, trip.x(0));
+		assertEquals(100, trip.y(0));
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(route, 0, 0, 0, 0, 3, 0);
+		assertEquals(100, turn.x);
+		assertEquals(100, turn.y);
+		assertEquals(0.5, turn.offsetX, 0);
+		assertEquals(0.5, turn.offsetY, 0);
+		assertTrue(turn.end);
+		ChartPlotterRoute replacement = ChartPlotterRoute.ok(0, 0, 100, 100, new int[]{0, 92}, new int[]{0, 100}, 2, 5, 100);
+		trip = trip.route(0, replacement);
+		assertEquals(100, trip.x(0));
+		assertEquals(100, trip.y(0));
+		turn = ChartPlotterRoutes.turn(trip.active(), 0, 0, 0, 0, 3, 0);
+		assertEquals(100, turn.x);
+		assertEquals(100, turn.y);
+		assertTrue(turn.end);
+		ChartPlotterTrip moved = trip.move(2, 0, 150, 200);
+		assertEquals(150, moved.x(0));
+		assertEquals(200, moved.y(0));
+	}
+	@Test
 	public void stopNumberAdvancesWhileTotalRemainsStable() {
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40)).append(3, 50, 60, route(30, 40, 50, 60));
 		ChartPlotterTrip original = trip;
@@ -39,7 +97,7 @@ public class ChartPlotterTripTest {
 	@Test
 	public void movingAndReplanningStopsPreservesProgress() {
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40)).append(3, 50, 60, route(30, 40, 50, 60)).advance(4);
-		trip = trip.move(5, 0, 35, 45).pending(6, 10, 20, 0, ChartPlotterRouteEffort.HIGH.weight, ChartPlotterRouteEffort.HIGH, new boolean[]{true, true});
+		trip = trip.move(5, 0, 35, 45).pending(6, 10, 20, 0, ChartPlotterRouteEffort.MAXIMUM.weight, ChartPlotterRouteEffort.MAXIMUM, new boolean[]{true, true});
 		trip = trip.route(0, route(10, 20, 35, 45)).generation(7);
 		assertEquals(2, trip.stopNumber());
 		assertEquals(3, trip.totalStops());
@@ -74,7 +132,7 @@ public class ChartPlotterTripTest {
 		assertSame(first, removed.route(0));
 		assertNull(removed.route(1));
 		assertSame(fourth, removed.route(2));
-		ChartPlotterTrip replanned = removed.pending(6, 5, 6, 0, ChartPlotterRouteEffort.BALANCED.weight, ChartPlotterRouteEffort.BALANCED, new boolean[]{false, true, false});
+		ChartPlotterTrip replanned = removed.pending(6, 5, 6, 0, ChartPlotterRouteEffort.REFINED.weight, ChartPlotterRouteEffort.REFINED, new boolean[]{false, true, false});
 		assertTrue(replanned.route(1).start(10, 20));
 		assertEquals(50, replanned.route(1).tx);
 		assertEquals(60, replanned.route(1).ty);
@@ -129,18 +187,18 @@ public class ChartPlotterTripTest {
 		assertSame(trip.route(1), moved.route(1));
 	}
 	@Test
-	public void subsequentLegStartsAtWaypoint() {
+	public void subsequentLegStartsAtTheActualArrivalPoint() {
 		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 10, 20, new int[]{0, 7}, new int[]{0, 12}, 2, 0, 250);
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route);
-		assertEquals(10, ChartPlotterRoutes.legStartX(trip, 1, 5));
-		assertEquals(20, ChartPlotterRoutes.legStartY(trip, 1, 6));
+		assertEquals(7, ChartPlotterRoutes.legStartX(trip, 1, 5));
+		assertEquals(12, ChartPlotterRoutes.legStartY(trip, 1, 6));
 		assertEquals(5, ChartPlotterRoutes.legStartX(trip, 0, 5));
 		assertEquals(6, ChartPlotterRoutes.legStartY(trip, 0, 6));
 	}
 	@Test
 	public void replansLegsFromLiveStartAndPreviousStop() {
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40));
-		trip = trip.pending(3, 5, 6, 7, ChartPlotterRouteEffort.HIGH.weight, ChartPlotterRouteEffort.HIGH, new boolean[]{true, true});
+		trip = trip.pending(3, 5, 6, 7, ChartPlotterRouteEffort.MAXIMUM.weight, ChartPlotterRouteEffort.MAXIMUM, new boolean[]{true, true});
 		assertTrue(trip.route(0).start(5, 6));
 		assertTrue(trip.route(1).start(10, 20));
 		assertEquals(30, trip.route(1).tx);

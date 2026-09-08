@@ -2,7 +2,7 @@ package com.chartplotter;
 public enum ChartPlotterTurnPreference {
 	DIRECT("Direct", 0),
 	BALANCED("Balanced", 5),
-	SMOOTH("Smooth", 10);
+	SMOOTH("Smooth", 40);
 	public final int bias;
 	private final String name;
 	ChartPlotterTurnPreference(String name, int bias) {

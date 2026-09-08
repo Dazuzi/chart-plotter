@@ -11,6 +11,8 @@ import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldEntityConfig;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.client.config.ConfigManager;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -20,19 +22,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
-import static com.chartplotter.util.ChartPlotterMath.rotateX;
-import static com.chartplotter.util.ChartPlotterMath.rotateY;
 
 @Singleton
 public final class ChartPlotterRoutes {
 	private static final int TS = Perspective.LOCAL_TILE_SIZE;
 	private static final int PRUNE_RADIUS = 20;
-	private static final int FOLLOW_RADIUS = 48;
+	private static final int FOLLOW_RADIUS = 32;
 	private static final int PRUNE = 2;
 	private static final int CLEAR_RADIUS = 10;
-	private static final int REACH_RADIUS = 14;
+	private static final int SNAP_RADIUS = 2;
+	static final int REACH_RADIUS = 14;
 	public static final int MAX_STOPS = 32;
-	private static final int MODE_TILE = 1;
 	private static final int ETA_CAP = 600;
 	public static final int PV_NONE = 0;
 	public static final int PV_OK = 1;
@@ -40,32 +40,28 @@ public final class ChartPlotterRoutes {
 	public static final int PV_BAD = 3;
 	private final ChartPlotterConfig config;
 	private final ChartPlotterCollisionCache collisionCache;
-	private final ChartPlotterSparseNodes sparseNodes;
 	private final ChartPlotterSailing sailing;
+	@Inject private ConfigManager configManager;
 	private final AtomicReference<ChartPlotterTrip> trip = new AtomicReference<>(ChartPlotterTrip.empty(0));
 	private final AtomicInteger seq = new AtomicInteger();
 	private volatile boolean activeBusy;
 	private volatile boolean paused;
 	private volatile long rev;
-	private volatile long sparseRev;
 	private ThreadPoolExecutor exec;
 	private final AtomicReference<Future<?>> work = new AtomicReference<>();
 	private PreviewSlot previewSlot;
-	private ChartPlotterCollisionData previewData;
-	private WorldEntityConfig previewConfig;
-	private ChartPlotterRouteGrid previewGrid;
+	private Start checkedStart;
 	@Inject
-	private ChartPlotterRoutes(ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterSparseNodes sparseNodes, ChartPlotterSailing sailing) {
+	private ChartPlotterRoutes(ChartPlotterConfig config, ChartPlotterCollisionCache collisionCache, ChartPlotterSailing sailing) {
 		this.config = config;
 		this.collisionCache = collisionCache;
-		this.sparseNodes = sparseNodes;
 		this.sailing = sailing;
 	}
 	public void set(int tx, int ty) {
 		Start s = startTile();
 		if (s == null) return;
 		ChartPlotterCollisionData data = collisionCache.snapshot();
-		long t = target(data, s.config, tx, ty, s.x, s.y);
+		long t = target(data, tx, ty, s.x, s.y);
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		int id = cancel();
@@ -74,7 +70,7 @@ public final class ChartPlotterRoutes {
 		ChartPlotterRoute pending = ChartPlotterRoute.pending(s.x, s.y, tx, ty, turnBias, effort.weight).effort(effort);
 		trip.set(ChartPlotterTrip.single(id, tx, ty, pending));
 		paused = false;
-		request(s, data, sparseNodes.snapshot(), new boolean[]{true}, id, turnBias, effort);
+		request(s, data, new boolean[]{true}, id, turnBias, effort, false);
 	}
 	public void append(int tx, int ty) {
 		Start s = startTile();
@@ -88,7 +84,7 @@ public final class ChartPlotterRoutes {
 		int sx = legStartX(old, old.size(), s.x);
 		int sy = legStartY(old, old.size(), s.y);
 		ChartPlotterCollisionData data = collisionCache.snapshot();
-		long t = target(data, s.config, tx, ty, sx, sy);
+		long t = target(data, tx, ty, sx, sy);
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		if (ChartPlotterMath.chebyshev(sx, sy, tx, ty) <= CLEAR_RADIUS) return;
@@ -104,7 +100,7 @@ public final class ChartPlotterRoutes {
 		boolean[] selected = reboard ? all(next) : pending(next);
 		if (data.rev != rev) merge(selected, failed(next));
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
-		request(s, data, sparseNodes.snapshot(), selected, id, turnBias, effort);
+		request(s, data, selected, id, turnBias, effort, false);
 	}
 	public void move(int stop, int oldX, int oldY, int tx, int ty) {
 		Start s = startTile();
@@ -114,7 +110,7 @@ public final class ChartPlotterRoutes {
 		int sx = legStartX(old, stop, s.x);
 		int sy = legStartY(old, stop, s.y);
 		ChartPlotterCollisionData data = collisionCache.snapshot();
-		long t = target(data, s.config, tx, ty, sx, sy);
+		long t = target(data, tx, ty, sx, sy);
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		if (old.x(stop) == tx && old.y(stop) == ty || stop > 0 && ChartPlotterMath.chebyshev(sx, sy, tx, ty) <= CLEAR_RADIUS || stop + 1 < old.size() && ChartPlotterMath.chebyshev(old.x(stop + 1), old.y(stop + 1), tx, ty) <= CLEAR_RADIUS) return;
@@ -131,7 +127,7 @@ public final class ChartPlotterRoutes {
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
-		request(s, data, sparseNodes.snapshot(), selected, id, turnBias, effort);
+		request(s, data, selected, id, turnBias, effort, false);
 	}
 	public void remove(int stop) {
 		ChartPlotterTrip old = trip.get();
@@ -147,11 +143,11 @@ public final class ChartPlotterRoutes {
 		if (s == null) return;
 		boolean[] selected = paused ? all(next) : pending(next);
 		paused = false;
-		if (!any(selected)) return;
+		if (none(selected)) return;
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
-		request(s, collisionCache.snapshot(), sparseNodes.snapshot(), selected, id, turnBias, effort);
+		request(s, collisionCache.snapshot(), selected, id, turnBias, effort, false);
 	}
 	public void remove(int stop, int x, int y) {
 		ChartPlotterTrip current = trip.get();
@@ -172,11 +168,11 @@ public final class ChartPlotterRoutes {
 		if (s == null) return;
 		boolean[] selected = paused ? all(next) : pending(next);
 		paused = false;
-		if (!any(selected)) return;
+		if (none(selected)) return;
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
-		request(s, collisionCache.snapshot(), sparseNodes.snapshot(), selected, id, turnBias, effort);
+		request(s, collisionCache.snapshot(), selected, id, turnBias, effort, false);
 	}
 	public void truncate(int stop, int x, int y) {
 		ChartPlotterTrip current = trip.get();
@@ -184,37 +180,29 @@ public final class ChartPlotterRoutes {
 		truncate(stop);
 	}
 	public Preview preview(int tx, int ty, boolean append) {
-		if (!sailing.boarded()) return new Preview(PV_NONE, tx, ty);
-		WorldView top = sailing.top();
-		WorldEntity ship = sailing.ship();
-		if (top == null || ship == null) return new Preview(PV_NONE, tx, ty);
-		LocalPoint loc = sailing.anchorLoc(ship);
-		if (loc == null) return new Preview(PV_NONE, tx, ty);
-		WorldEntityConfig wc = ship.getConfig();
-		int liveX = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
-		int liveY = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
+		Start s = startTile();
+		if (s == null) return new Preview(PV_NONE, tx, ty);
 		ChartPlotterTrip p = trip.get();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
-		int sx = append && !p.empty() ? legStartX(p, p.size(), liveX) : liveX;
-		int sy = append && !p.empty() ? legStartY(p, p.size(), liveY) : liveY;
+		int sx = append && !p.empty() ? legStartX(p, p.size(), s.x) : s.x;
+		int sy = append && !p.empty() ? legStartY(p, p.size(), s.y) : s.y;
 		PreviewSlot cached = previewSlot;
-		if (cached != null && cached.same(tx, ty, append, sx, sy, wc, p, data)) return cached.preview;
+		if (cached != null && cached.same(tx, ty, append, sx, sy, p, data)) return cached.preview;
 		Preview result;
 		if (append && p.size() >= MAX_STOPS) result = new Preview(PV_BAD, tx, ty);
 		else {
-			ChartPlotterRouteGrid grid = previewGrid(data, wc);
-			int f = grid.flag(tx, ty);
+			int f = data.flagAt(tx, ty);
 			if (f == ChartPlotterCollisionCache.UNKNOWN) result = new Preview(PV_SNAP, tx, ty);
 			else if (open(f)) result = new Preview(append && ChartPlotterMath.chebyshev(sx, sy, tx, ty) <= CLEAR_RADIUS ? PV_BAD : PV_OK, tx, ty);
 			else {
-				long t = target(grid, tx, ty, sx, sy);
+				long t = target(data, tx, ty, sx, sy);
 				int rx = (int) (t >> 32);
 				int ry = (int) t;
 				if (append && ChartPlotterMath.chebyshev(sx, sy, rx, ry) <= CLEAR_RADIUS) result = new Preview(PV_BAD, rx, ry);
 				else result = rx == tx && ry == ty ? new Preview(PV_BAD, tx, ty) : new Preview(PV_SNAP, rx, ry);
 			}
 		}
-		previewSlot = new PreviewSlot(tx, ty, append, sx, sy, wc, p, data, result);
+		previewSlot = new PreviewSlot(tx, ty, append, sx, sy, p, data, result);
 		return result;
 	}
 	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
@@ -222,10 +210,6 @@ public final class ChartPlotterRoutes {
 		if (p.empty()) return;
 		Start s = start(top, ship, loc);
 		ChartPlotterRoute r = p.active();
-		if (near(s.x, s.y, p.x(0), p.y(0)) && (r == null || r.status != ChartPlotterRoute.OK || r.n <= 2 || sailing.speed() == 0)) {
-			advance(s);
-			return;
-		}
 		if (paused) {
 			paused = false;
 			replan(s, all(p));
@@ -235,9 +219,30 @@ public final class ChartPlotterRoutes {
 			if (!activeBusy) replan(s, missing(p));
 			return;
 		}
+		boolean offRoute = false;
+		if (r.status == ChartPlotterRoute.OK) {
+			if (r.n <= 2 && near(s.x, s.y, p.x(0), p.y(0))) {
+				advance(s);
+				return;
+			}
+			if (sailing.speed() > 0) {
+				LocalPoint front = routeLoc(top, ship, loc);
+				ChartPlotterRoute nr = r.advance(top.getBaseX() + front.getX() / (double) TS, top.getBaseY() + front.getY() / (double) TS, PRUNE_RADIUS, FOLLOW_RADIUS, PRUNE);
+				offRoute = nr == null;
+				if (nr != null && nr != r) {
+					ChartPlotterTrip next = p.route(0, nr);
+					if (!trip.compareAndSet(p, next)) return;
+					p = next;
+					r = nr;
+				}
+			}
+		}
 		if (activeBusy) return;
+		boolean changedStart = checkedStart != null && !checkedStart.samePose(s);
+		boolean changedPosition = checkedStart != null && !checkedStart.samePosition(s);
+		checkedStart = s;
 		if (r.status == ChartPlotterRoute.PENDING) {
-			if (work.get() == null && (rev != collisionCache.rev() || sparseRev != sparseNodes.version())) {
+			if (work.get() == null && rev != collisionCache.rev()) {
 				boolean[] selected = new boolean[p.size()];
 				selected[0] = true;
 				replan(s, selected);
@@ -250,32 +255,19 @@ public final class ChartPlotterRoutes {
 			replan(s, all(p));
 			return;
 		}
-		if (sparseRev != sparseNodes.version()) {
+		if (r.status == ChartPlotterRoute.OK && (r.motion == null || r.hull == null) || r.motion != null && r.motion.speed != s.speed || r.hull != null && (!r.hull.matches(s.config) || r.hull.reverse != s.reverse)) {
 			replan(s, all(p));
 			return;
 		}
 		if (work.get() == null && rev != collisionCache.rev()) {
-			boolean[] retry = failed(p);
-			if (any(retry)) {
-				replan(s, retry);
-				return;
-			}
-		}
-		if (r.status != ChartPlotterRoute.OK && !r.start(s.x, s.y)) {
-			boolean[] selected = new boolean[p.size()];
-			selected[0] = true;
-			replan(s, selected);
+			int id = cancel();
+			trip.updateAndGet(current -> current.generation(id));
+			request(s, collisionCache.snapshot(), all(p), id, turnBias, effort, true);
 			return;
 		}
-		if (r.status == ChartPlotterRoute.OK) {
-			if (sailing.speed() == 0) return;
-			LocalPoint front = routeLoc(top, ship, loc);
-			int fx = ChartPlotterMath.worldTile(top.getBaseX(), front.getX());
-			int fy = ChartPlotterMath.worldTile(top.getBaseY(), front.getY());
-			ChartPlotterRoute nr = r.advance(fx, fy, PRUNE_RADIUS, FOLLOW_RADIUS, PRUNE);
-			if (nr == r) return;
-			if (nr != null) {
-				update(p.generation(), 0, nr);
+		if (changedStart && (r.status != ChartPlotterRoute.OK || sailing.speed() == 0) || offRoute) {
+			if (!offRoute && !changedPosition && r.start(s.x, s.y) && r.offsetX == s.offsetX && r.offsetY == s.offsetY && r.departureClear(collisionCache.snapshot(), s.heading)) {
+				trip.compareAndSet(p, p.route(0, r.plan(r.motion, r.hull, s.heading)));
 				return;
 			}
 			boolean[] selected = new boolean[p.size()];
@@ -288,7 +280,7 @@ public final class ChartPlotterRoutes {
 		trip.set(ChartPlotterTrip.empty(id));
 		paused = false;
 		rev = 0;
-		sparseRev = 0;
+		checkedStart = null;
 		idle();
 	}
 	public void pause() {
@@ -297,87 +289,40 @@ public final class ChartPlotterRoutes {
 		trip.updateAndGet(p -> p.generation(id));
 		paused = true;
 		rev = 0;
-		sparseRev = 0;
 		idle();
 	}
 	public void stop() {clear();}
 	public ChartPlotterRoute route() {return trip.get().active();}
 	public ChartPlotterTrip trip() {return trip.get();}
 	public boolean canAppend() {return trip.get().size() < MAX_STOPS;}
-	public void clearPreview() {
-		previewSlot = null;
-		previewData = null;
-		previewConfig = null;
-		previewGrid = null;
-	}
+	public void clearPreview() {previewSlot = null;}
 	private LocalPoint routeLoc(WorldView top, WorldEntity ship, LocalPoint loc) {
 		WorldEntityConfig wc = ship.getConfig();
 		if (wc == null) return loc;
 		int o = sailing.actualHeading(ship);
 		int x = wc.getBoundsX();
-		int y = Math.round(wc.getBoundsY() - wc.getBoundsHeight() / 2f);
-		return new LocalPoint(rotateX(loc.getX(), o, x, y), rotateY(loc.getY(), o, x, y), top);
+		int y = Math.round(wc.getBoundsY() + (sailing.reversing() ? 1 : -1) * wc.getBoundsHeight() / 2f);
+		return new LocalPoint(ChartPlotterMath.rotateX(loc.getX(), o, x, y), ChartPlotterMath.rotateY(loc.getY(), o, x, y), top);
 	}
-	static long target(ChartPlotterCollisionData data, WorldEntityConfig wc, int tx, int ty, int sx, int sy) {return target(grid(data, wc), tx, ty, sx, sy);}
-	static long target(ChartPlotterRouteGrid data, int tx, int ty, int sx, int sy) {
-		int f = data.flag(tx, ty);
-		if (f == ChartPlotterCollisionCache.UNKNOWN || open(f)) return ChartPlotterCollisionData.key(tx, ty);
-		int bx = tx;
-		int by = ty;
-		long bs = Long.MAX_VALUE;
-		for (int r = 1; r <= CLEAR_RADIUS; r++) {
-			int minX = tx - r;
-			int minY = ty - r;
-			int maxX = tx + r;
-			int maxY = ty + r;
-			int d = r << 1;
-			for (int i = 0; i < d << 2; i++) {
-				int x;
-				int y;
-				if (i <= d) {
-					x = minX + i;
-					y = minY;
-				} else if (i < d * 3 - 1) {
-					int p = i - d - 1;
-					x = (p & 1) == 0 ? minX : maxX;
-					y = minY + 1 + (p >> 1);
-				} else {
-					x = minX + i - (d * 3 - 1);
-					y = maxY;
-				}
-				long s = targetScore(data, x, y, sx, sy);
-				if (s < bs) {
-					bx = x;
-					by = y;
-					bs = s;
-				}
+	static long target(ChartPlotterCollisionData data, int tx, int ty, int sx, int sy) {
+		int f = data.flagAt(tx, ty);
+		if (f != ChartPlotterCollisionData.BLOCKED) return ChartPlotterCollisionData.key(tx, ty);
+		for (int r = 1; r <= SNAP_RADIUS; r++) {
+			int bx = tx;
+			int by = ty;
+			int distance = Integer.MAX_VALUE;
+			long best = Long.MAX_VALUE;
+			for (int y = ty - r; y <= ty + r; y++) for (int x = tx - r; x <= tx + r; x++) {
+				if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) != r || data.flagAt(x, y) != ChartPlotterCollisionData.OPEN) continue;
+				long dx = (long) x - sx;
+				long dy = (long) y - sy;
+				int d = (x - tx) * (x - tx) + (y - ty) * (y - ty);
+				long score = dx * dx + dy * dy;
+				if (d < distance || d == distance && score < best) {bx = x; by = y; distance = d; best = score;}
 			}
-			if (bs != Long.MAX_VALUE) return ChartPlotterCollisionData.key(bx, by);
+			if (best != Long.MAX_VALUE) return ChartPlotterCollisionData.key(bx, by);
 		}
 		return ChartPlotterCollisionData.key(tx, ty);
-	}
-	private static long targetScore(ChartPlotterRouteGrid data, int x, int y, int sx, int sy) {
-		if (data.flag(x, y) != ChartPlotterCollisionCache.OPEN) return Long.MAX_VALUE;
-		long dx = x - sx;
-		long dy = y - sy;
-		return dx * dx + dy * dy;
-	}
-	private static ChartPlotterRouteGrid grid(ChartPlotterCollisionData data, WorldEntityConfig wc) {
-		if (wc == null) return new ChartPlotterRouteGrid(data);
-		ChartPlotterRouteGrid.Footprint fp = new ChartPlotterRouteGrid.Footprint(wc);
-		return ChartPlotterRouteGrid.lazy(data, fp, radius(fp), MODE_TILE);
-	}
-	private ChartPlotterRouteGrid previewGrid(ChartPlotterCollisionData data, WorldEntityConfig config) {
-		if (previewGrid == null || previewData != data || previewConfig != config) {
-			previewData = data;
-			previewConfig = config;
-			previewGrid = grid(data, config);
-		}
-		return previewGrid;
-	}
-	private static int radius(ChartPlotterRouteGrid.Footprint fp) {
-		int r = Math.max(Math.max(Math.abs(fp.minX), Math.abs(fp.maxX)), Math.max(Math.abs(fp.minY), Math.abs(fp.maxY)));
-		return Math.max(1, (r + TS - 1) / TS);
 	}
 	private Start startTile() {
 		if (!sailing.boarded()) return null;
@@ -389,8 +334,8 @@ public final class ChartPlotterRoutes {
 		return start(top, ship, loc);
 	}
 	private Start start(WorldView top, WorldEntity ship, LocalPoint loc) {
-		int heading = sailing.speed() == 0 ? -1 : sailing.heading(ship);
-		return new Start(ship.getConfig(), ChartPlotterMath.worldTile(top.getBaseX(), loc.getX()), ChartPlotterMath.worldTile(top.getBaseY(), loc.getY()), heading, sailing.reversing());
+		int heading = ChartPlotterMath.norm(ship.getTargetLocation() == null ? ship.getOrientation() : ship.getTargetOrientation());
+		return new Start(ship.getConfig(), ChartPlotterMath.worldTile(top.getBaseX(), loc.getX()), ChartPlotterMath.worldTile(top.getBaseY(), loc.getY()), heading, sailing.reversing(), Math.max(0.5, sailing.maxSpeed()), Math.floorMod(loc.getX(), TS) / (double) TS, Math.floorMod(loc.getY(), TS) / (double) TS);
 	}
 	private void advance(Start s) {
 		boolean reboard = paused;
@@ -406,10 +351,10 @@ public final class ChartPlotterRoutes {
 		ChartPlotterRouteEffort effort = config.routeEffort();
 		int turnBias = config.routeShape().bias;
 		trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
-		request(s, collisionCache.snapshot(), sparseNodes.snapshot(), selected, id, turnBias, effort);
+		request(s, collisionCache.snapshot(), selected, id, turnBias, effort, false);
 	}
 	private void replan(Start s, boolean[] selected) {
-		if (!any(selected)) return;
+		if (none(selected)) return;
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		ChartPlotterTrip current = trip.get();
 		if (data.rev != rev) merge(selected, failed(current));
@@ -418,36 +363,84 @@ public final class ChartPlotterRoutes {
 		int turnBias = config.routeShape().bias;
 		ChartPlotterTrip next = trip.updateAndGet(p -> p.pending(id, s.x, s.y, turnBias, effort.weight, effort, selected));
 		if (next.empty()) return;
-		request(s, data, sparseNodes.snapshot(), selected, id, turnBias, effort);
+		request(s, data, selected, id, turnBias, effort, false);
 	}
-	private void request(Start s, ChartPlotterCollisionData data, ChartPlotterSparseNodes.Snapshot sparse, boolean[] selected, int id, int turnBias, ChartPlotterRouteEffort effort) {
+	private void request(Start s, ChartPlotterCollisionData data, boolean[] selected, int id, int turnBias, ChartPlotterRouteEffort effort, boolean validate) {
 		ChartPlotterTrip snapshot = trip.get();
-		if (snapshot.generation() != id || snapshot.empty() || !any(selected)) return;
+		if (snapshot.generation() != id || snapshot.empty() || none(selected)) return;
+		if (selected[0] && !validate) checkedStart = s;
 		int weight = effort.weight;
-		rev = data.rev;
-		sparseRev = sparse.version;
-		activeBusy = selected[0];
+		boolean changed = rev != data.rev;
+		boolean[] awaiting = selected.clone();
+		for (int i = 0; i < awaiting.length; i++) awaiting[i] |= changed && snapshot.route(i) != null && snapshot.route(i).status == ChartPlotterRoute.OK;
+		activeBusy = awaiting[0];
+		ChartPlotterRouteRecorder recording;
+		if (config.recordNextRoute()) {
+			WorldEntity ship = sailing.ship();
+			recording = new ChartPlotterRouteRecorder(s.config, ship == null ? -1 : sailing.actualHeading(ship), sailing.speed(), sailing.accel(), sailing.maxSpeed(), sailing.moveMode());
+			WorldView top = sailing.top();
+			if (ship != null && top != null) recording.position(top.getBaseX(), top.getBaseY(), top.getPlane(), ship.getLocalLocation(), sailing.anchorLoc(ship));
+			configManager.setConfiguration("chartplotter", "recordNextRoute", false);
+		} else recording = null;
 		start();
 		AtomicReference<Future<?>> nextRef = new AtomicReference<>();
 		FutureTask<Void> next = new FutureTask<>(() -> {
 			try {
-				BooleanSupplier cancel = () -> id != seq.get() || Thread.currentThread().isInterrupted();
+				BooleanSupplier cancelled = () -> id != seq.get() || Thread.currentThread().isInterrupted();
 				for (int i = 0; i < selected.length; i++) {
-					if (!selected[i]) continue;
-					if (cancel.getAsBoolean()) return;
-					int sx = i == 0 ? s.x : snapshot.x(i - 1);
-					int sy = i == 0 ? s.y : snapshot.y(i - 1);
-					int heading = i == 0 ? s.heading : -1;
+					ChartPlotterRoute previous = snapshot.route(i);
+					ChartPlotterTrip current = trip.get();
+					if (current.generation() != id || cancelled.getAsBoolean()) return;
+					ChartPlotterRoute incoming = i == 0 ? null : current.route(i - 1);
+					int sx = legStartX(current, i, s.x);
+					int sy = legStartY(current, i, s.y);
+					int heading = i == 0 ? s.heading : incoming == null ? -1 : incoming.arrivalHeading();
+					double fx = incoming == null || incoming.motion == null ? s.offsetX : incoming.offsetX;
+					double fy = incoming == null || incoming.motion == null ? s.offsetY : incoming.offsetY;
 					boolean reverse = i == 0 && s.reverse;
-					ChartPlotterRoute r = ChartPlotterRouteFinder.find(data, s.config, heading, sx, sy, snapshot.x(i), snapshot.y(i), turnBias, reverse, weight, sparse, effort.corridor, cancel).effort(effort);
+					boolean connected = i == 0 || previous != null && previous.start(sx, sy) && previous.heading == heading && previous.offsetX == fx && previous.offsetY == fy;
+					if (!awaiting[i] && connected) continue;
+					awaiting[i] = true;
+					if ((validate || !selected[i]) && connected && previous != null && !previous.recalculating && previous.valid(data, cancelled)) {
+						awaiting[i] = false;
+						if (i == 0 && id == seq.get()) activeBusy = false;
+						continue;
+					}
+					update(id, i, ChartPlotterRoute.pending(sx, sy, snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort));
+					long started = System.nanoTime();
+					ChartPlotterRoute r = new ChartPlotterRouteFinder(data, s.config, heading, sx, sy, snapshot.x(i), snapshot.y(i), turnBias, reverse, s.speed, fx, fy, weight, () -> cancelled.getAsBoolean() || System.nanoTime() - started >= effort.nanos).find().effort(effort);
+					long elapsed = System.nanoTime() - started;
+					if (cancelled.getAsBoolean()) return;
+					if (r.status == ChartPlotterRoute.PENDING) r = ChartPlotterRoute.timedOut(sx, sy, snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort);
+					ChartPlotterRoute searched = r;
+					ChartPlotterCollisionData latest = collisionCache.snapshot();
+					if (latest != data && r.status == ChartPlotterRoute.OK && !r.valid(latest, cancelled)) r = ChartPlotterRoute.pending(sx, sy, snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort);
 					if (!update(id, i, r)) return;
+					awaiting[i] = false;
 					if (i == 0 && id == seq.get()) activeBusy = false;
+					if (recording != null && !cancelled.getAsBoolean()) {
+						try {LoggerFactory.getLogger(ChartPlotterRoutes.class).info("Recorded route to {}", recording.write(data, searched, heading, reverse, s.speed, fx, fy, elapsed));}
+						catch (java.io.IOException e) {LoggerFactory.getLogger(ChartPlotterRoutes.class).warn("Could not record route", e);}
+					}
 				}
+				if (id == seq.get()) rev = data.rev;
 			} finally {
 				if (id == seq.get()) activeBusy = false;
 				work.compareAndSet(nextRef.get(), null);
 			}
-		}, null);
+		}, null) {
+			@Override
+			protected void done() {
+				try {get();}
+				catch (CancellationException ignored) {}
+				catch (InterruptedException e) {Thread.currentThread().interrupt();}
+				catch (ExecutionException e) {
+					LoggerFactory.getLogger(ChartPlotterRoutes.class).warn("Routing failed", e.getCause());
+					trip.updateAndGet(current -> current.failed(id, awaiting));
+					if (id == seq.get()) rev = data.rev;
+				}
+			}
+		};
 		nextRef.set(next);
 		work.set(next);
 		exec.execute(next);
@@ -490,7 +483,7 @@ public final class ChartPlotterRoutes {
 	}
 	private static boolean[] pending(ChartPlotterTrip p) {
 		boolean[] selected = new boolean[p.size()];
-		for (int i = 0; i < selected.length; i++) selected[i] = p.route(i) == null || p.route(i).status == ChartPlotterRoute.PENDING;
+		for (int i = 0; i < selected.length; i++) selected[i] = p.route(i) == null || p.route(i).status == ChartPlotterRoute.PENDING || p.route(i).recalculating;
 		return selected;
 	}
 	private static boolean[] missing(ChartPlotterTrip p) {
@@ -508,15 +501,19 @@ public final class ChartPlotterRoutes {
 		Arrays.fill(selected, true);
 		return selected;
 	}
-	private static boolean any(boolean[] selected) {
-		for (boolean on : selected) if (on) return true;
-		return false;
+	private static boolean none(boolean[] selected) {
+		for (boolean on : selected) if (on) return false;
+		return true;
 	}
 	static int legStartX(ChartPlotterTrip trip, int stop, int live) {
-		return stop == 0 ? live : trip.x(stop - 1);
+		if (stop == 0) return live;
+		ChartPlotterRoute incoming = trip.route(stop - 1);
+		return incoming != null && incoming.status == ChartPlotterRoute.OK && incoming.n > 0 ? incoming.x[incoming.n - 1] : trip.x(stop - 1);
 	}
 	static int legStartY(ChartPlotterTrip trip, int stop, int live) {
-		return stop == 0 ? live : trip.y(stop - 1);
+		if (stop == 0) return live;
+		ChartPlotterRoute incoming = trip.route(stop - 1);
+		return incoming != null && incoming.status == ChartPlotterRoute.OK && incoming.n > 0 ? incoming.y[incoming.n - 1] : trip.y(stop - 1);
 	}
 	private static void merge(boolean[] dst, boolean[] src) {for (int i = 0; i < dst.length; i++) dst[i] |= src[i];}
 	private static boolean near(int ax, int ay, int bx, int by) {return ChartPlotterMath.chebyshev(ax, ay, bx, by) <= REACH_RADIUS;}
@@ -527,13 +524,21 @@ public final class ChartPlotterRoutes {
 		final int y;
 		final int heading;
 		final boolean reverse;
-		private Start(WorldEntityConfig config, int x, int y, int heading, boolean reverse) {
+		final double speed;
+		final double offsetX;
+		final double offsetY;
+		private Start(WorldEntityConfig config, int x, int y, int heading, boolean reverse, double speed, double offsetX, double offsetY) {
 			this.config = config;
 			this.x = x;
 			this.y = y;
 			this.heading = heading;
 			this.reverse = reverse;
+			this.speed = speed;
+			this.offsetX = offsetX;
+			this.offsetY = offsetY;
 		}
+		boolean samePosition(Start other) {return x == other.x && y == other.y && offsetX == other.offsetX && offsetY == other.offsetY;}
+		boolean samePose(Start other) {return samePosition(other) && heading == other.heading;}
 	}
 	private static final class PreviewSlot {
 		final int tx;
@@ -541,39 +546,30 @@ public final class ChartPlotterRoutes {
 		final boolean append;
 		final int sx;
 		final int sy;
-		final WorldEntityConfig config;
 		final Object stops;
 		final ChartPlotterCollisionData data;
 		final Preview preview;
-		private PreviewSlot(int tx, int ty, boolean append, int sx, int sy, WorldEntityConfig config, ChartPlotterTrip trip, ChartPlotterCollisionData data, Preview preview) {
+		private PreviewSlot(int tx, int ty, boolean append, int sx, int sy, ChartPlotterTrip trip, ChartPlotterCollisionData data, Preview preview) {
 			this.tx = tx;
 			this.ty = ty;
 			this.append = append;
 			this.sx = sx;
 			this.sy = sy;
-			this.config = config;
 			stops = trip.stopKey();
 			this.data = data;
 			this.preview = preview;
 		}
-		boolean same(int tx, int ty, boolean append, int sx, int sy, WorldEntityConfig config, ChartPlotterTrip trip, ChartPlotterCollisionData data) {return this.tx == tx && this.ty == ty && this.append == append && this.sx == sx && this.sy == sy && this.config == config && stops == trip.stopKey() && this.data == data;}
-	}
-	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max) {
-		return turn(r, bx, by, speed, accel, max, 0);
-	}
-	public static Turn turn(ChartPlotterRoute r, int bx, int by, double speed, double accel, double max, long updated) {
-		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return Turn.NONE;
-		int cx = r.x[1];
-		int cy = r.y[1];
-		int ticks = speed > 0 ? eta(Math.hypot(cx - bx, cy - by), speed, accel, max) : -1;
-		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated, r.n == 2);
+		boolean same(int tx, int ty, boolean append, int sx, int sy, ChartPlotterTrip trip, ChartPlotterCollisionData data) {return this.tx == tx && this.ty == ty && this.append == append && this.sx == sx && this.sy == sy && stops == trip.stopKey() && this.data == data;}
 	}
 	public static Turn turn(ChartPlotterRoute r, double bx, double by, double speed, double accel, double max, long updated) {
-		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return Turn.NONE;
-		int cx = r.x[1];
-		int cy = r.y[1];
-		int ticks = speed > 0 ? eta(Math.hypot(cx + 0.5 - bx, cy + 0.5 - by), speed, accel, max) : -1;
-		return new Turn(cx, cy, ticks, updated > 0 ? updated : r.updated, r.n == 2);
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0) return Turn.NONE;
+		boolean end = r.n <= 2;
+		int cx = end ? r.tx : r.x[1];
+		int cy = end ? r.ty : r.y[1];
+		double fx = end ? 0.5 : r.offsetX;
+		double fy = end ? 0.5 : r.offsetY;
+		int ticks = speed > 0 ? eta(Math.hypot(cx + fx - bx, cy + fy - by), speed, accel, max) : -1;
+		return new Turn(true, cx, cy, fx, fy, ticks, updated > 0 ? updated : r.updated, end);
 	}
 	private static int eta(double dist, double speed, double accel, double max) {
 		double v = speed;
@@ -593,15 +589,18 @@ public final class ChartPlotterRoutes {
 		public final boolean valid;
 		public final int x;
 		public final int y;
+		public final double offsetX;
+		public final double offsetY;
 		public final int ticks;
 		public final long updated;
 		public final boolean end;
-		private Turn() {this(false, 0, 0, -1, 0, false);}
-		private Turn(int x, int y, int ticks, long updated, boolean end) {this(true, x, y, ticks, updated, end);}
-		private Turn(boolean valid, int x, int y, int ticks, long updated, boolean end) {
+		private Turn() {this(false, 0, 0, 0, 0, -1, 0, false);}
+		private Turn(boolean valid, int x, int y, double offsetX, double offsetY, int ticks, long updated, boolean end) {
 			this.valid = valid;
 			this.x = x;
 			this.y = y;
+			this.offsetX = offsetX;
+			this.offsetY = offsetY;
 			this.ticks = ticks;
 			this.updated = updated;
 			this.end = end;

@@ -9,9 +9,7 @@ import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
-import com.chartplotter.route.ChartPlotterSparseNodes;
 import com.chartplotter.route.ChartPlotterTrip;
-import com.chartplotter.util.ChartPlotterMath;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.*;
@@ -47,14 +45,11 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterCollisionCache collisionCache;
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
-	@Inject private ChartPlotterSparseNodes sparseNodes;
 	@Inject private ChartPlotterScene scene;
 	@Inject private ChartPlotterProjection projection;
 	@Inject private Notifier notifier;
 	@Inject private KeyManager keyManager;
 	private boolean collisionActive;
-	private boolean editorCacheActive;
-	private boolean sparseActive;
 	private boolean inputRegistered;
 	private volatile boolean focused = true;
 	private int alertX = Integer.MIN_VALUE;
@@ -78,7 +73,6 @@ public final class ChartPlotterRuntime {
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {
-			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			if (e.getButton() != MouseEvent.BUTTON1) return e;
 			cancelStopDrag();
@@ -90,7 +84,7 @@ public final class ChartPlotterRuntime {
 			downCtrl = e.isControlDown();
 			downShift = e.isShiftDown();
 			downAlt = e.isAltDown();
-			downBlock = menuBlock || client.isMenuOpen() || features.edit && worldMapOverlay.movingNode() || e.isAltDown() || worldMapOverlay.cachedClickBlocked();
+			downBlock = menuBlock || client.isMenuOpen() || e.isAltDown() || worldMapOverlay.cachedClickBlocked();
 			boolean mod = e.isAltDown() || e.isControlDown() || e.isShiftDown();
 			if (!downBlock && !mod && features.chart && sailing.boarded()) {
 				int[] stop = worldMapOverlay.cachedStop(m);
@@ -103,18 +97,11 @@ public final class ChartPlotterRuntime {
 					e.consume();
 				}
 			}
-			if (features.edit && worldMapOverlay.movingNode()) clientThread.invoke(() -> {
-				if (!worldMapOverlay.clickBlocked()) worldMapOverlay.placeNode(m);
-			});
-			else if (e.isAltDown() && features.edit) clientThread.invoke(() -> {
-				if (!worldMapOverlay.clickBlocked()) worldMapOverlay.editNode(m);
-			});
-			if (!mod && features.course && !worldMapOverlay.movingNode() && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
+			if (!mod && features.course && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
 			return e;
 		}
 		@Override
 		public MouseEvent mouseReleased(MouseEvent e) {
-			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			boolean moved = dragged || Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP;
 			int stop = draggedStop;
@@ -153,7 +140,6 @@ public final class ChartPlotterRuntime {
 		}
 		@Override
 		public MouseEvent mouseMoved(MouseEvent e) {
-			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			return e;
 		}
@@ -164,7 +150,6 @@ public final class ChartPlotterRuntime {
 				worldMapOverlay.dragStop(draggedStop, draggedX, draggedY, new Point(e.getX(), e.getY()));
 				e.consume();
 			}
-			worldMapOverlay.nodeAlt(e.isAltDown());
 			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());
 			return e;
 		}
@@ -172,7 +157,6 @@ public final class ChartPlotterRuntime {
 		public MouseEvent mouseExited(MouseEvent e) {
 			down = false;
 			cancelStopDrag();
-			worldMapOverlay.nodeAlt(false);
 			worldMapOverlay.courseMods(false, false);
 			return e;
 		}
@@ -202,16 +186,12 @@ public final class ChartPlotterRuntime {
 			inputRegistered = false;
 		}
 		clearMods();
-		worldMapOverlay.clearEditor();
 		collisionActive = false;
-		editorCacheActive = false;
-		sparseActive = false;
 		resetCapture();
 		features = ChartPlotterFeatures.off();
 		scene.clear();
 		collisionCache.stop();
 		routes.stop();
-		sparseNodes.stop();
 		sailing.reset();
 		sailing.average(false);
 		projection.clear();
@@ -221,13 +201,11 @@ public final class ChartPlotterRuntime {
 		if (!features.tracking) return;
 		sailing.varbit(e);
 		if (sailing.boarded()) {
-			sparse(features.chart || features.edit);
 			updateScene();
 			return;
 		}
 		routes.pause();
 		collision(false, null);
-		sparse(features.edit);
 		sailing.clear();
 		scene.clear();
 		projection.clear();
@@ -236,21 +214,17 @@ public final class ChartPlotterRuntime {
 		if (!features.tracking) return;
 		if (e.getGameState() == GameState.LOGGED_IN) {
 			sailing.sync();
-			sparse(features.edit || features.chart && sailing.boarded());
 			updateScene();
 			return;
 		}
 		if (e.getGameState() == GameState.LOADING) {
-			worldMapOverlay.clearEditor();
 			scene.clear();
 			projection.clear();
 			return;
 		}
 		sailing.reset();
 		routes.clear();
-		worldMapOverlay.clearEditor();
 		collision(false, null);
-		sparse(features.edit);
 		scene.clear();
 		projection.clear();
 	}
@@ -265,13 +239,6 @@ public final class ChartPlotterRuntime {
 	@SuppressWarnings({"unused", "UnusedParameters"})
 	public void menu(MenuOpened e) {
 		Point m = client.getMouseCanvasPosition();
-		if (features.edit) {
-			int[] node = worldMapOverlay.node(m);
-			if (node != null) {
-				menuBlock = true;
-				client.getMenu().createMenuEntry(-1).setOption("Remove node").setTarget("Chart Plotter").setType(MenuAction.RUNELITE).onClick(me -> worldMapOverlay.removeNode(node[0], node[1]));
-			}
-		}
 		if (!features.chart) return;
 		int stop = worldMapOverlay.stop(m);
 		int[] dst = sailing.boarded() ? worldMapOverlay.tile(m) : null;
@@ -323,8 +290,8 @@ public final class ChartPlotterRuntime {
 		boolean normal = features.cache(sailing.boarded()) && top != null;
 		boolean started = collision(normal, top);
 		if (sceneChanged && normal && !started) capture(top);
-		if (features.chart && top != null) routes.tick(top, ship, loc);
 		sailing.motion(ship, loc, sceneChanged);
+		if (features.chart && top != null) routes.tick(top, ship, loc);
 		alert(top, loc);
 	}
 	public void focus(boolean focused) {this.focused = focused;}
@@ -350,9 +317,9 @@ public final class ChartPlotterRuntime {
 			return;
 		}
 		if (focused) return;
-		int bx = ChartPlotterMath.worldTile(top.getBaseX(), loc.getX());
-		int by = ChartPlotterMath.worldTile(top.getBaseY(), loc.getY());
-		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(r, bx, by, sailing.speed(), sailing.accel(), sailing.maxSpeed());
+		double bx = top.getBaseX() + loc.getX() / (double) Perspective.LOCAL_TILE_SIZE;
+		double by = top.getBaseY() + loc.getY() / (double) Perspective.LOCAL_TILE_SIZE;
+		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(r, bx, by, sailing.speed(), sailing.accel(), sailing.maxSpeed(), sailing.motionTime());
 		if (!turn.valid || turn.end || turn.ticks < 0 || turn.ticks > ALERT_TICKS || turn.x == alertX && turn.y == alertY) return;
 		notifier.notify("Sailing: next turn approaching");
 		alertX = turn.x;
@@ -393,8 +360,6 @@ public final class ChartPlotterRuntime {
 			routes.stop();
 			cancelStopDrag();
 		}
-		if (prev.edit && !next.edit) worldMapOverlay.clearEditor();
-		sparse(next.edit || next.chart && sailing.boarded());
 		if (next.input && !inputRegistered) {
 			mouseManager.registerMouseListener(mouse);
 			keyManager.registerKeyListener(key);
@@ -405,19 +370,11 @@ public final class ChartPlotterRuntime {
 			inputRegistered = false;
 			clearMods();
 		}
-		if (next.edit && !editorCacheActive) {
-			collisionCache.start();
-			editorCacheActive = true;
-		} else if (!next.edit && editorCacheActive) {
-			editorCacheActive = false;
-			if (!collisionActive) collisionCache.stop();
-		}
 		if (!next.cache(sailing.boarded())) collision(false, null);
 		if (prev.course && !next.course) projection.clear();
 		if (!next.tracking) sailing.reset();
 		else if (!prev.tracking) clientThread.invoke(() -> {
 			sailing.sync();
-			sparse(features.edit || features.chart && sailing.boarded());
 			updateScene();
 		});
 	}
@@ -441,24 +398,19 @@ public final class ChartPlotterRuntime {
 		return click == ChartPlotterWorldMapClick.CLICK || click == ChartPlotterWorldMapClick.CTRL_CLICK && downCtrl;
 	}
 	private void mods(KeyEvent e) {
-		boolean alt = e.isAltDown();
 		boolean ctrl = e.isControlDown();
 		boolean shift = e.isShiftDown();
 		if (e.getID() == KeyEvent.KEY_PRESSED) {
-			if (e.getKeyCode() == KeyEvent.VK_ALT || e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) alt = true;
 			if (e.getKeyCode() == KeyEvent.VK_CONTROL) ctrl = true;
 			if (e.getKeyCode() == KeyEvent.VK_SHIFT) shift = true;
 		} else if (e.getID() == KeyEvent.KEY_RELEASED) {
-			if (e.getKeyCode() == KeyEvent.VK_ALT || e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) alt = false;
 			if (e.getKeyCode() == KeyEvent.VK_CONTROL) ctrl = false;
 			if (e.getKeyCode() == KeyEvent.VK_SHIFT) shift = false;
 		}
-		worldMapOverlay.nodeAlt(alt);
 		worldMapOverlay.courseMods(ctrl, shift);
 	}
 	private void clearMods() {
 		cancelStopDrag();
-		worldMapOverlay.nodeAlt(false);
 		worldMapOverlay.courseMods(false, false);
 	}
 	private void cancelStopDrag() {
@@ -475,25 +427,16 @@ public final class ChartPlotterRuntime {
 			return true;
 		}
 		resetCapture();
-		if (!editorCacheActive) collisionCache.stop();
+		collisionCache.stop();
 		return false;
 	}
 	private void capture(WorldView top) {
-		if (!collisionActive && !editorCacheActive) return;
+		if (!collisionActive) return;
 		int tick = client.getTickCount();
 		if (captureTick == tick && captureView == top) return;
 		captureTick = tick;
 		captureView = top;
 		collisionCache.capture(top);
-	}
-	private void sparse(boolean active) {
-		if (active == sparseActive) return;
-		sparseActive = active;
-		if (active) {
-			sparseNodes.start();
-			sparseNodes.invalidate(collisionCache.snapshot());
-		}
-		else sparseNodes.stop();
 	}
 	private void resetCapture() {
 		captureTick = Integer.MIN_VALUE;

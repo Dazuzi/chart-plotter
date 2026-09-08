@@ -1,12 +1,10 @@
 package com.chartplotter.collision;
 
 import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
-import com.chartplotter.route.ChartPlotterSparseNodes;
 import com.chartplotter.util.ChartPlotterVersions;
 import net.runelite.api.WorldView;
 import net.runelite.client.RuneLite;
 
-import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.File;
 import java.io.InputStream;
@@ -27,7 +25,6 @@ public final class ChartPlotterCollisionCache {
 	public static final int MOVE = ChartPlotterCollisionData.MOVE;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
 	private final Map<Long, Chunk> chunks = new HashMap<>();
-	@Inject private ChartPlotterSparseNodes sparseNodes;
 	private volatile ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private volatile boolean loaded;
 	private ScheduledExecutorService io;
@@ -94,17 +91,17 @@ public final class ChartPlotterCollisionCache {
 	public long rev() {return loaded ? rev : view.rev;}
 	private void mergeQuiet(ScheduledExecutorService ex, ChartPlotterCollisionScan scan) {
 		try {
-			if (merge(ex, scan)) sparseNodes.invalidate(snapshot());
+			merge(ex, scan);
 		} catch (Exception ignored) {
 		}
 	}
-	private boolean merge(ScheduledExecutorService ex, ChartPlotterCollisionScan scan) {
+	private void merge(ScheduledExecutorService ex, ChartPlotterCollisionScan scan) {
 		synchronized (this) {
-			if (!loaded || io != ex) return false;
+			if (!loaded || io != ex) return;
 		}
 		Map<Long, Builder> data = new HashMap<>();
 		for (int sx = 0; sx < scan.width; sx++) {
-			if (Thread.currentThread().isInterrupted()) return false;
+			if (Thread.currentThread().isInterrupted()) return;
 			for (int sy = 0; sy < scan.height; sy++) {
 				int f = scan.flags[sx * scan.height + sy];
 				if (f == VOID) continue;
@@ -113,10 +110,8 @@ public final class ChartPlotterCollisionCache {
 		}
 		for (int i = 0; i < scan.objects.length; i += 4) putObject(data, scan, i);
 		synchronized (this) {
-			if (!loaded || io != ex) return false;
-			boolean changed = merge(data);
-			if (changed) scheduleFlush(ex, 30);
-			return changed;
+			if (!loaded || io != ex) return;
+			if (merge(data)) scheduleFlush(ex, 30);
 		}
 	}
 	private static void putObject(Map<Long, Builder> data, ChartPlotterCollisionScan scan, int i) {

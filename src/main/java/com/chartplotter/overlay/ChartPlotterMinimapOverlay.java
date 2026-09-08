@@ -171,12 +171,18 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
 	}
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model) {
-		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2) return;
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.minimapLineWidth());
 		Stroke dash = routeStroke.dashed(config.minimapLineWidth());
 		g.setColor(color);
-		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], model, solid, dash);
+		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], r.offsetX, r.offsetY, model, solid, dash);
+		Point a = routePoint(wv, r.x[r.n - 1], r.y[r.n - 1], r.offsetX, r.offsetY);
+		Point b = routePoint(wv, r.tx, r.ty, 0.5, 0.5);
+		if (a != null && b != null) {
+			g.setStroke(dash);
+			g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+		}
 		g.setStroke(old);
 	}
 	private Color faded(Color color) {
@@ -187,10 +193,10 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		return fadeColor;
 	}
-	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash) {
+	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, double offsetX, double offsetY, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash) {
 		if (!routeVisible(wv, ax, ay, bx, by)) return;
-		Point a = routePoint(wv, ax, ay);
-		Point b = routePoint(wv, bx, by);
+		Point a = routePoint(wv, ax, ay, offsetX, offsetY);
+		Point b = routePoint(wv, bx, by, offsetX, offsetY);
 		if (a == null || b == null) return;
 		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, model) ? solid : dash);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
@@ -211,9 +217,9 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		return routeModel;
 	}
-	private Point routePoint(WorldView wv, int wx, int wy) {
-		int lx = (wx - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
-		int ly = (wy - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE + Perspective.LOCAL_TILE_SIZE / 2;
+	private Point routePoint(WorldView wv, int wx, int wy, double offsetX, double offsetY) {
+		int lx = (int) Math.round((wx + offsetX - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE);
+		int ly = (int) Math.round((wy + offsetY - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE);
 		return Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor, Widget w, Shape clip) {

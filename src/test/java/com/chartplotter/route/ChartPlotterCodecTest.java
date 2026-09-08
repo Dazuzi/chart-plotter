@@ -15,26 +15,20 @@ public class ChartPlotterCodecTest {
 	@Test
 	public void readsSeedVersionsWithoutDecodingPayloads() {
 		assertEquals("2026-08-24", ChartPlotterCollisionCodec.readVersion(input("data 2026-08-24\n1 2 f\n")));
-		assertEquals("2026-08-24", ChartPlotterSparseCodec.readVersion(input("data 2026-08-24\n1 2\n")));
 	}
 	@Test
-	public void decodesCollisionMasksAndSparseNodes() {
+	public void decodesCollisionMasks() {
 		ChartPlotterCollisionCodec.Text collision = ChartPlotterCollisionCodec.readText(input("data 2026-08-24\n1 2 0000000000000003 0000000000000002\n"));
 		assertNotNull(collision);
 		ChartPlotterCollisionData.Chunk chunk = collision.data.get(ChartPlotterCollisionData.key(1, 2));
 		assertEquals(3, chunk.known);
 		assertEquals(2, chunk.blocked);
-		ChartPlotterSparseCodec.Text sparse = ChartPlotterSparseCodec.readText(input("data 2026-08-24\n10 20\n30 40\n"));
-		assertNotNull(sparse);
-		assertArrayEquals(new int[]{10, 30}, sparse.nodes.x);
-		assertArrayEquals(new int[]{20, 40}, sparse.nodes.y);
 	}
 	@Test
 	public void textDecodersHonorCancellation() {
 		try {
 			Thread.currentThread().interrupt();
 			assertNull(ChartPlotterCollisionCodec.readText(input("data 2026-08-24\n1 2 0\n")));
-			assertNull(ChartPlotterSparseCodec.readText(input("data 2026-08-24\n1 2\n")));
 		} finally {
 			assertTrue(Thread.interrupted());
 		}

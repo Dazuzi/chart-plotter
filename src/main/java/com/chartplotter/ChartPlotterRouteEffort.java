@@ -1,16 +1,15 @@
 package com.chartplotter;
 public enum ChartPlotterRouteEffort {
-	VERY_HIGH("Very high", 100, 120),
-	HIGH("High", 125, 100),
-	BALANCED("Balanced", 175, 80),
-	FAST("Fast", 250, 60);
+	FAST("Fast", 140, 1),
+	REFINED("Refined", 110, 3),
+	MAXIMUM("Maximum", 100, 8);
 	public final int weight;
-	public final int corridor;
+	public final long nanos;
 	private final String name;
-	ChartPlotterRouteEffort(String name, int weight, int corridor) {
+	ChartPlotterRouteEffort(String name, int weight, int seconds) {
 		this.name = name;
 		this.weight = weight;
-		this.corridor = corridor;
+		nanos = seconds * 1_000_000_000L;
 	}
 	@Override
 	public String toString() {return name;}

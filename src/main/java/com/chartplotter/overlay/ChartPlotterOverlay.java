@@ -107,17 +107,17 @@ public class ChartPlotterOverlay extends Overlay {
 		LocalPoint anchor = plugin.anchorLoc(ship);
 		LocalPoint center = ship.getLocalLocation();
 		if (anchor == null || center == null) return null;
+		ChartPlotterTrip trip = showChart || showTurn ? plugin.trip() : null;
 		boolean waypointVisible = false;
 		if (showWorld) {
 			Stroke prev = g.getStroke();
 			g.setStroke(routeStroke.solid(config.worldLineWidth()));
 			if (showChart) {
-				ChartPlotterTrip trip = plugin.trip();
 				Color color = config.chartColor();
 				ChartPlotterRouteMoves.Model model = routeModel();
 				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color), model);
 				drawRoute(g, top, trip.active(), area, color, model);
-				if (trip.size() > 1) waypointVisible = drawWaypoint(g, top, area, trip.active(), trip.x(0), trip.y(0), color);
+				if (trip.size() > 1) waypointVisible = drawWaypoint(g, top, area, trip.x(0) + 0.5, trip.y(0) + 0.5, color);
 			}
 			if (showCourse || showProjected) {
 				WorldEntityConfig wc = ship.getConfig();
@@ -133,7 +133,7 @@ public class ChartPlotterOverlay extends Overlay {
 			}
 			g.setStroke(prev);
 		}
-		if (showTurn) drawNextTurn(g, top, area, center, turnEta, waypointVisible);
+		if (showTurn) drawNextTurn(g, top, area, center, trip, turnEta, waypointVisible);
 		return null;
 	}
 	public void clear() {
@@ -193,20 +193,20 @@ public class ChartPlotterOverlay extends Overlay {
 		g.setColor(color);
 		g.draw(path);
 	}
-	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTurnEta mode, boolean waypointVisible) {
+	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTrip trip, ChartPlotterTurnEta mode, boolean waypointVisible) {
 		if (area == null) return;
 		double bx = wv.getBaseX() + center.getX() / (double) TS;
 		double by = wv.getBaseY() + center.getY() / (double) TS;
 		double speed = plugin.reversing() ? -plugin.speed() : plugin.speed();
-		ChartPlotterRoutes.Turn turn = turn(bx, by, speed, plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
+		ChartPlotterRoutes.Turn turn = turn(trip.active(), bx, by, speed, plugin.accel(), plugin.maxSpeed(), plugin.motionTime());
 		if (!turn.valid) {
 			resetEta();
 			return;
 		}
-		if (turn.end && plugin.hasNextStop() && waypointVisible) return;
-		Point at = edge(wv, area, center.getX(), center.getY(), (turn.x - wv.getBaseX()) * TS + TS / 2, (turn.y - wv.getBaseY()) * TS + TS / 2);
+		if (turn.end && trip.size() > 1 && waypointVisible) return;
+		Point at = edge(wv, area, center.getX(), center.getY(), (int) Math.round((turn.x + turn.offsetX - wv.getBaseX()) * TS), (int) Math.round((turn.y + turn.offsetY - wv.getBaseY()) * TS));
 		if (at == null) return;
-		String p = turn.end ? plugin.hasNextStop() ? "Waypoint" : "Destination" : "Turn";
+		String p = turn.end ? trip.size() > 1 ? "Waypoint" : "Destination" : "Turn";
 		String s;
 		if (turn.ticks < 0) {
 			resetEta();
@@ -217,8 +217,7 @@ public class ChartPlotterOverlay extends Overlay {
 		} else s = p + " in " + seconds(turn) + "s";
 		drawMarker(g, at, s, config.chartColor());
 	}
-	private ChartPlotterRoutes.Turn turn(double bx, double by, double speed, double accel, double max, long motion) {
-		ChartPlotterRoute route = plugin.route();
+	private ChartPlotterRoutes.Turn turn(ChartPlotterRoute route, double bx, double by, double speed, double accel, double max, long motion) {
 		long x = Double.doubleToLongBits(bx);
 		long y = Double.doubleToLongBits(by);
 		long s = Double.doubleToLongBits(speed);
@@ -268,15 +267,20 @@ public class ChartPlotterOverlay extends Overlay {
 		return Perspective.localToCanvas(client, new LocalPoint(ax, ay, wv), 0);
 	}
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color, ChartPlotterRouteMoves.Model model) {
-		if (r == null || r.status != ChartPlotterRoute.OK || r.n < 2 || area == null) return;
+		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0 || area == null) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.worldLineWidth());
 		Stroke dash = routeStroke.dashed(config.worldLineWidth());
 		g.setColor(color);
 		for (int i = 1; i < r.n; i++) {
 			line.reset();
-			if (!routeSegment(line, wv, area, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i])) continue;
+			if (!routeSegment(line, wv, area, r.x[i - 1] + r.offsetX, r.y[i - 1] + r.offsetY, r.x[i] + r.offsetX, r.y[i] + r.offsetY)) continue;
 			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], model) ? solid : dash);
+			g.draw(line);
+		}
+		line.reset();
+		if (routeSegment(line, wv, area, r.x[r.n - 1] + r.offsetX, r.y[r.n - 1] + r.offsetY, r.tx + 0.5, r.ty + 0.5)) {
+			g.setStroke(dash);
 			g.draw(line);
 		}
 		g.setStroke(old);
@@ -289,20 +293,10 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return routeModel;
 	}
-	private boolean drawWaypoint(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, ChartPlotterRoute route, int wx, int wy, Color color) {
+	private boolean drawWaypoint(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, double wx, double wy, Color color) {
 		if (area == null) return false;
-		Point point = routeCanvas(wv, area, wx + 0.5, wy + 0.5);
+		Point point = routeCanvas(wv, area, wx, wy);
 		if (point == null) return false;
-		if (route != null && route.status == ChartPlotterRoute.OK && route.n > 0 && (route.x[route.n - 1] != wx || route.y[route.n - 1] != wy)) {
-			Stroke old = g.getStroke();
-			line.reset();
-			if (routeSegment(line, wv, area, route.x[route.n - 1], route.y[route.n - 1], wx, wy)) {
-				g.setStroke(routeStroke.dashed(config.worldLineWidth()));
-				g.setColor(faded(faded(color)));
-				g.draw(line);
-			}
-			g.setStroke(old);
-		}
 		drawMarker(g, point, "Waypoint ahead", color);
 		return true;
 	}
@@ -330,9 +324,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Color[] cache = colorCache[i] = new Color[256];
 		return cache[alpha] = new Color(key | alpha << 24, true);
 	}
-	private boolean routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, int ax, int ay, int bx, int by) {
-		double x0 = ax + 0.5;
-		double y0 = ay + 0.5;
+	private boolean routeSegment(Path2D.Double line, WorldView wv, ChartPlotterScene.Area area, double ax, double ay, double bx, double by) {
 		double dx = bx - ax;
 		double dy = by - ay;
 		double t0 = 0;
@@ -342,10 +334,10 @@ public class ChartPlotterOverlay extends Overlay {
 		double maxX = area.maxWX();
 		double maxY = area.maxWY();
 		if (dx == 0) {
-			if (x0 < minX || x0 > maxX) return false;
+			if (ax < minX || ax > maxX) return false;
 		} else {
-			double a = (minX - x0) / dx;
-			double b = (maxX - x0) / dx;
+			double a = (minX - ax) / dx;
+			double b = (maxX - ax) / dx;
 			if (a > b) {
 				double c = a;
 				a = b;
@@ -356,10 +348,10 @@ public class ChartPlotterOverlay extends Overlay {
 			if (t0 > t1) return false;
 		}
 		if (dy == 0) {
-			if (y0 < minY || y0 > maxY) return false;
+			if (ay < minY || ay > maxY) return false;
 		} else {
-			double a = (minY - y0) / dy;
-			double b = (maxY - y0) / dy;
+			double a = (minY - ay) / dy;
+			double b = (maxY - ay) / dy;
 			if (a > b) {
 				double c = a;
 				a = b;
@@ -375,7 +367,7 @@ public class ChartPlotterOverlay extends Overlay {
 		boolean drawn = false;
 		for (int i = 0; i <= n; i++) {
 			double t = t0 + (t1 - t0) * i / n;
-			boolean next = routePoint(line, wv, area, x0 + dx * t, y0 + dy * t, have);
+			boolean next = routePoint(line, wv, area, ax + dx * t, ay + dy * t, have);
 			if (have && next) drawn = true;
 			have = next;
 		}

@@ -78,18 +78,24 @@ public final class ChartPlotterWorldMap {
 		return blocked;
 	}
 	public boolean cachedClickBlocked() {return cachedClickBlocked;}
-	public int pointX(State s, int wx, double fx) {return (int) Math.round(s.r.getX() + (wx + s.wt / 2.0 - s.pos.getX()) * s.z + s.c + (fx - 0.5) * s.z);}
-	public int pointY(State s, int wy, double fy) {return (int) Math.round(s.r.getY() + s.r.getHeight() - ((s.pos.getY() - s.ht / 2.0 - wy - 1) * -1 * s.z - s.c) - (fy - 0.5) * s.z);}
-	public double worldX(Point m, State s) {return (m.getX() - s.r.getX() - s.c) / s.z - s.wt / 2.0 + s.pos.getX() + 0.5;}
-	public double worldY(Point m, State s) {return (s.r.getY() + s.r.getHeight() + s.c - m.getY()) / s.z - 0.5 + s.pos.getY() - s.ht / 2.0;}
-	public int mapX(State s, int baseX, int lx) {
-		double x = baseX + lx / (double) TS;
-		return (int) Math.round(s.r.getX() + (x + s.wt / 2.0 - s.pos.getX() - 0.5) * s.z + s.c);
+	public int pointX(State s, double wx) {
+		int halfWidth = s.wt / 2;
+		return (int) Math.round(s.r.getX() + (wx + halfWidth - s.pos.getX() - 0.5) * s.z + s.c);
 	}
-	public int mapY(State s, int baseY, int ly) {
-		double y = baseY + ly / (double) TS;
-		return (int) Math.round(s.r.getY() + s.r.getHeight() - (y + s.ht / 2.0 - s.pos.getY() + 0.5) * s.z + s.c);
+	public int pointY(State s, double wy) {
+		int halfHeight = s.ht / 2;
+		return (int) Math.round(s.r.getY() + s.r.getHeight() - (wy + halfHeight - s.pos.getY() + 0.5) * s.z + s.c);
 	}
+	public double worldX(Point m, State s) {
+		int halfWidth = s.wt / 2;
+		return (m.getX() - s.r.getX() - s.c) / s.z - halfWidth + s.pos.getX() + 0.5;
+	}
+	public double worldY(Point m, State s) {
+		int halfHeight = s.ht / 2;
+		return (s.r.getY() + s.r.getHeight() + s.c - m.getY()) / s.z - 0.5 + s.pos.getY() - halfHeight;
+	}
+	public int mapX(State s, int baseX, int lx) {return pointX(s, baseX + lx / (double) TS);}
+	public int mapY(State s, int baseY, int ly) {return pointY(s, baseY + ly / (double) TS);}
 	public int pathCap(WorldView wv, LocalPoint anchor, State s) {
 		double ax = wv.getBaseX() + anchor.getX() / (double) TS;
 		double ay = wv.getBaseY() + anchor.getY() / (double) TS;

@@ -34,12 +34,12 @@ public final class ChartPlotterTrip {
 			ChartPlotterRoute route = routes[i];
 			if (route == null || route.status != ChartPlotterRoute.OK || route.n == 0) return Double.NaN;
 			if (i > 0) {
-				bx = route.x[0] + 0.5;
-				by = route.y[0] + 0.5;
+				bx = route.x[0] + route.offsetX;
+				by = route.y[0] + route.offsetY;
 			}
 			for (int j = Math.min(1, route.n - 1); j < route.n; j++) {
-				double x = route.x[j] + 0.5;
-				double y = route.y[j] + 0.5;
+				double x = route.x[j] + route.offsetX;
+				double y = route.y[j] + route.offsetY;
 				distance += Math.hypot(x - bx, y - by);
 				bx = x;
 				by = y;
@@ -93,15 +93,28 @@ public final class ChartPlotterTrip {
 		ChartPlotterRoute[] nr = routes.clone();
 		for (int i = 0; i < nr.length; i++) {
 			if (!selected[i]) continue;
-			int ax = i == 0 ? sx : x[i - 1];
-			int ay = i == 0 ? sy : y[i - 1];
+			if (nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == x[i] && nr[i].ty == y[i]) {
+				nr[i] = nr[i].recalculate();
+				continue;
+			}
+			int ax = ChartPlotterRoutes.legStartX(this, i, sx);
+			int ay = ChartPlotterRoutes.legStartY(this, i, sy);
 			nr[i] = ChartPlotterRoute.pending(ax, ay, x[i], y[i], turnBias, weight).effort(effort);
 		}
 		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
+	ChartPlotterTrip failed(int id, boolean[] awaiting) {
+		if (generation != id) return this;
+		ChartPlotterRoute[] next = routes.clone();
+		for (int i = 0; i < next.length; i++) {
+			ChartPlotterRoute route = next[i];
+			if (awaiting[i] && route != null) next[i] = ChartPlotterRoute.failed(route.sx, route.sy, route.tx, route.ty, route.turnBias, route.weight).effort(route.effort);
+		}
+		return new ChartPlotterTrip(generation, completed, x, y, next);
+	}
 	ChartPlotterTrip route(int i, ChartPlotterRoute route) {
 		ChartPlotterRoute[] nr = routes.clone();
-		nr[i] = route;
+		nr[i] = route != null && route.status == ChartPlotterRoute.PENDING && nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == route.tx && nr[i].ty == route.ty ? nr[i].recalculate() : route;
 		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
 }

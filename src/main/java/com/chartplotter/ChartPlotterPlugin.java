@@ -1,6 +1,5 @@
 package com.chartplotter;
 
-import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterRuntime;
@@ -69,9 +68,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public LocalPoint anchorLoc(WorldEntity ship) {return sailing.anchorLoc(ship);}
 	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
 	public boolean isSailing() {return sailing.boarded();}
-	public ChartPlotterRoute route() {return routes.route();}
 	public ChartPlotterTrip trip() {return routes.trip();}
-	public boolean hasNextStop() {return routes.trip().size() > 1;}
 	public boolean canAppend() {return routes.canAppend();}
 	public ChartPlotterRoutes.Preview coursePreview(int tx, int ty, boolean append) {return routes.preview(tx, ty, append);}
 	public void clearCoursePreview() {routes.clearPreview();}

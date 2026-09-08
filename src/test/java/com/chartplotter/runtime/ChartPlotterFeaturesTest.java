@@ -14,11 +14,11 @@ import static org.junit.Assert.*;
 public class ChartPlotterFeaturesTest {
 	@Test
 	public void registersInputOnlyForInteractiveFeatures() {
-		ChartPlotterFeatures world = ChartPlotterFeatures.of(true, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false, false);
-		ChartPlotterFeatures minimap = ChartPlotterFeatures.of(false, false, false, true, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false, false);
-		ChartPlotterFeatures minimapChart = ChartPlotterFeatures.of(false, false, false, false, false, true, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false, false);
-		ChartPlotterFeatures worldMap = ChartPlotterFeatures.of(false, false, false, false, false, false, true, false, false, ChartPlotterCacheOverlay.OFF, false, false, false, false);
-		ChartPlotterFeatures chart = ChartPlotterFeatures.of(false, false, true, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false, false);
+		ChartPlotterFeatures world = ChartPlotterFeatures.of(true, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
+		ChartPlotterFeatures minimap = ChartPlotterFeatures.of(false, false, false, true, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
+		ChartPlotterFeatures minimapChart = ChartPlotterFeatures.of(false, false, false, false, false, true, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
+		ChartPlotterFeatures worldMap = ChartPlotterFeatures.of(false, false, false, false, false, false, true, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
+		ChartPlotterFeatures chart = ChartPlotterFeatures.of(false, false, true, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
 		assertFalse(world.input);
 		assertTrue(minimap.input);
 		assertTrue(minimapChart.input);
@@ -31,7 +31,7 @@ public class ChartPlotterFeaturesTest {
 	}
 	@Test
 	public void speedPanelOnlyTracksMotion() {
-		ChartPlotterFeatures features = ChartPlotterFeatures.of(false, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false, true);
+		ChartPlotterFeatures features = ChartPlotterFeatures.of(false, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, true);
 		assertTrue(features.infoOverlay);
 		assertTrue(features.tracking);
 		assertFalse(features.routes);
@@ -45,14 +45,13 @@ public class ChartPlotterFeaturesTest {
 	}
 	@Test
 	public void etaPanelSupportsChartingWithoutCourseOverlays() {
-		ChartPlotterFeatures features = ChartPlotterFeatures.of(false, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, true, false);
+		ChartPlotterFeatures features = ChartPlotterFeatures.of(false, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, true, false);
 		assertTrue(features.infoOverlay);
 		assertTrue(features.tracking);
 		assertTrue(features.chart);
 		assertTrue(features.input);
 		assertTrue(features.worldMapOverlay);
-		assertTrue(features.cache(true));
-		assertFalse(features.cache(false));
+		for (boolean boarded : new boolean[]{false, true}) assertEquals(boarded, features.cache(boarded));
 		assertFalse(features.scene);
 		assertFalse(features.worldOverlay);
 		assertFalse(features.minimapOverlay);
@@ -95,6 +94,23 @@ public class ChartPlotterFeaturesTest {
 		assertFalse(features.worldMapOverlay);
 	}
 	@Test
+	public void armingRecorderDoesNotActivateFeatures() {
+		ChartPlotterConfig config = new ChartPlotterConfig() {
+			@Override
+			public ChartPlotterLineMode worldLineMode() {return ChartPlotterLineMode.OFF;}
+			@Override
+			public ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.OFF;}
+			@Override
+			public ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.OFF;}
+			@Override
+			public boolean recordNextRoute() {return true;}
+		};
+		ChartPlotterFeatures features = ChartPlotterFeatures.of(config);
+		assertFalse(features.tracking);
+		assertFalse(features.chart);
+		assertFalse(features.cache(true));
+	}
+	@Test
 	public void nullProjectionRectangleMatchesDefaultFootprint() {
 		float[] x = new float[4];
 		float[] y = new float[4];
@@ -113,11 +129,20 @@ public class ChartPlotterFeaturesTest {
 	@Test
 	public void worldMapCoordinatesRoundTripWithinOnePixel() {
 		ChartPlotterWorldMap map = new ChartPlotterWorldMap(null);
-		ChartPlotterWorldMap.State state = new ChartPlotterWorldMap.State(null, 3.5f, new Rectangle(40, 50, 800, 600), 229, 172, new Point(3200, 3300), -0.5);
-		Point point = new Point(map.pointX(state, 3214, 0.5), map.pointY(state, 3288, 0.5));
-		assertEquals(3214.5, map.worldX(point, state), 0.5 / state.z);
-		assertEquals(3288.5, map.worldY(point, state), 0.5 / state.z);
-		assertEquals(point.getX(), map.mapX(state, 3200, (3214 - 3200) * 128 + 64));
-		assertEquals(point.getY(), map.mapY(state, 3300, (3288 - 3300) * 128 + 64));
+		for (float zoom : new float[]{1, 1.5f, 2, 3, 3.5f, 4, 8}) for (int width : new int[]{800, 801}) for (int height : new int[]{600, 601}) for (double offset : new double[]{0, 0.25, 0.5, 0.75}) {
+			ChartPlotterWorldMap.State state = new ChartPlotterWorldMap.State(null, zoom, new Rectangle(40, 50, width, height), (int) Math.ceil(width / (double) zoom), (int) Math.ceil(height / (double) zoom), new Point(3200, 3300), zoom - Math.ceil(zoom / 2.0));
+			Point point = new Point(map.pointX(state, 3214 + offset), map.pointY(state, 3288 + offset));
+			assertEquals(3214 + offset, map.worldX(point, state), 0.5 / zoom + 1e-9);
+			assertEquals(3288 + offset, map.worldY(point, state), 0.5 / zoom + 1e-9);
+			assertEquals(point.getX(), map.mapX(state, 3200, (3214 - 3200) * 128 + (int) (offset * 128)));
+			assertEquals(point.getY(), map.mapY(state, 3300, (3288 - 3300) * 128 + (int) (offset * 128)));
+		}
+	}
+	@Test
+	public void worldMapUsesRuneLiteTileOriginsForOddViewportDimensions() {
+		ChartPlotterWorldMap map = new ChartPlotterWorldMap(null);
+		ChartPlotterWorldMap.State state = new ChartPlotterWorldMap.State(null, 4, new Rectangle(40, 50, 801, 601), 201, 151, new Point(3200, 3300), 2);
+		assertEquals(498, map.pointX(state, 3214.5));
+		assertEquals(397, map.pointY(state, 3288.5));
 	}
 }

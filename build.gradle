@@ -5,10 +5,12 @@ plugins {
 class CollisionRow {
 	int x
 	int y
+	long known
 	long blocked
-	CollisionRow(int x, int y, long blocked) {
+	CollisionRow(int x, int y, long known, long blocked) {
 		this.x = x
 		this.y = y
+		this.known = known
 		this.blocked = blocked
 	}
 }
@@ -47,25 +49,16 @@ tasks.register('run', JavaExec) {
 	jvmArgs "-ea"
 	args "--developer-mode"
 }
-tasks.register('exportSparseNodes') {
-	inputs.property 'dataVersion', dataVersion
-	outputs.file new File(resourceDir, 'sparse-nodes.txt')
-	outputs.upToDateWhen { false }
-	doLast {
-		def src = new File(cacheDir, 'sparse.bin')
-		def dst = outputs.files.singleFile
-		if (!src.isFile()) throw new GradleException("Missing ${src}")
-		dst.parentFile.mkdirs()
-		new DataInputStream(new BufferedInputStream(new FileInputStream(src))).withCloseable { input ->
-			if (input.readUnsignedByte() != 1) throw new GradleException("Unsupported sparse.bin version")
-			int n = input.readInt()
-			if (n < 0) throw new GradleException("Invalid sparse node count")
-			dst.withWriter('UTF-8') { out ->
-				out.write("data ${dataVersion}\n")
-				for (int i = 0; i < n; i++) out.write("${input.readUnsignedShort()} ${input.readUnsignedShort()}\n")
-			}
-		}
-	}
+tasks.register('routingAudit', JavaExec) {
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.chartplotter.route.ChartPlotterRoutingAudit'
+	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(11) }
+	maxHeapSize = '1536m'
+	args providers.gradleProperty('auditMode').orElse('synthetic').get()
+	if (providers.gradleProperty('auditRecording').isPresent()) args providers.gradleProperty('auditRecording').get()
+	if (providers.gradleProperty('auditEngines').isPresent()) systemProperty 'chartplotter.auditEngines', providers.gradleProperty('auditEngines').get()
+	if (providers.gradleProperty('auditShape').isPresent()) systemProperty 'chartplotter.auditShape', providers.gradleProperty('auditShape').get()
 }
 tasks.register('exportCollision') {
 	inputs.property 'dataVersion', dataVersion
@@ -86,18 +79,18 @@ tasks.register('exportCollision') {
 				int cy = input.readUnsignedShort()
 				long known = input.readLong()
 				long blocked = input.readLong() & known
-				if (known != 0L) rows << new CollisionRow(cx, cy, blocked)
+				if (known != 0L) rows << new CollisionRow(cx, cy, known, blocked)
 			}
 		}
 		rows = rows.sort { CollisionRow a, CollisionRow b -> a.x == b.x ? a.y <=> b.y : a.x <=> b.x }
 		dst.withWriter('UTF-8') { out ->
 			out.write("data ${dataVersion}\n")
-			rows.each { CollisionRow r -> out.write("${r.x} ${r.y} ${hex64(r.blocked)}\n") }
+			rows.each { CollisionRow r -> out.write("${r.x} ${r.y} ${hex64(r.known)} ${hex64(r.blocked)}\n") }
 		}
 	}
 }
 tasks.register('exportCaches') {
-	dependsOn 'exportSparseNodes', 'exportCollision'
+	dependsOn 'exportCollision'
 }
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath

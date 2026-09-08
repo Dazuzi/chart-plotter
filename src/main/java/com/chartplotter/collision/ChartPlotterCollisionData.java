@@ -46,6 +46,35 @@ public final class ChartPlotterCollisionData {
 		Chunk c = chunk(x >> 3, y >> 3);
 		return c == null ? UNKNOWN : c.flag((x & 7) + ((y & 7) << 3));
 	}
+	public boolean clear(double ax, double ay, double bx, double by) {
+		int x = (int) Math.floor(ax);
+		int y = (int) Math.floor(ay);
+		if (ax == x && flagAt(x - 1, y) != OPEN || ay == y && flagAt(x, y - 1) != OPEN || ax == x && ay == y && flagAt(x - 1, y - 1) != OPEN) return false;
+		int dx = Double.compare(bx, ax);
+		int dy = Double.compare(by, ay);
+		double stepX = dx == 0 ? Double.POSITIVE_INFINITY : 1 / Math.abs(bx - ax);
+		double stepY = dy == 0 ? Double.POSITIVE_INFINITY : 1 / Math.abs(by - ay);
+		double nextX = dx == 0 ? Double.POSITIVE_INFINITY : (dx > 0 ? x + 1 - ax : ax - x) * stepX;
+		double nextY = dy == 0 ? Double.POSITIVE_INFINITY : (dy > 0 ? y + 1 - ay : ay - y) * stepY;
+		while (true) {
+			if (flagAt(x, y) != OPEN) return false;
+			if (dx == 0 && ax == x && flagAt(x - 1, y) != OPEN || dy == 0 && ay == y && flagAt(x, y - 1) != OPEN) return false;
+			if (Math.min(nextX, nextY) > 1) return true;
+			if (Math.abs(nextX - nextY) <= 1e-12) {
+				if (flagAt(x + dx, y) != OPEN || flagAt(x, y + dy) != OPEN) return false;
+				x += dx;
+				y += dy;
+				nextX += stepX;
+				nextY += stepY;
+			} else if (nextX < nextY) {
+				x += dx;
+				nextX += stepX;
+			} else {
+				y += dy;
+				nextY += stepY;
+			}
+		}
+	}
 	public boolean uncached(int x, int y) {
 		Chunk c = chunk(x, y);
 		return c == null || c.empty();

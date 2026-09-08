@@ -74,12 +74,12 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterWorldMapClick worldMapCourseClick() {return ChartPlotterWorldMapClick.CLICK;}
 	@ConfigItem(keyName = "worldMapTripHints", name = "Trip control hints", description = "Show trip controls while hovering a destination.", section = worldMapSection, position = 5)
 	default boolean worldMapTripHints() {return true;}
-	@ConfigSection(name = "Charting", description = "Trip route settings.", position = 5)
+	@ConfigSection(name = "Charting", description = "Trip route settings. Tight turns may require slowing or stopping.", position = 5)
 	String chartingSection = "chartingSection";
-	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Controls how strongly charting prefers long straight legs over the shortest route.", section = chartingSection, position = 0)
+	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Direct favors short routes. Balanced favors fewer, gentler turns. Smooth favors fewer turns with at most 10% extra distance over Balanced.", section = chartingSection, position = 0)
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
-	@ConfigItem(keyName = "routeEffort", name = "Pathing effort", description = "Higher effort spends more time refining routes; lower effort returns quicker.", section = chartingSection, position = 1)
-	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.HIGH;}
+	@ConfigItem(keyName = "routeEffort", name = "Search effort", description = "Fast prioritizes speed (up to 1 second per leg). Refined balances speed and quality (3 seconds). Maximum compares routes more extensively (8 seconds).", section = chartingSection, position = 1)
+	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.REFINED;}
 	@ConfigItem(keyName = "courseTurnEta", name = "Turn ETA", description = "Show time to the next turn in the sailing view.", section = chartingSection, position = 2)
 	default ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.SECONDS;}
 	@ConfigItem(keyName = "courseTurnAlert", name = "Turn alert", description = "Notify when the next turn is under 5 seconds away while unfocused.", section = chartingSection, position = 3)
@@ -88,10 +88,8 @@ public interface ChartPlotterConfig extends Config {
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision-cache coverage.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
-	@ConfigItem(keyName = "nodeEditor", name = "Node editor", description = "Draw and place sparse pathing nodes on the world map.<br>ALT+Click to place or move nodes. Right-click a node to remove it.", section = tweaksSection, position = 5)
-	default boolean nodeEditor() {return false;}
-	@ConfigItem(keyName = "sparseRouteDebug", name = "Sparse route debug", description = "Draw sparse route nodes and corridors on the world map when charting a course.", section = tweaksSection, position = 6)
-	default boolean sparseRouteDebug() {return false;}
 	@ConfigItem(keyName = "sailingSlide", name = "Slide model", description = "(Experimental) Course projection: turn gradually from heading and slide along walls.", section = tweaksSection, position = 7)
 	default boolean sailingSlide() {return false;}
+	@ConfigItem(keyName = "recordNextRoute", name = "Record next route", description = "Save the next route request, boat details and collision data under chart-plotter/route-recordings for replay. Resets after a request.", section = tweaksSection, position = 8)
+	default boolean recordNextRoute() {return false;}
 }
