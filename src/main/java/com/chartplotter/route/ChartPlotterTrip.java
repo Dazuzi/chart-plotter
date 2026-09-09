@@ -1,5 +1,6 @@
 package com.chartplotter.route;
 import com.chartplotter.ChartPlotterRouteEffort;
+import com.chartplotter.util.ChartPlotterMath;
 import java.util.Arrays;
 public final class ChartPlotterTrip {
 	private static final int[] EMPTY_INT = new int[0];
@@ -24,9 +25,25 @@ public final class ChartPlotterTrip {
 	public int totalStops() {return completed + x.length;}
 	public int x(int i) {return x[i];}
 	public int y(int i) {return y[i];}
+	public double markerX(int i) {
+		ChartPlotterRoute route = waypoint(i);
+		return route == null ? x[i] + 0.5 : route.x[route.n - 1] + route.offsetX;
+	}
+	public double markerY(int i) {
+		ChartPlotterRoute route = waypoint(i);
+		return route == null ? y[i] + 0.5 : route.y[route.n - 1] + route.offsetY;
+	}
+	private ChartPlotterRoute waypoint(int i) {
+		ChartPlotterRoute route = routes[i];
+		return i + 1 < routes.length && route != null && route.status == ChartPlotterRoute.OK && route.n > 0 && route.tx == x[i] && route.ty == y[i] ? route : null;
+	}
 	public ChartPlotterRoute route(int i) {return routes[i];}
 	public Object stopKey() {return x;}
 	public ChartPlotterRoute active() {return routes.length == 0 ? null : routes[0];}
+	boolean reached(int bx, int by, int radius) {
+		ChartPlotterRoute route = active();
+		return route != null && route.status == ChartPlotterRoute.OK && route.n > 0 && route.n <= 2 && ChartPlotterRoutes.near(bx, by, x[0], y[0]) && (size() == 1 || route.n == 1 || ChartPlotterMath.chebyshev(bx, by, route.x[route.n - 1], route.y[route.n - 1]) <= radius);
+	}
 	public double distance(double bx, double by, boolean total) {
 		if (empty()) return Double.NaN;
 		double distance = 0;
@@ -115,6 +132,7 @@ public final class ChartPlotterTrip {
 	ChartPlotterTrip route(int i, ChartPlotterRoute route) {
 		ChartPlotterRoute[] nr = routes.clone();
 		nr[i] = route != null && route.status == ChartPlotterRoute.PENDING && nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == route.tx && nr[i].ty == route.ty ? nr[i].recalculate() : route;
+		for (int j = i + 1; j < nr.length; j++) if (nr[j] != null && nr[j].status == ChartPlotterRoute.OK && !nr[j].continues(nr[j - 1])) nr[j] = null;
 		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
 }

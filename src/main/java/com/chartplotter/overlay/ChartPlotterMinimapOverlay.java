@@ -85,8 +85,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 			ChartPlotterTrip trip = plugin.trip();
 			Color color = config.chartColor();
 			ChartPlotterRouteMoves.Model model = routeModel();
-			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color), model);
-			drawRoute(g, top, trip.active(), color, model);
+			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color), model, trip.size() == 2);
+			drawRoute(g, top, trip.active(), color, model, trip.size() == 1);
 		}
 		if (showCourse || showProjected) {
 			int from = plugin.heading(ship);
@@ -170,18 +170,23 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
 		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model, boolean destination) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.minimapLineWidth());
 		Stroke dash = routeStroke.dashed(config.minimapLineWidth());
 		g.setColor(color);
 		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], r.offsetX, r.offsetY, model, solid, dash);
-		Point a = routePoint(wv, r.x[r.n - 1], r.y[r.n - 1], r.offsetX, r.offsetY);
-		Point b = routePoint(wv, r.tx, r.ty, 0.5, 0.5);
-		if (a != null && b != null) {
-			g.setStroke(dash);
-			g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+		int ax = r.x[r.n - 1];
+		int ay = r.y[r.n - 1];
+		if (destination && (ax != r.tx || ay != r.ty) && routeVisible(wv, ax, ay, r.tx, r.ty)) {
+			Point a = routePoint(wv, ax, ay, r.offsetX, r.offsetY);
+			Point b = routePoint(wv, r.tx, r.ty, 0.5, 0.5);
+			if (a != null && b != null) {
+				g.setStroke(dash);
+				g.setColor(faded(color));
+				g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+			}
 		}
 		g.setStroke(old);
 	}

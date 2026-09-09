@@ -15,7 +15,7 @@ public class ChartPlotterRouteShapeTest {
 		for (int y = -10; y <= 10; y++) ChartPlotterRoutingAudit.block(chunks, 20, y);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
 		for (double speed : new double[]{0.5, 1, 3}) {
-			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 0, 0, 40, 0, 40, speed, 140, () -> false);
+			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 0, 0, 40, 0, 40, speed, 140, null, () -> false);
 			ChartPlotterRoute route = search.find();
 			assertEquals(ChartPlotterRoute.OK, route.status);
 			assertEquals(0.5, route.offsetX, 0);
@@ -84,5 +84,5 @@ public class ChartPlotterRouteShapeTest {
 		assertArrayEquals(balanced.x, smooth.x);
 		assertArrayEquals(balanced.y, smooth.y);
 	}
-	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, int weight, int bias, java.util.function.BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, null, 0, 0, 40, 0, bias, 1, weight, cancel);}
+	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, int weight, int bias, java.util.function.BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, null, 0, 0, 40, 0, bias, 1, weight, null, cancel);}
 }

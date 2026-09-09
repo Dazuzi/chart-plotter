@@ -307,20 +307,20 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			ChartPlotterRoute r = trip.route(i);
 			if (r == null || r.status != ChartPlotterRoute.OK) continue;
 			boolean removing = remove >= 0 && (tail ? i >= remove : i == remove || i == remove + 1);
-			drawRoutePath(g, s, r, removing ? REMOVE : routeColor(r, i > 0), model);
+			drawRoutePath(g, s, r, removing ? REMOVE : routeColor(r, i > 0), model, i + 1 == trip.size());
 		}
 		if (movedPoint) {
 			Stroke stroke = g.getStroke();
 			g.setStroke(routeStroke.dashed(config.worldMapLineWidth()));
 			g.setColor(moved == null ? PREVIEW_BAD : PREVIEW_SNAP);
-			g.drawLine(map.pointX(s, trip.x(moving) + 0.5), map.pointY(s, trip.y(moving) + 0.5), movedPX, movedPY);
+			g.drawLine(map.pointX(s, trip.markerX(moving)), map.pointY(s, trip.markerY(moving)), movedPX, movedPY);
 			g.setStroke(stroke);
 		}
 		long now = System.currentTimeMillis();
 		for (int i = 0; i < trip.size(); i++) {
 			ChartPlotterRoute r = trip.route(i);
-			int px = i == moving && movedPoint ? movedPX : map.pointX(s, trip.x(i) + 0.5);
-			int py = i == moving && movedPoint ? movedPY : map.pointY(s, trip.y(i) + 0.5);
+			int px = i == moving && movedPoint ? movedPX : map.pointX(s, trip.markerX(i));
+			int py = i == moving && movedPoint ? movedPY : map.pointY(s, trip.markerY(i));
 			boolean removing = remove >= 0 && (tail ? i >= remove : i == remove);
 			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : removing ? REMOVE : routeColor(r, i > 0);
 			marker(g, px, py, c);
@@ -329,7 +329,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		}
 		if (moving >= 0 && movedPoint) tip(g, s.r, movedPX, movedPY, moved == null ? "Release to cancel" : "Release to move stop " + (moving + first));
 		else if (remove >= 0) {
-			tripTip(g, s.r, map.pointX(s, trip.x(remove) + 0.5), map.pointY(s, trip.y(remove) + 0.5), trip, remove);
+			tripTip(g, s.r, map.pointX(s, trip.markerX(remove)), map.pointY(s, trip.markerY(remove)), trip, remove);
 		}
 	}
 	private void tripTip(Graphics2D g, Rectangle bounds, int x, int y, ChartPlotterTrip trip, int stop) {
@@ -366,7 +366,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(c);
 		g.drawString(text, x, y);
 	}
-	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c, ChartPlotterRouteMoves.Model model) {
+	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c, ChartPlotterRouteMoves.Model model, boolean destination) {
 		if (r.n < 1) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.worldMapLineWidth());
@@ -374,8 +374,13 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int pad = linePad(s);
 		g.setColor(c);
 		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], r.offsetX, r.offsetY, model, solid, dash, pad);
-		g.setStroke(dash);
-		g.drawLine(map.pointX(s, r.x[r.n - 1] + r.offsetX), map.pointY(s, r.y[r.n - 1] + r.offsetY), map.pointX(s, r.tx + 0.5), map.pointY(s, r.ty + 0.5));
+		int ax = r.x[r.n - 1];
+		int ay = r.y[r.n - 1];
+		if (destination && (ax != r.tx || ay != r.ty) && lineVisible(s, ax, ay, r.tx, r.ty, pad)) {
+			g.setStroke(dash);
+			g.setColor(faded(c));
+			g.drawLine(map.pointX(s, ax + r.offsetX), map.pointY(s, ay + r.offsetY), map.pointX(s, r.tx + 0.5), map.pointY(s, r.ty + 0.5));
+		}
 		g.setStroke(old);
 	}
 	private void routeLine(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by, double offsetX, double offsetY, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash, int pad) {
@@ -511,8 +516,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int[] hits = new int[trip.size() * 5];
 		int n = 0;
 		for (int i = 0; i < trip.size(); i++) {
-			int x = map.pointX(s, trip.x(i) + 0.5);
-			int y = map.pointY(s, trip.y(i) + 0.5);
+			int x = map.pointX(s, trip.markerX(i));
+			int y = map.pointY(s, trip.markerY(i));
 			if (!clip.contains(x, y)) continue;
 			hits[n++] = i;
 			hits[n++] = trip.x(i);
@@ -542,8 +547,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int best = -1;
 		int bd = STOP_HIT_RADIUS * STOP_HIT_RADIUS + 1;
 		for (int i = trip.size() - 1; i >= 0; i--) {
-			int dx = map.pointX(s, trip.x(i) + 0.5) - m.getX();
-			int dy = map.pointY(s, trip.y(i) + 0.5) - m.getY();
+			int dx = map.pointX(s, trip.markerX(i)) - m.getX();
+			int dy = map.pointY(s, trip.markerY(i)) - m.getY();
 			int d = dx * dx + dy * dy;
 			if (d >= bd) continue;
 			best = i;
@@ -570,7 +575,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		static final StopCache EMPTY = new StopCache();
 		final Shape clip;
 		final int[] hits;
-		final Object stops;
+		final ChartPlotterTrip trip;
 		final float zoom;
 		final int x;
 		final int y;
@@ -581,14 +586,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		private StopCache() {
 			clip = null;
 			hits = new int[0];
-			stops = null;
+			trip = null;
 			zoom = 0;
 			x = y = width = height = px = py = 0;
 		}
 		private StopCache(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, int[] hits) {
 			this.clip = clip;
 			this.hits = hits;
-			stops = trip.stopKey();
+			this.trip = trip;
 			zoom = s.z;
 			x = s.r.x;
 			y = s.r.y;
@@ -597,7 +602,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			px = s.pos.getX();
 			py = s.pos.getY();
 		}
-		boolean same(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {return this.clip == clip && stops == trip.stopKey() && Float.floatToIntBits(zoom) == Float.floatToIntBits(s.z) && x == s.r.x && y == s.r.y && width == s.r.width && height == s.r.height && px == s.pos.getX() && py == s.pos.getY();}
+		boolean same(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {return this.clip == clip && this.trip == trip && Float.floatToIntBits(zoom) == Float.floatToIntBits(s.z) && x == s.r.x && y == s.r.y && width == s.r.width && height == s.r.height && px == s.pos.getX() && py == s.pos.getY();}
 	}
 	private static boolean pointVisible(ChartPlotterWorldMap.State s, int x, int y, int pad) {
 		double minX = s.pos.getX() - s.wt / 2.0 - pad;

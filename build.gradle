@@ -56,7 +56,6 @@ tasks.register('routingAudit', JavaExec) {
 	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(11) }
 	maxHeapSize = '1536m'
 	args providers.gradleProperty('auditMode').orElse('synthetic').get()
-	if (providers.gradleProperty('auditRecording').isPresent()) args providers.gradleProperty('auditRecording').get()
 	if (providers.gradleProperty('auditEngines').isPresent()) systemProperty 'chartplotter.auditEngines', providers.gradleProperty('auditEngines').get()
 	if (providers.gradleProperty('auditShape').isPresent()) systemProperty 'chartplotter.auditShape', providers.gradleProperty('auditShape').get()
 	if (providers.gradleProperty('auditCases').isPresent()) systemProperty 'chartplotter.auditCases', providers.gradleProperty('auditCases').get()

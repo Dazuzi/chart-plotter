@@ -46,7 +46,7 @@ public class ChartPlotterRouteMaskTest {
 		for (int y = -10; y <= 10; y++) ChartPlotterRoutingAudit.block(chunks, 20, y);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
 		for (double speed : new double[]{1, 3}) {
-			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 0, 0, 40, 0, 5, speed, 140, () -> false);
+			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 0, 0, 40, 0, 5, speed, 140, null, () -> false);
 			assertEquals(ChartPlotterRoute.OK, search.find().status);
 			assertNotNull(search.terrain);
 			int checked = 0;

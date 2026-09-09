@@ -94,23 +94,6 @@ public class ChartPlotterFeaturesTest {
 		assertFalse(features.worldMapOverlay);
 	}
 	@Test
-	public void armingRecorderDoesNotActivateFeatures() {
-		ChartPlotterConfig config = new ChartPlotterConfig() {
-			@Override
-			public ChartPlotterLineMode worldLineMode() {return ChartPlotterLineMode.OFF;}
-			@Override
-			public ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.OFF;}
-			@Override
-			public ChartPlotterEtaMode courseTurnEta() {return ChartPlotterEtaMode.OFF;}
-			@Override
-			public boolean recordNextRoute() {return true;}
-		};
-		ChartPlotterFeatures features = ChartPlotterFeatures.of(config);
-		assertFalse(features.tracking);
-		assertFalse(features.chart);
-		assertFalse(features.cache(true));
-	}
-	@Test
 	public void nullProjectionRectangleMatchesDefaultFootprint() {
 		float[] x = new float[4];
 		float[] y = new float[4];

@@ -71,6 +71,13 @@ public final class ChartPlotterRoute {
 	ChartPlotterRoute recalculate() {return recalculating ? this : new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, motion, hull, heading, turnBias, weight, effort, time, updated, true);}
 	public static ChartPlotterRoute failed(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(FAILED, sx, sy, tx, ty, turnBias, weight);}
 	public boolean start(int x, int y) {return sx == x && sy == y;}
+	int arrivalHeading() {
+		int d = n < 2 || motion == null ? -1 : motion.dir(x[n - 1] - x[n - 2], y[n - 1] - y[n - 2]);
+		return d < 0 ? heading : (ChartPlotterRouteMoves.OR[d] + (hull.reverse ? 1024 : 0)) & 2047;
+	}
+	boolean continues(ChartPlotterRoute incoming) {
+		return status == OK && n > 0 && incoming != null && incoming.status == OK && incoming.n > 0 && start(incoming.x[incoming.n - 1], incoming.y[incoming.n - 1]) && x[0] == sx && y[0] == sy && heading == incoming.arrivalHeading();
+	}
 	public ChartPlotterRoute advance(double sx, double sy, int prune, int follow, double lead) {
 		if (status != OK || n == 0) return null;
 		if (n == 1) return Math.hypot(sx - x[0] - offsetX, sy - y[0] - offsetY) <= follow ? this : null;
@@ -141,7 +148,7 @@ public final class ChartPlotterRoute {
 			}
 			previous = d;
 		}
-		return !cancel.getAsBoolean() && ChartPlotterRoutes.near(x[n - 1], y[n - 1], tx, ty);
+		return !cancel.getAsBoolean() && ChartPlotterRoutes.near(x[n - 1], y[n - 1], tx, ty) && data.clear(x[n - 1] + offsetX, y[n - 1] + offsetY, tx + 0.5, ty + 0.5);
 	}
 	public String text() {
 		if (status == PENDING) return "Charting course";

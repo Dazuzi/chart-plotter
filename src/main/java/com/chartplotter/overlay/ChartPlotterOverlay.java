@@ -115,9 +115,9 @@ public class ChartPlotterOverlay extends Overlay {
 			if (showChart) {
 				Color color = config.chartColor();
 				ChartPlotterRouteMoves.Model model = routeModel();
-				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color), model);
-				drawRoute(g, top, trip.active(), area, color, model);
-				if (trip.size() > 1) waypointVisible = drawWaypoint(g, top, area, trip.x(0) + 0.5, trip.y(0) + 0.5, color);
+				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color), model, trip.size() == 2);
+				drawRoute(g, top, trip.active(), area, color, model, trip.size() == 1);
+				if (trip.size() > 1) waypointVisible = drawWaypoint(g, top, area, trip.markerX(0), trip.markerY(0), color);
 			}
 			if (showCourse || showProjected) {
 				WorldEntityConfig wc = ship.getConfig();
@@ -266,7 +266,7 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return Perspective.localToCanvas(client, new LocalPoint(ax, ay, wv), 0);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color, ChartPlotterRouteMoves.Model model) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color, ChartPlotterRouteMoves.Model model, boolean destination) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0 || area == null) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.worldLineWidth());
@@ -278,9 +278,12 @@ public class ChartPlotterOverlay extends Overlay {
 			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], model) ? solid : dash);
 			g.draw(line);
 		}
+		int ax = r.x[r.n - 1];
+		int ay = r.y[r.n - 1];
 		line.reset();
-		if (routeSegment(line, wv, area, r.x[r.n - 1] + r.offsetX, r.y[r.n - 1] + r.offsetY, r.tx + 0.5, r.ty + 0.5)) {
+		if (destination && (ax != r.tx || ay != r.ty) && routeSegment(line, wv, area, ax + r.offsetX, ay + r.offsetY, r.tx + 0.5, r.ty + 0.5)) {
 			g.setStroke(dash);
+			g.setColor(faded(color));
 			g.draw(line);
 		}
 		g.setStroke(old);

@@ -1,4 +1,5 @@
 package com.chartplotter.route;
+import com.chartplotter.collision.ChartPlotterCollisionData;
 import java.util.function.BooleanSupplier;
 final class ChartPlotterRouteDistances {
 	private final ChartPlotterRouteTerrain terrain;
@@ -11,7 +12,7 @@ final class ChartPlotterRouteDistances {
 	private ChartPlotterPathQueue queue;
 	private boolean initialized;
 	int expanded;
-	ChartPlotterRouteDistances(ChartPlotterRouteTerrain terrain, ChartPlotterRouteHull hull, int gx, int gy, int radius, int focusX, int focusY, int focusRadius, BooleanSupplier cancel) {
+	ChartPlotterRouteDistances(ChartPlotterCollisionData data, ChartPlotterRouteTerrain terrain, ChartPlotterRouteHull hull, int gx, int gy, int radius, int focusX, int focusY, int focusRadius, BooleanSupplier cancel) {
 		this.terrain = terrain;
 		this.hull = hull;
 		this.cancel = cancel;
@@ -26,7 +27,7 @@ final class ChartPlotterRouteDistances {
 			if (cancel.getAsBoolean()) return;
 			for (int x = gx - radius; x <= gx + radius; x++) {
 				int a = terrain.at(x, y);
-				if (a < 0) continue;
+				if (a < 0 || !data.clear(x + 0.5, y + 0.5, gx + 0.5, gy + 0.5)) continue;
 				for (ChartPlotterRouteHull.Mask pose : hull.hull) {
 					if (!pose.clear(terrain, a)) continue;
 					distance[a] = 1 + potential(x - terrain.minX, y - terrain.minY);

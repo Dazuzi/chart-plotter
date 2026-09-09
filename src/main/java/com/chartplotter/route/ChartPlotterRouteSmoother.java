@@ -14,7 +14,7 @@ final class ChartPlotterRouteSmoother {
 			boolean bestCorner = false;
 			double bestExtra = Double.POSITIVE_INFINITY;
 			for (int i = 0; i < route.n - 2; i++) {
-				int before = i == 0 ? -1 : motion.dir(route.x[i] - route.x[i - 1], route.y[i] - route.y[i - 1]);
+				int before = i == 0 ? search.direction : motion.dir(route.x[i] - route.x[i - 1], route.y[i] - route.y[i - 1]);
 				int oldFirst = motion.dir(route.x[i + 1] - route.x[i], route.y[i + 1] - route.y[i]);
 				double oldLength = Math.hypot(route.x[i + 1] - route.x[i], route.y[i + 1] - route.y[i]);
 				for (int j = i + 2; j < route.n; j++) {

@@ -90,6 +90,4 @@ public interface ChartPlotterConfig extends Config {
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
 	@ConfigItem(keyName = "sailingSlide", name = "Slide model", description = "(Experimental) Course projection: turn gradually from heading and slide along walls.", section = tweaksSection, position = 7)
 	default boolean sailingSlide() {return false;}
-	@ConfigItem(keyName = "recordNextRoute", name = "Record next route", description = "Save the next route request, boat details and collision data under chart-plotter/route-recordings for replay. Resets after a request.", section = tweaksSection, position = 8)
-	default boolean recordNextRoute() {return false;}
 }

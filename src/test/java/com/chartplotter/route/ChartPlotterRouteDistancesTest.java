@@ -103,7 +103,7 @@ public class ChartPlotterRouteDistancesTest {
 			assertNotNull(terrain);
 			for (int[] goal : new int[][]{{54, 12, 2}, {10, 25, 0}}) {
 				int[] expected = dijkstra(data, motion, hull, goal[0], goal[1], goal[2]);
-				ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(terrain, hull, goal[0], goal[1], goal[2], 5, 5, 14, () -> false);
+				ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(data, terrain, hull, goal[0], goal[1], goal[2], 5, 5, 14, () -> false);
 				List<Integer> order = new ArrayList<>();
 				for (int a = 0; a < expected.length; a++) order.add(a);
 				Collections.shuffle(order, random);
@@ -121,7 +121,7 @@ public class ChartPlotterRouteDistancesTest {
 		ChartPlotterRouteTerrain terrain = ChartPlotterRouteTerrain.create(data, motion, 400, 512, () -> false);
 		assertNotNull(terrain);
 		AtomicBoolean cancel = new AtomicBoolean();
-		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(terrain, hull, 600, 512, 0, 400, 512, 0, cancel::get);
+		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(data, terrain, hull, 600, 512, 0, 400, 512, 0, cancel::get);
 		assertEquals(200001, distance.get(terrain.at(400, 512)));
 		assertTrue(distance.expanded < terrain.clearance.length / 8);
 		assertTrue(distance.bytes() < terrain.clearance.length * 5L);
@@ -130,7 +130,7 @@ public class ChartPlotterRouteDistancesTest {
 		cancel.set(false);
 		assertEquals(600001, distance.get(terrain.at(0, 512)));
 		cancel.set(true);
-		ChartPlotterRouteDistances cancelled = new ChartPlotterRouteDistances(terrain, hull, 600, 512, 0, 400, 512, 0, cancel::get);
+		ChartPlotterRouteDistances cancelled = new ChartPlotterRouteDistances(data, terrain, hull, 600, 512, 0, 400, 512, 0, cancel::get);
 		cancel.set(false);
 		assertEquals(-1, cancelled.get(terrain.at(600, 512)));
 	}
@@ -138,7 +138,7 @@ public class ChartPlotterRouteDistancesTest {
 		int[] distance = new int[64 * 48];
 		PriorityQueue<int[]> queue = new PriorityQueue<>(Comparator.comparingInt(a -> a[1]));
 		for (int y = gy - radius; y <= gy + radius; y++) for (int x = gx - radius; x <= gx + radius; x++) {
-			if (hull.flag(data, x, y, -1) != ChartPlotterCollisionData.OPEN) continue;
+			if (!data.clear(x + 0.5, y + 0.5, gx + 0.5, gy + 0.5) || hull.flag(data, x, y, -1) != ChartPlotterCollisionData.OPEN) continue;
 			distance[x + y * 64] = 1;
 			queue.add(new int[]{x + y * 64, 1});
 		}
