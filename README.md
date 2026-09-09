@@ -23,4 +23,4 @@ Unknown names and malformed or out-of-range coordinates are ignored.
 
 </details>
 
-Run routing benchmarks with `./gradlew routingAudit -PauditMode=benchmark`. Select cases and settings with, for example, `-PauditCases=long-crossing-speed3 -PauditShape=SMOOTH -PauditEngines=MAXIMUM`.
+Run tests with `./gradlew -q test` and routing benchmarks with `./gradlew -q routingAudit`. Both use Java 11. Select benchmark cases and settings with, for example, `-PauditCases=long-crossing-speed3 -PauditShape=SMOOTH -PauditEngines=MAXIMUM`. Each setting has two warmups and five measured searches under its configured time budget. Route metrics belong to the median-time sample; every search checks its expected result and successful routes check hull clearance.

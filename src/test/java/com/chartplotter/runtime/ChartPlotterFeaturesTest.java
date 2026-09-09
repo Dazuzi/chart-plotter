@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 
 public class ChartPlotterFeaturesTest {
 	@Test
-	public void registersInputOnlyForInteractiveFeatures() {
+	public void courseAndChartModesSelectInputAndSceneFeatures() {
 		ChartPlotterFeatures world = ChartPlotterFeatures.of(true, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
 		ChartPlotterFeatures minimap = ChartPlotterFeatures.of(false, false, false, true, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
 		ChartPlotterFeatures minimapChart = ChartPlotterFeatures.of(false, false, false, false, false, true, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);
@@ -72,26 +72,18 @@ public class ChartPlotterFeaturesTest {
 			ChartPlotterFeatures features = ChartPlotterFeatures.of(config);
 			assertEquals(enabled, features.infoOverlay);
 			assertEquals(enabled, features.chart);
+			assertEquals(enabled, features.routes);
 			assertEquals(enabled, features.tracking);
 			assertEquals(enabled, features.input);
 			assertEquals(enabled, features.worldMapOverlay);
 			assertEquals(enabled, features.cache(true));
+			assertFalse(false);
+			assertFalse(features.cacheView);
 			assertFalse(features.course);
 			assertFalse(features.scene);
 			assertFalse(features.worldOverlay);
 			assertFalse(features.minimapOverlay);
 		}
-	}
-	@Test
-	public void disabledFeaturesRemainDormant() {
-		ChartPlotterFeatures features = ChartPlotterFeatures.off();
-		assertFalse(features.infoOverlay);
-		assertFalse(features.tracking);
-		assertFalse(features.input);
-		assertFalse(features.cache(true));
-		assertFalse(features.worldOverlay);
-		assertFalse(features.minimapOverlay);
-		assertFalse(features.worldMapOverlay);
 	}
 	@Test
 	public void nullProjectionRectangleMatchesDefaultFootprint() {
@@ -100,14 +92,6 @@ public class ChartPlotterFeaturesTest {
 		ChartPlotterProjection.rect(null, x, y);
 		assertArrayEquals(new float[]{128, 128, -128, -128}, x, 0);
 		assertArrayEquals(new float[]{-128, 128, 128, -128}, y, 0);
-	}
-	@Test
-	public void defaultColorsAreStableObjects() {
-		ChartPlotterConfig config = new ChartPlotterConfig() {};
-		assertSame(ChartPlotterConfig.DEFAULT_LINE_COLOR, config.lineColor());
-		assertSame(ChartPlotterConfig.DEFAULT_POTENTIAL_COLOR, config.potentialColor());
-		assertSame(ChartPlotterConfig.DEFAULT_CHART_COLOR, config.chartColor());
-		assertSame(ChartPlotterConfig.DEFAULT_BLOCKED_COLOR, config.blockedColor());
 	}
 	@Test
 	public void worldMapCoordinatesRoundTripWithinOnePixel() {

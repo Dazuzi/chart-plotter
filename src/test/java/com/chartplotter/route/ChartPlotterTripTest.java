@@ -213,13 +213,16 @@ public class ChartPlotterTripTest {
 		assertFalse(ChartPlotterTrip.empty(1).reached(100, 0, 2));
 	}
 	@Test
-	public void generationChangePreservesTripSnapshot() {
-		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40)).generation(3);
+	public void generationChangesWithoutMutatingThePreviousTrip() {
+		ChartPlotterTrip original = ChartPlotterTrip.single(1, 10, 20, route(0, 0, 10, 20)).append(2, 30, 40, route(10, 20, 30, 40));
+		ChartPlotterTrip trip = original.generation(3);
+		assertEquals(3, trip.generation());
+		assertEquals(2, original.generation());
 		assertEquals(2, trip.size());
 		assertEquals(10, trip.x(0));
 		assertEquals(40, trip.y(1));
-		assertNotNull(trip.route(0));
-		assertNotNull(trip.route(1));
+		assertSame(original.route(0), trip.route(0));
+		assertSame(original.route(1), trip.route(1));
 	}
 	@Test
 	public void movesOnlySelectedStop() {

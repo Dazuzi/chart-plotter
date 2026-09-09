@@ -13,6 +13,35 @@ import static org.junit.Assert.*;
 
 public class ChartPlotterRouteValidationTest {
 	@Test
+	public void independentHullCheckRejectsStationaryOverlapsAndHonoursTheHeading() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		WorldEntityConfig config = ChartPlotterRoutingAudit.offsetHull();
+		ChartPlotterRoute route = search(new ChartPlotterCollisionData(chunks), config, 0, 0, 1, () -> false).find();
+		assertEquals(1, route.n);
+		ChartPlotterRoutingAudit.block(chunks, 4, 0);
+		ChartPlotterCollisionData beside = new ChartPlotterCollisionData(chunks);
+		assertArrayEquals(new int[]{0, 0}, ChartPlotterRoutingAudit.clips(beside, config, route));
+		assertArrayEquals(new int[]{1, 0}, ChartPlotterRoutingAudit.clips(beside, config, route.plan(route.motion, route.hull, 1536)));
+		ChartPlotterRoutingAudit.block(chunks, 0, 0);
+		assertArrayEquals(new int[]{1, 0}, ChartPlotterRoutingAudit.clips(new ChartPlotterCollisionData(chunks), config, route));
+	}
+	@Test
+	public void independentHullCheckRejectsMovementAndTurnCollisions() {
+		WorldEntityConfig config = ChartPlotterRoutingAudit.offsetHull();
+		ChartPlotterRouteMotion motion = new ChartPlotterRouteMotion(1, 0.5, 0.5);
+		ChartPlotterRouteHull hull = new ChartPlotterRouteHull(config, motion, 0, false);
+		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 20, 0, new int[]{0, 20}, new int[]{0, 0}, 2, 5, 100);
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterRoutingAudit.block(chunks, 10, 0);
+		assertArrayEquals(new int[]{1, 0}, ChartPlotterRoutingAudit.clips(new ChartPlotterCollisionData(chunks), config, route.plan(motion, hull, 1536)));
+		chunks = ChartPlotterRoutingAudit.open(-4, -4, 4, 4);
+		ChartPlotterRoutingAudit.block(chunks, 4, 4);
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
+		assertFalse(ChartPlotterRoutingAudit.hullClip(data, config, 0.5, 0.5, 1024));
+		assertFalse(ChartPlotterRoutingAudit.hullClip(data, config, 0.5, 0.5, 1536));
+		assertArrayEquals(new int[]{0, 1}, ChartPlotterRoutingAudit.clips(data, config, route.plan(motion, hull, 1024)));
+	}
+	@Test
 	public void freeDepartureSearchMatchesIndependentDijkstra() {
 		Random random = new Random(7612);
 		for (int trial = 0; trial < 30; trial++) {

@@ -34,10 +34,10 @@ public class ChartPlotterRouteShapeTest {
 		search.find();
 		route = route.plan(search.motion, search.hull, 1536);
 		assertTrue(route.valid(data, () -> false));
-		ChartPlotterRoute smooth = ChartPlotterRouteSmoother.smooth(search, route, ChartPlotterRouteSmoother.length(route) * 1.1).plan(search.motion, search.hull, 1536);
+		ChartPlotterRoute smooth = ChartPlotterRouteSmoother.smooth(search, route, ChartPlotterRoutingAudit.length(route) * 1.1).plan(search.motion, search.hull, 1536);
 		assertTrue(smooth.n < route.n);
 		assertTrue(smooth.valid(data, () -> false));
-		assertTrue(ChartPlotterRouteSmoother.length(smooth) <= ChartPlotterRouteSmoother.length(route) * 1.1);
+		assertTrue(ChartPlotterRoutingAudit.length(smooth) <= ChartPlotterRoutingAudit.length(route) * 1.1);
 		assertEquals(smooth.n, smooth.x.length);
 	}
 	@Test
@@ -54,7 +54,7 @@ public class ChartPlotterRouteShapeTest {
 				assertEquals(ChartPlotterRoute.OK, smooth.status);
 				assertTrue(smooth.valid(data, () -> false));
 				assertTrue(ChartPlotterRoutingAudit.turns(smooth) <= ChartPlotterRoutingAudit.turns(balanced));
-				assertTrue(ChartPlotterRouteSmoother.length(smooth) <= ChartPlotterRouteSmoother.length(balanced) * 1.1 + 1e-9);
+				assertTrue(ChartPlotterRoutingAudit.length(smooth) <= ChartPlotterRoutingAudit.length(balanced) * 1.1 + 1e-9);
 			}
 		}
 	}

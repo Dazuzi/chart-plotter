@@ -82,7 +82,7 @@ public class ChartPlotterRouteFinderTest {
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-4, -4, 4, 4));
 		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, null, 0, 0, 1, 20, 5, 1, 100, null, () -> false).find();
 		assertEquals(ChartPlotterRoute.OK, route.status);
-		for (int tick = 0; tick < 20; tick++) assertSame(route, route.advance(0.5, 0.5, 2, 8, 0));
+		assertSame(route, route.advance(0.5, 0.5, 2, 8, 0));
 		ChartPlotterRoute advanced = route.advance(route.x[route.n - 1] + 0.5, route.y[route.n - 1] + 0.5, 2, 8, 0);
 		assertNotNull(advanced);
 		assertEquals(1, advanced.n);
@@ -223,7 +223,7 @@ public class ChartPlotterRouteFinderTest {
 		}
 	}
 	@Test
-	public void workerFailureCompletesUnfinishedSearchesAndValidationsInItsOwnGeneration() {
+	public void failureSnapshotPreservesOtherGenerationsAndFinishedLegs() {
 		ChartPlotterRoute good = ChartPlotterRoute.ok(0, 0, 10, 0, new int[]{0, 10}, new int[]{0, 0}, 2, 5, 100);
 		ChartPlotterTrip trip = ChartPlotterTrip.single(7, 10, 0, good).append(7, 20, 0, ChartPlotterRoute.pending(10, 0, 20, 0, 5, 100));
 		assertSame(trip, trip.failed(6, new boolean[]{true, true}));

@@ -75,6 +75,7 @@ public class ChartPlotterRouteDistancesTest {
 		for (int trial = 0; trial < 64; trial++) {
 			double speed = trial < 32 ? 0.5 + trial * 0.5 : 0.5 + random.nextDouble() * 15.5;
 			ChartPlotterRouteMotion motion = new ChartPlotterRouteMotion(speed, 0.5, 0.5);
+			for (int d = 0; d < 16; d++) assertTrue(motion.lowerBound(motion.x[d], motion.y[d]) <= motion.cost[d]);
 			for (int sample = 0; sample < 100; sample++) {
 				int x = random.nextInt(4001) - 2000;
 				int y = random.nextInt(4001) - 2000;
@@ -83,7 +84,6 @@ public class ChartPlotterRouteDistancesTest {
 				for (int d = 0; d < 16; d++) {
 					int b = motion.lowerBound(Math.max(0, Math.abs(x + motion.x[d]) - radius), Math.max(0, Math.abs(y + motion.y[d]) - radius));
 					assertTrue(Math.abs(a - b) <= motion.cost[d]);
-					assertTrue(motion.lowerBound(motion.x[d], motion.y[d]) <= motion.cost[d]);
 				}
 			}
 			assertEquals(0, motion.lowerBound(0, 0));

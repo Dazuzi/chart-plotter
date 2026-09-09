@@ -43,6 +43,16 @@ tasks.withType(JavaCompile).configureEach {
 	options.release.set(11)
 	options.compilerArgs.addAll(['-Xlint:all,-classfile,-processing', '-Werror'])
 }
+tasks.named('test', Test) {
+	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(11) }
+	testLogging.events = []
+	afterTest { test, result ->
+		result.exceptions.each { error -> logger.quiet("FAIL ${test.className}.${test.name}: ${error.toString().replaceAll('[\\r\\n]+', ' ')}") }
+	}
+	afterSuite { suite, result ->
+		if (!suite.parent) logger.quiet("tests total=${result.testCount} passed=${result.successfulTestCount} failed=${result.failedTestCount} skipped=${result.skippedTestCount}")
+	}
+}
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = runMainClass
@@ -55,7 +65,6 @@ tasks.register('routingAudit', JavaExec) {
 	mainClass = 'com.chartplotter.route.ChartPlotterRoutingAudit'
 	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(11) }
 	maxHeapSize = '1536m'
-	args providers.gradleProperty('auditMode').orElse('synthetic').get()
 	if (providers.gradleProperty('auditEngines').isPresent()) systemProperty 'chartplotter.auditEngines', providers.gradleProperty('auditEngines').get()
 	if (providers.gradleProperty('auditShape').isPresent()) systemProperty 'chartplotter.auditShape', providers.gradleProperty('auditShape').get()
 	if (providers.gradleProperty('auditCases').isPresent()) systemProperty 'chartplotter.auditCases', providers.gradleProperty('auditCases').get()

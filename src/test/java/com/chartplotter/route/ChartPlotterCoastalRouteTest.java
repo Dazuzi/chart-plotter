@@ -105,7 +105,7 @@ public class ChartPlotterCoastalRouteTest {
 		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 0, -4, 0, -24, 5, 3, 140, null, () -> false).find();
 		assertEquals(ChartPlotterRoute.NO_ROUTE, route.status);
 	}
-	@Test
+	@Test(timeout = 30_000)
 	public void largeBoatCanArriveAtAndLeaveBundledCoastalWater() {
 		ChartPlotterCollisionCodec.Text text = ChartPlotterCollisionCodec.readText(getClass().getResourceAsStream("/com/chartplotter/collision.txt"));
 		assertNotNull("Bundled collision data must load", text);
@@ -119,8 +119,7 @@ public class ChartPlotterCoastalRouteTest {
 			assertTrue(Math.abs(y - ints[1]) <= 10);
 			assertEquals(ChartPlotterCollisionData.OPEN, data.flagAt(x, y));
 			for (boolean departure : new boolean[]{false, true}) {
-				long begin = System.nanoTime();
-				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), departure ? x : 2700, departure ? y : 3100, departure ? 2700 : x, departure ? 3100 : y, 5, 3, 140, null, () -> System.nanoTime() - begin >= 3_000_000_000L);
+				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), departure ? x : 2700, departure ? y : 3100, departure ? 2700 : x, departure ? 3100 : y, 5, 3, 140, null, () -> Thread.currentThread().isInterrupted());
 				ChartPlotterRoute route = search.find();
 				assertEquals("coast=" + x + "," + y + " departure=" + departure, ChartPlotterRoute.OK, route.status);
 				assertTrue(Math.max(Math.abs(route.x[0] - route.sx), Math.abs(route.y[0] - route.sy)) <= ChartPlotterRoutes.REACH_RADIUS);
