@@ -7,6 +7,7 @@ import java.util.function.BooleanSupplier;
 final class ChartPlotterRouteFinder {
 	private static final int MAX_NODES = 4 << 20;
 	private static final int MAX_PAGES = 4096;
+	private static final int PAGE_SIZE = 4608;
 	private static final int ENDPOINT_RADIUS = 2;
 	final ChartPlotterCollisionData data;
 	final WorldEntityConfig config;
@@ -24,10 +25,10 @@ final class ChartPlotterRouteFinder {
 	ChartPlotterRouteHull hull;
 	ChartPlotterPathHeap heap;
 	int[][] pages;
-	int[] pose = new int[65536];
-	int[] cost = new int[65536];
-	int[] parent = new int[65536];
-	int[] priority = new int[65536];
+	int[] pose;
+	int[] cost;
+	int[] parent;
+	int[] priority;
 	int[] moves;
 	byte[] turns;
 	int size = 1;
@@ -35,7 +36,12 @@ final class ChartPlotterRouteFinder {
 	int expanded;
 	int routeCost;
 	private int turnBias;
-	private int[] fromStart;
+	private final int[] directClear = new int[16];
+	private int directBlocked;
+	private int directX;
+	private int directY;
+	private ChartPlotterRouteDistances toGoal;
+	private ChartPlotterRouteDistances fromStart;
 	private double distanceLimit;
 	ChartPlotterRouteFinder(ChartPlotterCollisionData data, WorldEntityConfig config, int sx, int sy, int tx, int ty, int bias, double speed, int weight, BooleanSupplier cancel) {
 		this.data = data;
@@ -59,8 +65,7 @@ final class ChartPlotterRouteFinder {
 			distanceLimit = ChartPlotterRouteSmoother.length(route) * 1.1;
 			route = ChartPlotterRouteSmoother.smooth(this, route, distanceLimit);
 			if (weight == 100 && terrain != null && !cancel.getAsBoolean()) {
-				fromStart = new int[terrain.distance.length];
-				terrain.lowerBound(startX, startY, radius(startX, startY), fromStart, hull, cancel);
+				fromStart = new ChartPlotterRouteDistances(terrain, hull, startX, startY, radius(startX, startY), tx, ty, ChartPlotterRoutes.REACH_RADIUS, cancel);
 			}
 			for (turnBias = bias; fromStart != null && turnBias > ChartPlotterTurnPreference.BALANCED.bias && !cancel.getAsBoolean(); turnBias /= 2) {
 				ChartPlotterRoute candidate = search();
@@ -105,6 +110,12 @@ final class ChartPlotterRouteFinder {
 			}
 		}
 		if (distance == Integer.MAX_VALUE) return result(unknown ? ChartPlotterRoute.UNCHARTED : ChartPlotterRoute.BLOCKED);
+		if (directX != bx || directY != by) {
+			directX = bx;
+			directY = by;
+			Arrays.fill(directClear, 0);
+			directBlocked = 0;
+		}
 		int radius = ChartPlotterRoutes.REACH_RADIUS;
 		ChartPlotterRoute direct = direct(bx, by, Math.max(tx - radius, Math.min(tx + radius, bx)), Math.max(ty - radius, Math.min(ty + radius, by)));
 		if (direct != null) return direct;
@@ -118,24 +129,37 @@ final class ChartPlotterRouteFinder {
 			if (direct != null) {routeCost = best; return direct;}
 			if (cancel.getAsBoolean()) return result(ChartPlotterRoute.PENDING);
 		}
-		boolean prepare = terrain == null;
-		if (prepare) terrain = ChartPlotterRouteTerrain.create(data, motion, startX, startY, cancel);
+		if (terrain == null) {
+			if (!ChartPlotterRouteTerrain.connected(data, startX, startY, tx, ty, radius, cancel)) return result(cancel.getAsBoolean() ? ChartPlotterRoute.PENDING : ChartPlotterRoute.NO_ROUTE);
+			terrain = ChartPlotterRouteTerrain.create(data, motion, startX, startY, cancel);
+		}
 		if (cancel.getAsBoolean()) return result(ChartPlotterRoute.PENDING);
 		if (terrain == null) return result(ChartPlotterRoute.COMPLEX);
-		if (prepare && !terrain.lowerBound(tx, ty, radius, terrain.distance, hull, cancel)) return result(ChartPlotterRoute.PENDING);
+		if (moves == null) moves = new int[terrain.clearance.length];
+		if (toGoal == null) toGoal = new ChartPlotterRouteDistances(terrain, hull, tx, ty, radius, startX, startY, departureRadius, cancel);
 		size = 1;
 		allocatedPages = 0;
 		pages = new int[(terrain.clearance.length + 255) >>> 8][];
-		if (moves == null) moves = new int[terrain.clearance.length];
 		if (turns == null) turns = new byte[terrain.clearance.length];
+		if (pose == null) {
+			pose = new int[65536];
+			cost = new int[65536];
+			parent = new int[65536];
+			priority = new int[65536];
+		}
 		heap = new ChartPlotterPathHeap(priority, cost);
 		for (int y = startY - departureRadius; y <= startY + departureRadius; y++) {
 			if (cancel.getAsBoolean()) return result(ChartPlotterRoute.PENDING);
 			for (int x = startX - departureRadius; x <= startX + departureRadius; x++) {
 				int a = terrain.at(x, y);
-				if (a < 0 || terrain.distance[a] == 0 || !data.clear(x + 0.5, y + 0.5, startX + 0.5, startY + 0.5)) continue;
+				if (a < 0 || !data.clear(x + 0.5, y + 0.5, startX + 0.5, startY + 0.5)) continue;
 				int g = (int) (1000 * Math.hypot(x - startX, y - startY));
-				for (int d = 0; d < 16; d++) if (hull.hull[d].clear(terrain, a)) add(a * 16 + d, g, 0);
+				for (int d = 0; d < 16; d++) {
+					if (!hull.hull[d].clear(terrain, a)) continue;
+					int h = toGoal.get(a);
+					if (h < 0) return result(ChartPlotterRoute.PENDING);
+					if (h > 0) add(a * 16 + d, g, 0, h);
+				}
 			}
 		}
 		int popped = 0;
@@ -146,7 +170,7 @@ final class ChartPlotterRouteFinder {
 			int state = pose[node];
 			int a = state >>> 4;
 			int ad = state & 15;
-			if (terrain.distance[a] == 1) return route(node);
+			if (toGoal.get(a) == 1) return route(node);
 			int best = pages[state >>> 12][4096 + (a & 255)];
 			if (best != node && cost[node] - cost[best] >= turnCost(ad, pose[best] & 15) && freeTurn(a)) continue;
 			expanded++;
@@ -157,30 +181,37 @@ final class ChartPlotterRouteFinder {
 				int y = ay + motion.y[d];
 				if (x <= 0 || y <= 0 || x >= terrain.width - 1 || y >= terrain.height - 1) continue;
 				int b = a + terrain.delta[d];
-				if (terrain.distance[b] == 0) continue;
-				if (fromStart != null && (fromStart[b] == 0 || (long) fromStart[b] + terrain.distance[b] - 2 > distanceLimit * 1000)) continue;
+				if (terrain.clearance[b] == 0) continue;
 				int next = b * 16 + d;
 				int g = cost[node] + motion.cost[d] + turnCost(ad, d);
-				if (g > ChartPlotterRouteTerrain.MAX_COST) {limited = true; continue;}
 				int[] page = pages[next >>> 12];
 				int old = page == null ? 0 : page[next & 4095];
 				if (old != 0 && cost[old] <= g) continue;
 				int min = page == null ? 0 : page[4096 + (b & 255)];
 				if (min != 0 && g - cost[min] >= turnCost(d, pose[min] & 15) && freeTurn(b)) continue;
-				if (moveBlocked(a, d) || ad != d && !freeTurn(a) && !hull.turn[ad * 16 + d].clear(terrain, a)) continue;
+				if (hull.moveBlocked(terrain, moves, a, d) || ad != d && !freeTurn(a) && turnBlocked(a, ad, d)) continue;
+				int h = toGoal.get(b);
+				if (h < 0) return result(ChartPlotterRoute.PENDING);
+				if (h == 0) continue;
+				if (fromStart != null) {
+					int start = fromStart.get(b);
+					if (start < 0) return result(ChartPlotterRoute.PENDING);
+					if (start == 0 || (long) start + h - 2 > distanceLimit * 1000) continue;
+				}
+				if (g > ChartPlotterRouteTerrain.MAX_COST) {limited = true; continue;}
 				if (old == 0) {
 					if (size == MAX_NODES || page == null && allocatedPages == MAX_PAGES) return result(ChartPlotterRoute.COMPLEX);
-					add(next, g, node);
+					add(next, g, node, h);
 				} else {
 					cost[old] = g;
 					parent[old] = node;
-					priority[old] = g + (int) ((long) (terrain.distance[b] - 1) * weight / 100);
+					priority[old] = g + (int) ((long) (h - 1) * weight / 100);
 					if (cost[page[4096 + (b & 255)]] > g) page[4096 + (b & 255)] = old;
 					heap.add(old);
 				}
 			}
 		}
-		return result(limited ? ChartPlotterRoute.COMPLEX : ChartPlotterRoute.NO_ROUTE);
+		return result(limited || terrain.limited ? ChartPlotterRoute.COMPLEX : ChartPlotterRoute.NO_ROUTE);
 	}
 	private int radius(int x, int y) {return hull.circle.flag(data, x, y) == ChartPlotterCollisionData.OPEN ? 0 : Math.min(ChartPlotterRoutes.REACH_RADIUS, Math.max(ENDPOINT_RADIUS, hull.circle.radius * 2));}
 	private ChartPlotterRoute direct(int ax, int ay, int gx, int gy) {
@@ -211,12 +242,23 @@ final class ChartPlotterRouteFinder {
 				if (base + extra > ChartPlotterRouteTerrain.MAX_COST) continue;
 				int mx = ax + dx[first] * n;
 				int my = ay + dy[first] * n;
-				if (lineBlocked(ax, ay, first, n) || m > 0 && (turnBlocked(mx, my, first, second) || lineBlocked(mx, my, second, m))) continue;
+				if (departureBlocked(first, n) || m > 0 && (turnBlocked(mx, my, first, second) || lineBlocked(mx, my, second, m))) continue;
 				routeCost = (int) base + extra;
 				return ChartPlotterRoute.ok(sx, sy, tx, ty, m == 0 ? new int[]{ax, gx} : new int[]{ax, mx, gx}, m == 0 ? new int[]{ay, gy} : new int[]{ay, my, gy}, m == 0 ? 2 : 3, bias, weight);
 			}
 		}
 		return null;
+	}
+	private boolean departureBlocked(int d, int steps) {
+		if (steps <= directClear[d]) return false;
+		if ((directBlocked & 1 << d) != 0) return true;
+		while (directClear[d] < steps) {
+			int i = directClear[d];
+			if ((i & 31) == 0 && cancel.getAsBoolean()) return true;
+			if (hull.move[d].flag(data, directX + motion.x[d] * i, directY + motion.y[d] * i) != ChartPlotterCollisionData.OPEN) {directBlocked |= 1 << d; return true;}
+			directClear[d]++;
+		}
+		return false;
 	}
 	boolean lineBlocked(int x, int y, int d, int steps) {
 		for (int i = 0; i < steps; i++) {
@@ -225,15 +267,38 @@ final class ChartPlotterRouteFinder {
 				if (hull.move[d].flag(data, x, y) != ChartPlotterCollisionData.OPEN) return true;
 			} else {
 				int a = terrain.at(x, y);
-				if (a < 0 || moveBlocked(a, d)) return true;
+				if (a < 0 || hull.moveBlocked(terrain, moves, a, d)) return true;
 			}
 			x += motion.x[d];
 			y += motion.y[d];
 		}
 		return false;
 	}
-	boolean turnBlocked(int x, int y, int a, int b) {return a != b && hull.circle.flag(data, x, y) != ChartPlotterCollisionData.OPEN && hull.turn[a * 16 + b].flag(data, x, y) != ChartPlotterCollisionData.OPEN;}
-	private void add(int state, int g, int previous) {
+	boolean turnBlocked(int x, int y, int a, int b) {
+		if (a == b) return false;
+		int tile = terrain == null ? -1 : terrain.at(x, y);
+		if (tile >= 0 && pages != null && pages[tile >>> 8] != null) return !freeTurn(tile) && turnBlocked(tile, a, b);
+		return hull.circle.flag(data, x, y) != ChartPlotterCollisionData.OPEN && hull.turn[a * 16 + b].flag(data, x, y) != ChartPlotterCollisionData.OPEN;
+	}
+	private boolean turnBlocked(int a, int from, int to) {
+		int change = (to - from + 24 & 15) - 8;
+		if (change == -8) return true;
+		int mask = ((1 << Math.abs(change)) - 1) << (change > 0 ? from : to);
+		mask = (mask | mask >>> 16) & 65535;
+		int[] page = pages[a >>> 8];
+		int index = 4352 + (a & 255);
+		int flags = page[index];
+		if ((mask & flags >>> 16 & ~flags) != 0) return true;
+		for (int missing = mask & ~(flags >>> 16); missing != 0; missing &= missing - 1) {
+			int d = Integer.numberOfTrailingZeros(missing);
+			flags |= 1 << (d + 16);
+			if (!hull.turn[d * 16 + (d + 1 & 15)].clear(terrain, a)) {page[index] = flags; return true;}
+			flags |= 1 << d;
+		}
+		page[index] = flags;
+		return false;
+	}
+	private void add(int state, int g, int previous, int h) {
 		if (size == pose.length) {
 			pose = Arrays.copyOf(pose, size * 2);
 			cost = Arrays.copyOf(cost, size * 2);
@@ -247,10 +312,10 @@ final class ChartPlotterRouteFinder {
 		pose[node] = state;
 		cost[node] = g;
 		parent[node] = previous;
-		priority[node] = g + (int) ((long) (terrain.distance[state >>> 4] - 1) * weight / 100);
+		priority[node] = g + (int) ((long) (h - 1) * weight / 100);
 		int[] page = pages[state >>> 12];
 		if (page == null) {
-			page = new int[4352];
+			page = new int[PAGE_SIZE];
 			pages[state >>> 12] = page;
 			allocatedPages++;
 		}
@@ -258,15 +323,6 @@ final class ChartPlotterRouteFinder {
 		int min = 4096 + ((state >>> 4) & 255);
 		if (page[min] == 0 || cost[page[min]] > g) page[min] = node;
 		heap.add(node);
-	}
-	private boolean moveBlocked(int a, int d) {
-		int known = 1 << d + 16;
-		int valid = 1 << d;
-		if ((moves[a] & known) != 0) return (moves[a] & valid) == 0;
-		moves[a] |= known;
-		if (terrain.pointMoveBlocked(a, d) || !hull.move[d].clear(terrain, a)) return true;
-		moves[a] |= valid;
-		return false;
 	}
 	private boolean freeTurn(int a) {
 		if (turns[a] == 0) turns[a] = hull.circle.clear(terrain, a) ? (byte) 1 : 2;
@@ -314,5 +370,5 @@ final class ChartPlotterRouteFinder {
 		if (status == ChartPlotterRoute.COMPLEX) return ChartPlotterRoute.complex(sx, sy, tx, ty, bias, weight);
 		return ChartPlotterRoute.none(sx, sy, tx, ty, bias, weight);
 	}
-	long bytes() {return pose.length * 16L + (heap == null ? 0 : heap.position.length * 4L + heap.nodes.length * 4L) + allocatedPages * 4352L * 4 + (terrain == null ? 0 : terrain.clearance.length * 5L) + (moves == null ? 0 : moves.length * 5L) + (fromStart == null ? 0 : fromStart.length * 4L);}
+	long bytes() {return (pose == null ? 0 : pose.length * 16L) + (heap == null ? 0 : heap.position.length * 4L + heap.nodes.length * 4L) + allocatedPages * PAGE_SIZE * 4L + (terrain == null ? 0 : terrain.clearance.length + terrain.open.length * 8L) + (moves == null ? 0 : moves.length * 5L) + (toGoal == null ? 0 : toGoal.bytes()) + (fromStart == null ? 0 : fromStart.bytes());}
 }

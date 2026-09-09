@@ -9,6 +9,28 @@ import static org.junit.Assert.assertTrue;
 
 public class ChartPlotterPathQueueTest {
 	@Test
+	public void distantBucketsAndRecycledPagesPreserveOrdering() {
+		int[] cost = new int[1 << 20];
+		ChartPlotterPathQueue queue = new ChartPlotterPathQueue(cost, 40000);
+		for (int round = 0; round < 100; round++) {
+			int offset = round * 4096;
+			for (int i = 0; i < 16; i++) {
+				int node = offset + i * 256;
+				cost[node] = 50000000 + round * 100000 + i * 2000;
+				queue.add(node, 0);
+			}
+			for (int i = 15; i >= 0; i--) {
+				int node = offset + i * 256;
+				int previous = cost[node];
+				cost[node] -= 1000;
+				queue.add(node, previous);
+			}
+			for (int i = 0; i < 16; i++) assertEquals(offset + i * 256, queue.poll());
+			assertEquals(0, queue.size);
+		}
+		assertTrue(queue.bytes() < cost.length);
+	}
+	@Test
 	public void decreasesAndBucketWrapsPreserveDijkstraOrder() {
 		Random random = new Random(813);
 		int[] distance = new int[1000];

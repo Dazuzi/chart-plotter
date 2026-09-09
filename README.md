@@ -22,3 +22,5 @@ Other plugins can post `PluginMessage` events in the `chartplotter` namespace.
 Unknown names and malformed or out-of-range coordinates are ignored.
 
 </details>
+
+Run routing benchmarks with `./gradlew routingAudit -PauditMode=benchmark`. Select cases and settings with, for example, `-PauditCases=long-crossing-speed3 -PauditShape=SMOOTH -PauditEngines=MAXIMUM`.

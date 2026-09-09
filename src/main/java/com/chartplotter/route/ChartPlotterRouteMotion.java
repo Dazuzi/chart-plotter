@@ -8,6 +8,9 @@ final class ChartPlotterRouteMotion {
 	final double speed;
 	final double offsetX;
 	final double offsetY;
+	private final int sideCost;
+	private final int diagonalX;
+	private final int diagonalY;
 	int radius;
 	ChartPlotterRouteMotion(double speed, double offsetX, double offsetY) {
 		if (!Double.isFinite(speed) || speed < 0.5 || speed > 16 || !(offsetX >= 0 && offsetX < 1 && offsetY >= 0 && offsetY < 1)) throw new IllegalArgumentException("Unsupported sailing speed");
@@ -27,6 +30,14 @@ final class ChartPlotterRouteMotion {
 			radius = Math.max(radius, Math.max(Math.abs(x[d]), Math.abs(y[d])));
 			cells[d] = cells(x[d], y[d], offsetX, offsetY);
 		}
+		sideCost = (cost[3] - cost[4] * x[3]) / y[3];
+		diagonalX = (cost[3] - cost[2] * y[3]) / (x[3] - y[3]);
+		diagonalY = (cost[2] * x[3] - cost[3]) / (x[3] - y[3]);
+	}
+	int lowerBound(int dx, int dy) {
+		int a = Math.max(Math.abs(dx), Math.abs(dy));
+		int b = Math.min(Math.abs(dx), Math.abs(dy));
+		return (int) Math.min(ChartPlotterRouteTerrain.MAX_COST, Math.max((long) cost[4] * a + (long) sideCost * b, (long) diagonalX * a + (long) diagonalY * b));
 	}
 	int dir(int dx, int dy) {
 		for (int d = 0; d < 16; d++) if ((long) dx * y[d] == (long) dy * x[d] && (long) dx * x[d] + (long) dy * y[d] > 0) return d;

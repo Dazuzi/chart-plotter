@@ -59,6 +59,7 @@ tasks.register('routingAudit', JavaExec) {
 	if (providers.gradleProperty('auditRecording').isPresent()) args providers.gradleProperty('auditRecording').get()
 	if (providers.gradleProperty('auditEngines').isPresent()) systemProperty 'chartplotter.auditEngines', providers.gradleProperty('auditEngines').get()
 	if (providers.gradleProperty('auditShape').isPresent()) systemProperty 'chartplotter.auditShape', providers.gradleProperty('auditShape').get()
+	if (providers.gradleProperty('auditCases').isPresent()) systemProperty 'chartplotter.auditCases', providers.gradleProperty('auditCases').get()
 }
 tasks.register('exportCollision') {
 	inputs.property 'dataVersion', dataVersion

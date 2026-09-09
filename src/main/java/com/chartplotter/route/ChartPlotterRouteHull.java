@@ -5,6 +5,7 @@ import java.util.BitSet;
 final class ChartPlotterRouteHull {
 	final Mask[] hull = new Mask[16];
 	final Mask[] move = new Mask[16];
+	final Mask[] point = new Mask[16];
 	final Mask[] turn = new Mask[256];
 	final Mask circle;
 	final Mask core;
@@ -53,8 +54,9 @@ final class ChartPlotterRouteHull {
 			cells.set(radius + radius * side);
 			hull[d] = mask(cells);
 			cells.clear();
-			add(cells, o, motion.x[d], motion.y[d], 0);
 			for (int coordinate : motion.cells[d]) cells.set((coordinate >> 16) + radius + ((short) coordinate + radius) * side);
+			point[d] = mask(cells);
+			add(cells, o, motion.x[d], motion.y[d], 0);
 			move[d] = mask(cells);
 			arcs[d] = new BitSet(side * side);
 			double padding = 2 * reach * Math.sin(Math.PI / 256) + 1e-5;
@@ -70,6 +72,15 @@ final class ChartPlotterRouteHull {
 		}
 	}
 	boolean matches(WorldEntityConfig config) {return config == null ? hw == 0 && hh == 0 : ox == config.getBoundsX() / 128.0 && oy == config.getBoundsY() / 128.0 && hw == config.getBoundsWidth() / 256.0 && hh == config.getBoundsHeight() / 256.0;}
+	boolean moveBlocked(ChartPlotterRouteTerrain terrain, int[] moves, int a, int d) {
+		int known = 1 << (d + 16);
+		int valid = 1 << d;
+		if ((moves[a] & known) != 0) return (moves[a] & valid) == 0;
+		moves[a] |= known;
+		if (!move[d].clear(terrain, a)) return true;
+		moves[a] |= valid;
+		return false;
+	}
 	int flag(ChartPlotterCollisionData data, int x, int y, int d) {
 		if (d >= 0) return hull[d].flag(data, x, y);
 		boolean unknown = false;
@@ -105,37 +116,47 @@ final class ChartPlotterRouteHull {
 		}
 	}
 	private Mask mask(BitSet cells) {
-		int[] offsets = new int[cells.cardinality()];
-		int[] coordinates = new int[offsets.length];
+		int groups = 0;
+		for (int i = cells.nextSetBit(0); i >= 0; i = cells.nextSetBit(Math.min(i + 64, (i / side + 1) * side))) groups++;
+		int[] coordinates = new int[cells.cardinality()];
+		int[] rows = new int[groups];
+		long[] bits = new long[groups];
 		int minX = 0;
 		int minY = 0;
 		int maxX = 0;
 		int maxY = 0;
 		int n = 0;
+		int count = 0;
 		for (int i = cells.nextSetBit(0); i >= 0; i = cells.nextSetBit(i + 1)) {
 			int x = i % side - radius;
 			int y = i / side - radius;
-			coordinates[n] = x << 16 | y & 65535;
-			offsets[n++] = x + y * stride;
+			coordinates[n++] = x << 16 | y & 65535;
+			if (count == 0 || y != (short) rows[count - 1] || x - (rows[count - 1] >> 16) >= 64) rows[count++] = x << 16 | y & 65535;
+			bits[count - 1] |= 1L << (x - (rows[count - 1] >> 16));
 			minX = Math.min(minX, x);
 			minY = Math.min(minY, y);
 			maxX = Math.max(maxX, x);
 			maxY = Math.max(maxY, y);
 		}
-		return new Mask(offsets, coordinates, stride, minX, minY, maxX, maxY);
+		return new Mask(coordinates, rows, bits, stride, minX, minY, maxX, maxY);
 	}
 	static final class Mask {
 		final int[] offsets;
 		final int[] coordinates;
+		final int[] rows;
+		final long[] bits;
 		int stride;
 		final int minX;
 		final int minY;
 		final int maxX;
 		final int maxY;
 		final int radius;
-		Mask(int[] offsets, int[] coordinates, int stride, int minX, int minY, int maxX, int maxY) {
-			this.offsets = offsets;
+		Mask(int[] coordinates, int[] rows, long[] bits, int stride, int minX, int minY, int maxX, int maxY) {
 			this.coordinates = coordinates;
+			this.rows = rows;
+			this.bits = bits;
+			offsets = new int[rows.length];
+			for (int i = 0; i < rows.length; i++) offsets[i] = (rows[i] >> 16) + (short) rows[i] * stride;
 			this.stride = stride;
 			this.minX = minX;
 			this.minY = minY;
@@ -151,9 +172,15 @@ final class ChartPlotterRouteHull {
 			if (x + minX < 0 || y + minY < 0 || x + maxX >= terrain.width || y + maxY >= terrain.height) return false;
 			if (stride != terrain.width) {
 				stride = terrain.width;
-				for (int i = 0; i < offsets.length; i++) offsets[i] = (coordinates[i] >> 16) + (short) coordinates[i] * stride;
+				for (int i = 0; i < offsets.length; i++) offsets[i] = (rows[i] >> 16) + (short) rows[i] * stride;
 			}
-			for (int offset : offsets) if (terrain.clearance[a + offset] == 0) return false;
+			for (int i = 0; i < offsets.length; i++) {
+				int b = a + offsets[i];
+				int shift = b & 63;
+				long value = terrain.open[b >>> 6] >>> shift;
+				if (shift != 0) value |= terrain.open[(b >>> 6) + 1] << (64 - shift);
+				if ((value & bits[i]) != bits[i]) return false;
+			}
 			return true;
 		}
 		int flag(ChartPlotterCollisionData data, int x, int y) {

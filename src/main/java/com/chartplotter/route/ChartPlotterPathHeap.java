@@ -20,7 +20,7 @@ final class ChartPlotterPathHeap {
 			peak = Math.max(peak, size);
 		}
 		while (i > 0) {
-			int p = (i - 1) >>> 1;
+			int p = (i - 1) >>> 2;
 			if (!less(node, nodes[p])) break;
 			nodes[i] = nodes[p];
 			position[nodes[i]] = i + 1;
@@ -35,9 +35,10 @@ final class ChartPlotterPathHeap {
 		int last = nodes[--size];
 		if (size == 0) return node;
 		int i = 0;
-		while (i * 2 + 1 < size) {
-			int c = i * 2 + 1;
-			if (c + 1 < size && less(nodes[c + 1], nodes[c])) c++;
+		while (i * 4 + 1 < size) {
+			int c = i * 4 + 1;
+			int end = Math.min(c + 4, size);
+			for (int next = c + 1; next < end; next++) if (less(nodes[next], nodes[c])) c = next;
 			if (!less(nodes[c], last)) break;
 			nodes[i] = nodes[c];
 			position[nodes[i]] = i + 1;

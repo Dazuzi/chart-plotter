@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 
 public final class ChartPlotterRoutingAudit {
@@ -27,9 +28,10 @@ public final class ChartPlotterRoutingAudit {
 				System.out.printf("destination=%d,%d status=%d length=%.3f turns=%d ms=%.3f%n", target[0], target[1], route.status, length(route), turns(route), (System.nanoTime() - started) / 1e6);
 				geometry("synthetic", route);
 			}
-		} else if (args.length == 2 && args[0].equals("replay")) replay(args[1]);
+		} else if (args[0].equals("benchmark")) benchmark();
+		else if (args.length == 2 && args[0].equals("replay")) replay(args[1]);
 		else if (args.length == 2 && args[0].equals("recorded-benchmark")) benchmark(new Recording(args[1]));
-		else throw new IllegalArgumentException("Expected synthetic, replay, or recorded-benchmark with a recording directory");
+		else throw new IllegalArgumentException("Expected synthetic, benchmark, replay, or recorded-benchmark with a recording directory");
 	}
 	static ChartPlotterRoute replay(String name) throws Exception {
 		Recording input = new Recording(name);
@@ -48,6 +50,37 @@ public final class ChartPlotterRoutingAudit {
 		ChartPlotterRoute saved = ChartPlotterRoute.ok(input.integer("sx"), input.integer("sy"), input.integer("tx"), input.integer("ty"), coordinates(input.p.getProperty("route.x")), coordinates(input.p.getProperty("route.y")), coordinates(input.p.getProperty("route.x")).length, input.integer("turnBias"), input.integer("weight"));
 		System.out.printf("recorded,length=%.3f,turns=%d,ms=%.3f%n", length(saved), turns(saved), Long.parseLong(input.p.getProperty("elapsedNanos")) / 1e6);
 		geometry("recorded", saved);
+		benchmark(input.data, input.config, input::search);
+	}
+	private static void benchmark() {
+		Map<Long, ChartPlotterCollisionData.Chunk> chunks = open(0, 0, 127, 127);
+		benchmark("open", new ChartPlotterCollisionData(chunks), 64, 512, 320, 512, 3);
+		for (int y = 448; y <= 576; y++) block(chunks, 192, y);
+		ChartPlotterCollisionData detour = new ChartPlotterCollisionData(chunks);
+		benchmark("local-detour", detour, 64, 512, 320, 512, 1);
+		benchmark("local-detour-speed3", detour, 64, 512, 320, 512, 3);
+		for (int y = 0; y < 1024; y++) block(chunks, 192, y);
+		benchmark("disconnected", new ChartPlotterCollisionData(chunks), 64, 512, 320, 512, 3);
+		chunks = open(0, 0, 127, 127);
+		for (int y = 0; y < 1024; y++) block(chunks, 196, y);
+		benchmark("disconnected-interior", new ChartPlotterCollisionData(chunks), 64, 512, 320, 512, 3);
+		ChartPlotterCollisionCodec.Text bundled = ChartPlotterCollisionCodec.readText(ChartPlotterRoutingAudit.class.getResourceAsStream("/com/chartplotter/collision.txt"));
+		if (bundled == null) throw new AssertionError("Bundled collision data must load");
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(bundled.data);
+		benchmark("coastal", data, 2700, 3100, 2736, 3136, 3);
+		benchmark("coastal-departure", data, 2736, 3136, 2700, 3100, 3);
+		benchmark("regional", data, 2700, 3100, 2650, 2990, 3);
+		benchmark("long-crossing", data, 2799, 3405, 2382, 3539, 1);
+		benchmark("long-crossing-speed3", data, 2799, 3405, 2382, 3539, 3);
+	}
+	private static void benchmark(String name, ChartPlotterCollisionData data, int sx, int sy, int tx, int ty, double speed) {
+		if (!Arrays.asList(System.getProperty("chartplotter.auditCases", name).split(",")).contains(name)) return;
+		System.out.printf("case=%s java=%s chunks=%d speed=%.2f%n", name, System.getProperty("java.version"), data.size(), speed);
+		int bias = com.chartplotter.ChartPlotterTurnPreference.valueOf(System.getProperty("chartplotter.auditShape", "BALANCED")).bias;
+		WorldEntityConfig config = offsetHull();
+		benchmark(data, config, (weight, cancel) -> new ChartPlotterRouteFinder(data, config, sx, sy, tx, ty, bias, speed, weight, cancel));
+	}
+	private static void benchmark(ChartPlotterCollisionData data, WorldEntityConfig config, BiFunction<Integer, BooleanSupplier, ChartPlotterRouteFinder> create) {
 		System.out.println("engine,first_ms,median_ms,max_ms,completed,status,cost,length,turns,expanded,peak_open,array_mib");
 		for (String name : System.getProperty("chartplotter.auditEngines", "FAST,BALANCED,MAXIMUM").split(",")) {
 			ChartPlotterRouteEffort effort = ChartPlotterRouteEffort.valueOf(name);
@@ -57,18 +90,22 @@ public final class ChartPlotterRoutingAudit {
 			int completed = 0;
 			for (int i = 0; i < elapsed.length; i++) {
 				long started = System.nanoTime();
-				search = input.search(effort.weight, () -> System.nanoTime() - started > effort.nanos);
+				search = create.apply(effort.weight, () -> System.nanoTime() - started > effort.nanos);
 				route = search.find();
 				elapsed[i] = (System.nanoTime() - started) / 1e6;
-				if (route.status == ChartPlotterRoute.OK) completed++;
+				if (route.status == ChartPlotterRoute.OK) {
+					completed++;
+					if (!route.valid(data, () -> false)) throw new AssertionError("Invalid route");
+				}
 			}
 			double first = elapsed[0];
 			Arrays.sort(elapsed, 1, elapsed.length);
 			System.out.printf("%s,%.3f,%.3f,%.3f,%d/6,%d,%d,%.3f,%d,%d,%d,%.3f%n", name, first, elapsed[3], Math.max(first, elapsed[5]), completed, route.status, search.routeCost, length(route), turns(route), search.expanded, search.heap == null ? 0 : search.heap.peak, search.bytes() / 1048576.0);
 			geometry(name, route);
-			if (route.status == ChartPlotterRoute.OK && input.config != null) {
-				int[] clips = clips(input.data, input.config, route);
+			if (route.status == ChartPlotterRoute.OK && config != null) {
+				int[] clips = clips(data, config, route);
 				System.out.printf("hull_clips,%s,segments=%d,turns=%d,independent_validation=%s%n", name, clips[0], clips[1], clips[0] == 0 && clips[1] == 0);
+				if (clips[0] != 0 || clips[1] != 0) throw new AssertionError("Hull clips an obstacle");
 			}
 		}
 	}

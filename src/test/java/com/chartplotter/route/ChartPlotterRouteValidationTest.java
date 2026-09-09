@@ -86,13 +86,13 @@ public class ChartPlotterRouteValidationTest {
 		ChartPlotterRouteTerrain terrain = ChartPlotterRouteTerrain.create(data, motion, 0, -12, () -> false);
 		assertNotNull(terrain);
 		ChartPlotterRouteHull hull = new ChartPlotterRouteHull(ChartPlotterRoutingAudit.offsetHull(), motion, terrain.width, false);
-		assertTrue(terrain.lowerBound(0, 16, 0, terrain.distance, hull, () -> false));
+		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(terrain, hull, 0, 16, 0, 0, -12, 0, () -> false);
 		for (int y = -22; y <= 22; y++) for (int x = -22; x <= 22; x++) for (int d = 0; d < 16; d++) {
 			int a = terrain.at(x, y);
 			int b = terrain.at(x + motion.x[d], y + motion.y[d]);
-			if (!hull.move[d].clear(terrain, a) || b < 0 || terrain.distance[b] == 0) continue;
-			assertTrue(terrain.distance[a] != 0);
-			assertTrue(terrain.distance[a] <= motion.cost[d] + terrain.distance[b]);
+			if (!hull.move[d].clear(terrain, a) || b < 0 || distance.get(b) == 0) continue;
+			assertTrue(distance.get(a) != 0);
+			assertTrue(distance.get(a) <= motion.cost[d] + distance.get(b));
 		}
 	}
 	@Test
@@ -185,8 +185,10 @@ public class ChartPlotterRouteValidationTest {
 			if (!shape.intersects(x + 1e-8, y + 1e-8, 1 - 2e-8, 1 - 2e-8)) continue;
 			int cell = terrain.at(x, y);
 			terrain.clearance[cell] = 0;
+			terrain.open[cell >>> 6] &= ~(1L << cell);
 			assertFalse("missed tile=" + x + "," + y, mask.clear(terrain, origin));
 			terrain.clearance[cell] = 1;
+			terrain.open[cell >>> 6] |= 1L << cell;
 		}
 	}
 	private static Path2D polygon(WorldEntityConfig config, double x, double y, int orientation) {
