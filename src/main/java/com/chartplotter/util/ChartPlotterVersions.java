@@ -1,15 +1,13 @@
 package com.chartplotter.util;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+
 public final class ChartPlotterVersions {
 	private static final String FILE = "versions.txt";
 	private ChartPlotterVersions() {}
@@ -34,6 +32,18 @@ public final class ChartPlotterVersions {
 			return;
 		}
 		ChartPlotterFiles.replace(tmp, file(dir));
+	}
+	public static synchronized void remove(File dir, String key) throws IOException {
+		List<String> data;
+		try {
+			data = Files.readAllLines(file(dir).toPath(), StandardCharsets.UTF_8);
+		} catch (NoSuchFileException e) {
+			return;
+		}
+		if (!data.removeIf(line -> key.equals(line.trim().split("\\s+", 2)[0]))) return;
+		File tmp = new File(dir, FILE + ".tmp");
+		Files.write(tmp.toPath(), data, StandardCharsets.UTF_8);
+		if (!ChartPlotterFiles.replace(tmp, file(dir))) throw new IOException("Unable to update dataset versions");
 	}
 	public static boolean newer(String src, String dst) {
 		return valid(src) && (!valid(dst) || src.compareTo(dst) > 0);

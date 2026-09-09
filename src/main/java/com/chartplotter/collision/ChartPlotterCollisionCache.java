@@ -1,12 +1,15 @@
 package com.chartplotter.collision;
 
+import com.chartplotter.ChartPlotterMigration;
 import com.chartplotter.collision.ChartPlotterCollisionData.Chunk;
 import com.chartplotter.util.ChartPlotterVersions;
 import net.runelite.api.WorldView;
 import net.runelite.client.RuneLite;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,6 +30,7 @@ public final class ChartPlotterCollisionCache {
 	private final Map<Long, Chunk> chunks = new HashMap<>();
 	private volatile ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private volatile boolean loaded;
+	private volatile boolean cleaned;
 	private ScheduledExecutorService io;
 	private ScheduledFuture<?> flushTask;
 	private volatile long rev;
@@ -44,6 +48,14 @@ public final class ChartPlotterCollisionCache {
 		next.allowCoreThreadTimeOut(true);
 		io = next;
 		ScheduledExecutorService ex = io;
+		if (!cleaned) ex.execute(() -> {
+			try {
+				ChartPlotterMigration.files(dir);
+				cleaned = true;
+			} catch (IOException e) {
+				LoggerFactory.getLogger(ChartPlotterCollisionCache.class).warn("Unable to remove obsolete sparse routing data", e);
+			}
+		});
 		if (!loaded) ex.execute(() -> loadQuiet(ex));
 		else if (savedRev != rev) scheduleFlush(ex, 0);
 	}

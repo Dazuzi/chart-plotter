@@ -14,6 +14,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginMessage;
+import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -29,13 +30,25 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private ChartPlotterRuntime runtime;
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
+	@Inject private ConfigManager configManager;
+	private boolean migrating;
 	@Override
-	protected void startUp() {runtime.start();}
+	protected void startUp() {
+		migrateConfig(configManager);
+		runtime.start();
+	}
 	@Override
 	protected void shutDown() {runtime.stop();}
 	@SuppressWarnings("unused")
 	@Subscribe
-	public void onConfigChanged(ConfigChanged e) {runtime.config(e);}
+	public void onConfigChanged(ConfigChanged e) {
+		if ("chartplotter".equals(e.getGroup()) && e.getProfile() == null && migrateConfig(configManager)) runtime.config(e);
+	}
+	@SuppressWarnings({"unused", "UnusedParameters"})
+	@Subscribe(priority = 1)
+	public void onProfileChanged(ProfileChanged e) {
+		if (migrateConfig(configManager)) runtime.start();
+	}
 	@SuppressWarnings("unused")
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged e) {runtime.varbit(e);}
@@ -62,7 +75,20 @@ public class ChartPlotterPlugin extends Plugin {
 	public void onPluginMessage(PluginMessage e) {runtime.message(e);}
 	@SuppressWarnings("unused")
 	@Provides
-	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
+	public ChartPlotterConfig provideConfig(ConfigManager cm) {
+		migrateConfig(cm);
+		return cm.getConfig(ChartPlotterConfig.class);
+	}
+	private synchronized boolean migrateConfig(ConfigManager cm) {
+		if (migrating) return false;
+		migrating = true;
+		try {
+			ChartPlotterMigration.config(cm);
+			return true;
+		} finally {
+			migrating = false;
+		}
+	}
 	public WorldView top() {return sailing.top();}
 	public WorldEntity getShip() {return sailing.ship();}
 	public LocalPoint anchorLoc(WorldEntity ship) {return sailing.anchorLoc(ship);}
