@@ -94,8 +94,8 @@ public class ChartPlotterOverlay extends Overlay {
 		boolean showProjected = active && projectedMode.on;
 		boolean showChart = config.worldChartLine();
 		boolean showWorld = showCourse || showProjected || showChart;
-		ChartPlotterTurnEta turnEta = config.courseTurnEta();
-		boolean showTurn = turnEta != ChartPlotterTurnEta.OFF;
+		ChartPlotterEtaMode turnEta = config.courseTurnEta();
+		boolean showTurn = turnEta != ChartPlotterEtaMode.OFF;
 		ChartPlotterCacheOverlay cacheOverlay = config.cacheOverlay();
 		if (!showWorld && !cacheOverlay.world && !showTurn) return null;
 		if (top == null) return null;
@@ -193,7 +193,7 @@ public class ChartPlotterOverlay extends Overlay {
 		g.setColor(color);
 		g.draw(path);
 	}
-	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTrip trip, ChartPlotterTurnEta mode, boolean waypointVisible) {
+	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTrip trip, ChartPlotterEtaMode mode, boolean waypointVisible) {
 		if (area == null) return;
 		double bx = wv.getBaseX() + center.getX() / (double) TS;
 		double by = wv.getBaseY() + center.getY() / (double) TS;
@@ -211,7 +211,7 @@ public class ChartPlotterOverlay extends Overlay {
 		if (turn.ticks < 0) {
 			resetEta();
 			s = p + " ahead";
-		} else if (mode == ChartPlotterTurnEta.TICKS) {
+		} else if (mode == ChartPlotterEtaMode.TICKS) {
 			resetEta();
 			s = p + " in " + turn.ticks + "t";
 		} else s = p + " in " + seconds(turn) + "s";

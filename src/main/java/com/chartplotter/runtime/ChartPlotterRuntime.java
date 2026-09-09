@@ -1,6 +1,7 @@
 package com.chartplotter.runtime;
 
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterEtaMode;
 import com.chartplotter.ChartPlotterWorldMapClick;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.overlay.ChartPlotterInfoOverlay;
@@ -329,7 +330,7 @@ public final class ChartPlotterRuntime {
 		ChartPlotterFeatures prev = features;
 		ChartPlotterFeatures next = ChartPlotterFeatures.of(config);
 		features = next;
-		sailing.average(config.infoTripEta() || config.infoStopEta());
+		sailing.average(config.infoTripEta() != ChartPlotterEtaMode.OFF || config.infoStopEta() != ChartPlotterEtaMode.OFF);
 		infoOverlay.clear();
 		if (next.worldOverlay != prev.worldOverlay) {
 			if (next.worldOverlay) overlayManager.add(overlay);

@@ -2,8 +2,8 @@ package com.chartplotter.runtime;
 
 import com.chartplotter.ChartPlotterCacheOverlay;
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterEtaMode;
 import com.chartplotter.ChartPlotterLineMode;
-import com.chartplotter.ChartPlotterTurnEta;
 import net.runelite.api.Point;
 import org.junit.Test;
 
@@ -65,7 +65,7 @@ public class ChartPlotterFeaturesTest {
 				@Override
 				public ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.OFF;}
 				@Override
-				public ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.OFF;}
+				public ChartPlotterEtaMode courseTurnEta() {return ChartPlotterEtaMode.OFF;}
 				@Override
 				public boolean infoStopProgress() {return enabled;}
 			};
@@ -101,7 +101,7 @@ public class ChartPlotterFeaturesTest {
 			@Override
 			public ChartPlotterLineMode worldMapLineMode() {return ChartPlotterLineMode.OFF;}
 			@Override
-			public ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.OFF;}
+			public ChartPlotterEtaMode courseTurnEta() {return ChartPlotterEtaMode.OFF;}
 			@Override
 			public boolean recordNextRoute() {return true;}
 		};

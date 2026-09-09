@@ -1,7 +1,7 @@
 package com.chartplotter.runtime;
 import com.chartplotter.ChartPlotterCacheOverlay;
 import com.chartplotter.ChartPlotterConfig;
-import com.chartplotter.ChartPlotterTurnEta;
+import com.chartplotter.ChartPlotterEtaMode;
 public final class ChartPlotterFeatures {
 	public final boolean course;
 	public final boolean chart;
@@ -30,7 +30,7 @@ public final class ChartPlotterFeatures {
 		input = chart || minimapOverlay;
 		tracking = routes || cacheView || nextTurn || infoOverlay;
 	}
-	public static ChartPlotterFeatures of(ChartPlotterConfig config) {return of(config.worldLineMode().on, config.worldProjectedLineMode().on, config.worldChartLine(), config.minimapLineMode().on, config.minimapProjectedLineMode().on, config.minimapChartLine(), config.worldMapLineMode().on, config.worldMapProjectedLineMode().on, config.worldMapChartLine(), config.cacheOverlay(), config.courseTurnEta() != ChartPlotterTurnEta.OFF, config.infoStopProgress() || config.infoTripEta() || config.infoStopEta() || config.infoTurnEta(), config.infoBoatSpeed());}
+	public static ChartPlotterFeatures of(ChartPlotterConfig config) {return of(config.worldLineMode().on, config.worldProjectedLineMode().on, config.worldChartLine(), config.minimapLineMode().on, config.minimapProjectedLineMode().on, config.minimapChartLine(), config.worldMapLineMode().on, config.worldMapProjectedLineMode().on, config.worldMapChartLine(), config.cacheOverlay(), config.courseTurnEta() != ChartPlotterEtaMode.OFF, config.infoStopProgress() || config.infoTripEta() != ChartPlotterEtaMode.OFF || config.infoStopEta() != ChartPlotterEtaMode.OFF || config.infoTurnEta() != ChartPlotterEtaMode.OFF, config.infoBoatSpeed());}
 	public static ChartPlotterFeatures of(boolean wc, boolean wp, boolean wch, boolean mc, boolean mp, boolean mch, boolean wmc, boolean wmp, boolean wmch, ChartPlotterCacheOverlay cache, boolean nextTurn, boolean infoTrip, boolean boatSpeed) {return new ChartPlotterFeatures(wc, wp, wch, mc, mp, mch, wmc, wmp, wmch, cache, nextTurn, infoTrip, boatSpeed);}
 	public static ChartPlotterFeatures off() {return of(false, false, false, false, false, false, false, false, false, ChartPlotterCacheOverlay.OFF, false, false, false);}
 	public boolean cache(boolean boarded) {return boarded && (routes || cacheView);}

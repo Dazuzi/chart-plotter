@@ -1,10 +1,10 @@
 package com.chartplotter;
-public enum ChartPlotterTurnEta {
+public enum ChartPlotterEtaMode {
 	OFF("Off"),
 	SECONDS("Seconds"),
 	TICKS("Ticks");
 	private final String name;
-	ChartPlotterTurnEta(String name) {this.name = name;}
+	ChartPlotterEtaMode(String name) {this.name = name;}
 	@Override
 	public String toString() {return name;}
 }

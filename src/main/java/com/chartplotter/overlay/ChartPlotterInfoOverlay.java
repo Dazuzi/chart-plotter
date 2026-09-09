@@ -1,6 +1,7 @@
 package com.chartplotter.overlay;
 
 import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterEtaMode;
 import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
@@ -45,9 +46,12 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 	public Dimension render(Graphics2D g) {
 		if (!sailing.boarded() || client.getGameState() != GameState.LOGGED_IN) return null;
 		boolean showProgress = config.infoStopProgress();
-		boolean showTrip = config.infoTripEta();
-		boolean showStop = config.infoStopEta();
-		boolean showTurn = config.infoTurnEta();
+		ChartPlotterEtaMode tripMode = config.infoTripEta();
+		ChartPlotterEtaMode stopMode = config.infoStopEta();
+		ChartPlotterEtaMode turnMode = config.infoTurnEta();
+		boolean showTrip = tripMode != ChartPlotterEtaMode.OFF;
+		boolean showStop = stopMode != ChartPlotterEtaMode.OFF;
+		boolean showTurn = turnMode != ChartPlotterEtaMode.OFF;
 		boolean showSpeed = config.infoBoatSpeed();
 		ChartPlotterTrip trip = routes.trip();
 		if (!showSpeed && (trip.empty() || !showProgress && !showTrip && !showStop && !showTurn)) return null;
@@ -63,11 +67,11 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 			double by = top.getBaseY() + loc.getY() / (double) Perspective.LOCAL_TILE_SIZE;
 			if (!trip.empty()) {
 				if (showProgress) stopProgress = trip.stopNumber() + " of " + trip.totalStops();
-				if (showTrip) tripEta = eta(trip, bx, by, true);
-				if (showStop) stopEta = eta(trip, bx, by, false);
+				if (showTrip) tripEta = eta(trip, bx, by, true, tripMode);
+				if (showStop) stopEta = eta(trip, bx, by, false, stopMode);
 				if (showTurn) {
 					ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(trip.active(), bx, by, sailing.reversing() ? -sailing.speed() : sailing.speed(), sailing.accel(), sailing.maxSpeed(), motion);
-					turnEta = !turn.valid || turn.end ? "-" : sailing.speed() == 0 ? "Stopped" : time(turn.ticks);
+					turnEta = !turn.valid || turn.end ? "-" : sailing.speed() == 0 ? "Stopped" : time(turn.ticks, turnMode);
 				}
 			}
 			if (showSpeed) boatSpeed = Double.toString(sailing.speed());
@@ -86,7 +90,7 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		cachedTrip = null;
 		cachedMotion = Long.MIN_VALUE;
 	}
-	private String eta(ChartPlotterTrip trip, double bx, double by, boolean total) {
+	private String eta(ChartPlotterTrip trip, double bx, double by, boolean total, ChartPlotterEtaMode mode) {
 		for (int i = 0; i < (total ? trip.size() : 1); i++) {
 			ChartPlotterRoute route = trip.route(i);
 			if (route == null) return "Charting course";
@@ -95,10 +99,11 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		if (sailing.speed() == 0) return "Stopped";
 		double speed = sailing.averageSpeed();
 		if (sailing.reversing() || speed <= 0) return "-";
-		return time(trip.distance(bx, by, total) / speed);
+		return time(trip.distance(bx, by, total) / speed, mode);
 	}
-	private static String time(double ticks) {
+	private static String time(double ticks, ChartPlotterEtaMode mode) {
 		if (!Double.isFinite(ticks) || ticks < 0) return "-";
+		if (mode == ChartPlotterEtaMode.TICKS) return (long) Math.ceil(ticks) + "t";
 		long seconds = (long) Math.ceil(ticks * Constants.GAME_TICK_LENGTH / 1000);
 		return seconds / 60 + ":" + (seconds % 60 < 10 ? "0" : "") + seconds % 60;
 	}
