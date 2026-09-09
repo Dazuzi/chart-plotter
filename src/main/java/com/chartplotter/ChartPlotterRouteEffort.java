@@ -1,7 +1,7 @@
 package com.chartplotter;
 public enum ChartPlotterRouteEffort {
 	FAST("Fast", 140, 1),
-	REFINED("Refined", 110, 3),
+	BALANCED("Balanced", 110, 3),
 	MAXIMUM("Maximum", 100, 8);
 	public final int weight;
 	public final long nanos;

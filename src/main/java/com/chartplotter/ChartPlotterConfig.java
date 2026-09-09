@@ -78,8 +78,8 @@ public interface ChartPlotterConfig extends Config {
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Direct favors short routes. Balanced favors fewer, gentler turns. Smooth favors fewer turns with at most 10% extra distance over Balanced.", section = chartingSection, position = 0)
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
-	@ConfigItem(keyName = "routeEffort", name = "Search effort", description = "Fast prioritizes speed (up to 1 second per leg). Refined balances speed and quality (3 seconds). Maximum compares routes more extensively (8 seconds).", section = chartingSection, position = 1)
-	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.REFINED;}
+	@ConfigItem(keyName = "routeEffort", name = "Search effort", description = "Fast prioritizes speed (up to 1 second per leg). Balanced trades some speed for route quality (3 seconds). Maximum compares routes more extensively (8 seconds).", section = chartingSection, position = 1)
+	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.BALANCED;}
 	@ConfigItem(keyName = "courseTurnEta", name = "Turn ETA", description = "Show time to the next turn in the sailing view.", section = chartingSection, position = 2)
 	default ChartPlotterTurnEta courseTurnEta() {return ChartPlotterTurnEta.SECONDS;}
 	@ConfigItem(keyName = "courseTurnAlert", name = "Turn alert", description = "Notify when the next turn is under 5 seconds away while unfocused.", section = chartingSection, position = 3)

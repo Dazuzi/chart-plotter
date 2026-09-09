@@ -16,7 +16,7 @@ import java.util.Properties;
 final class ChartPlotterRouteRecorder {
 	private final Properties input = new Properties();
 	ChartPlotterRouteRecorder(WorldEntityConfig config, int actualHeading, double speed, double acceleration, double maxSpeed, int moveMode) {
-		input.setProperty("schema", "2");
+		input.setProperty("schema", "3");
 		input.setProperty("ship.present", Boolean.toString(config != null));
 		if (config != null) {
 			input.setProperty("ship.id", Integer.toString(config.getId()));
@@ -43,7 +43,7 @@ final class ChartPlotterRouteRecorder {
 			input.setProperty("anchor.yFine", Integer.toString(baseY * Perspective.LOCAL_TILE_SIZE + anchor.getY()));
 		}
 	}
-	Path write(ChartPlotterCollisionData data, ChartPlotterRoute route, int heading, boolean reverse, double speed, double offsetX, double offsetY, long elapsedNanos) throws IOException {
+	Path write(ChartPlotterCollisionData data, ChartPlotterRoute route, double speed, long elapsedNanos) throws IOException {
 		Path root = RuneLite.RUNELITE_DIR.toPath().resolve("chart-plotter/route-recordings");
 		Files.createDirectories(root);
 		Path dir = Files.createTempDirectory(root, "route-");
@@ -54,11 +54,7 @@ final class ChartPlotterRouteRecorder {
 		properties.setProperty("sy", Integer.toString(route.sy));
 		properties.setProperty("tx", Integer.toString(route.tx));
 		properties.setProperty("ty", Integer.toString(route.ty));
-		properties.setProperty("heading", Integer.toString(heading));
-		properties.setProperty("reverse", Boolean.toString(reverse));
 		properties.setProperty("planningSpeed", Double.toString(speed));
-		properties.setProperty("offsetX", Double.toString(offsetX));
-		properties.setProperty("offsetY", Double.toString(offsetY));
 		properties.setProperty("turnBias", Integer.toString(route.turnBias));
 		properties.setProperty("weight", Integer.toString(route.weight));
 		properties.setProperty("elapsedNanos", Long.toString(elapsedNanos));

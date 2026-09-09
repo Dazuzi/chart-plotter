@@ -21,19 +21,22 @@ public class ChartPlotterRouteRecorderTest {
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(0, 0, 32, 32);
 		long key = ChartPlotterCollisionData.key(30, 30);
 		chunks.put(key, new ChartPlotterCollisionData.Chunk(7, 2));
+		ChartPlotterRoutingAudit.block(chunks, 100, 100);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks, 37);
 		WorldEntityConfig config = ChartPlotterRoutingAudit.config(384, 1152);
-		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, config, 1536, 100, 100, 140, 105, 5, true, 1, 0.25, 0.75, 100, () -> false).find();
+		ChartPlotterRoute route = new ChartPlotterRouteFinder(data, config, 100, 100, 140, 105, 5, 1, 100, () -> false).find();
 		assertEquals(ChartPlotterRoute.OK, route.status);
+		assertEquals(100, route.sx);
+		assertEquals(100, route.sy);
 		ChartPlotterRouteRecorder recorder = new ChartPlotterRouteRecorder(config, 1408, 2.5, 0.25, 3, 3);
 		recorder.position(3200, 3000, 0, new LocalPoint(1234, 567, WorldView.TOPLEVEL), new LocalPoint(1345, 678, WorldView.TOPLEVEL));
-		Path dir = recorder.write(data, route, 1536, true, 1, 0.25, 0.75, 123456);
+		Path dir = recorder.write(data, route, 1, 123456);
 		try {
 			Properties properties = new Properties();
 			try (InputStream in = Files.newInputStream(dir.resolve("request.properties"))) {properties.load(in);}
-			assertEquals("2", properties.getProperty("schema"));
-			assertEquals("0.25", properties.getProperty("offsetX"));
-			assertEquals("0.75", properties.getProperty("offsetY"));
+			assertEquals("3", properties.getProperty("schema"));
+			assertEquals("100", properties.getProperty("sx"));
+			assertEquals("100", properties.getProperty("sy"));
 			assertEquals("1.0", properties.getProperty("planningSpeed"));
 			assertEquals("384", properties.getProperty("ship.width"));
 			assertEquals("1152", properties.getProperty("ship.height"));
@@ -64,10 +67,10 @@ public class ChartPlotterRouteRecorderTest {
 	@Test
 	public void recordsFailedSearchWithoutShipConfig() throws Exception {
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(0, 0, 4, 4);
-		ChartPlotterRoutingAudit.block(chunks, 20, 10);
+		for (int y = 11; y <= 39; y++) for (int x = 11; x <= 39; x++) ChartPlotterRoutingAudit.block(chunks, x, y);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-		ChartPlotterRoute route = ChartPlotterRoute.blocked(10, 10, 20, 10, 5, 100);
-		Path dir = new ChartPlotterRouteRecorder(null, -1, 0, 0, 0, 0).write(data, route, -1, false, 1, 0.5, 0.5, 0);
+		ChartPlotterRoute route = ChartPlotterRoute.blocked(0, 0, 25, 25, 5, 100);
+		Path dir = new ChartPlotterRouteRecorder(null, -1, 0, 0, 0, 0).write(data, route, 1, 0);
 		try {
 			assertEquals(ChartPlotterRoute.BLOCKED, ChartPlotterRoutingAudit.replay(dir.toString()).status);
 		} finally {

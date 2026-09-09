@@ -118,25 +118,15 @@ public final class ChartPlotterRoute {
 		int start = dir < 0 ? heading : (ChartPlotterRouteMoves.OR[dir] + (hull.reverse ? 1024 : 0)) & 2047;
 		return new ChartPlotterRoute(status, px, py, tx, ty, nx, ny, nx.length, motion, hull, start, turnBias, weight, effort, time, System.currentTimeMillis(), recalculating);
 	}
-	int arrivalHeading() {
-		if (status != OK) return -1;
-		if (n < 2 || motion == null) return heading;
-		int d = motion.dir(x[n - 1] - x[n - 2], y[n - 1] - y[n - 2]);
-		return d < 0 ? -1 : (ChartPlotterRouteMoves.OR[d] + (hull.reverse ? 1024 : 0)) & 2047;
-	}
-	boolean departureClear(ChartPlotterCollisionData data, int heading) {
+	private boolean departureClear(ChartPlotterCollisionData data) {
 		if (status != OK || hull == null || motion == null || n == 0) return false;
 		int previous = heading < 0 ? -1 : ((((heading - 1024 + 64) & 2047) >>> 7) + (hull.reverse ? 8 : 0)) & 15;
-		if (heading >= 0 && (heading & 127) != 0) {
-			int floor = ((((heading - 1024) & 2047) >>> 7) + (hull.reverse ? 8 : 0)) & 15;
-			if (hull.turn[floor * 16 + (floor + 1 & 15)].flag(data, x[0], y[0]) != ChartPlotterCollisionData.OPEN) return false;
-		}
 		if (hull.flag(data, x[0], y[0], previous) != ChartPlotterCollisionData.OPEN) return false;
 		int d = n < 2 ? -1 : motion.dir(x[1] - x[0], y[1] - y[0]);
 		return previous < 0 || d < 0 || previous == d || hull.circle.flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN || hull.turn[previous * 16 + d].flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN;
 	}
 	boolean valid(ChartPlotterCollisionData data, BooleanSupplier cancel) {
-		if (cancel.getAsBoolean() || !departureClear(data, heading)) return false;
+		if (cancel.getAsBoolean() || !departureClear(data)) return false;
 		int previous = -1;
 		for (int i = 1; i < n; i++) {
 			int dx = x[i] - x[i - 1];
@@ -151,7 +141,7 @@ public final class ChartPlotterRoute {
 			}
 			previous = d;
 		}
-		return !cancel.getAsBoolean() && data.clear(x[n - 1] + offsetX, y[n - 1] + offsetY, tx + 0.5, ty + 0.5);
+		return !cancel.getAsBoolean() && ChartPlotterRoutes.near(x[n - 1], y[n - 1], tx, ty);
 	}
 	public String text() {
 		if (status == PENDING) return "Charting course";

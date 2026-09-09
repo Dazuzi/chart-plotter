@@ -22,7 +22,7 @@ public final class ChartPlotterRoutingAudit {
 			ChartPlotterCollisionData data = new ChartPlotterCollisionData(open(-4, -4, 20, 4));
 			for (int[] target : new int[][]{{40, 5}, {100, 1}, {0, 0}}) {
 				long started = System.nanoTime();
-				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, offsetHull(), 1536, 0, 0, target[0], target[1], 5, false, 1, 0.5, 0.5, 100, () -> false);
+				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, offsetHull(), 0, 0, target[0], target[1], 5, 1, 100, () -> false);
 				ChartPlotterRoute route = search.find();
 				System.out.printf("destination=%d,%d status=%d length=%.3f turns=%d ms=%.3f%n", target[0], target[1], route.status, length(route), turns(route), (System.nanoTime() - started) / 1e6);
 				geometry("synthetic", route);
@@ -44,12 +44,12 @@ public final class ChartPlotterRoutingAudit {
 	}
 	private static void benchmark(Recording input) {
 		if (System.getProperty("chartplotter.auditShape") != null) input.p.setProperty("turnBias", Integer.toString(com.chartplotter.ChartPlotterTurnPreference.valueOf(System.getProperty("chartplotter.auditShape")).bias));
-		System.out.printf("java=%s chunks=%d schema=%s heading=%d speed=%.2f offset=%.4f,%.4f%n", System.getProperty("java.version"), input.data.size(), input.p.getProperty("schema"), input.integer("heading"), input.speed, input.fx, input.fy);
+		System.out.printf("java=%s chunks=%d schema=%s speed=%.2f%n", System.getProperty("java.version"), input.data.size(), input.p.getProperty("schema"), input.speed);
 		ChartPlotterRoute saved = ChartPlotterRoute.ok(input.integer("sx"), input.integer("sy"), input.integer("tx"), input.integer("ty"), coordinates(input.p.getProperty("route.x")), coordinates(input.p.getProperty("route.y")), coordinates(input.p.getProperty("route.x")).length, input.integer("turnBias"), input.integer("weight"));
 		System.out.printf("recorded,length=%.3f,turns=%d,ms=%.3f%n", length(saved), turns(saved), Long.parseLong(input.p.getProperty("elapsedNanos")) / 1e6);
 		geometry("recorded", saved);
 		System.out.println("engine,first_ms,median_ms,max_ms,completed,status,cost,length,turns,expanded,peak_open,array_mib");
-		for (String name : System.getProperty("chartplotter.auditEngines", "FAST,REFINED,MAXIMUM").split(",")) {
+		for (String name : System.getProperty("chartplotter.auditEngines", "FAST,BALANCED,MAXIMUM").split(",")) {
 			ChartPlotterRouteEffort effort = ChartPlotterRouteEffort.valueOf(name);
 			double[] elapsed = new double[6];
 			ChartPlotterRouteFinder search = null;
@@ -118,13 +118,11 @@ public final class ChartPlotterRoutingAudit {
 		final ChartPlotterCollisionData data;
 		final WorldEntityConfig config;
 		final double speed;
-		final double fx;
-		final double fy;
 		Recording(String name) throws Exception {
 			Path dir = Path.of(name);
 			if (!dir.isAbsolute() && dir.getNameCount() == 1) dir = RuneLite.RUNELITE_DIR.toPath().resolve("chart-plotter/route-recordings").resolve(dir);
 			try (InputStream in = Files.newInputStream(dir.resolve("request.properties"))) {p.load(in);}
-			if (!p.getProperty("schema", "").matches("[12]")) throw new IllegalArgumentException("Unsupported recording schema");
+			if (!"3".equals(p.getProperty("schema"))) throw new IllegalArgumentException("Unsupported recording schema");
 			data = new ChartPlotterCollisionData(ChartPlotterCollisionCodec.read(dir.resolve("collision.bin").toFile()));
 			if (data.size() == 0) throw new IllegalArgumentException("Recording has no collision data");
 			config = Boolean.parseBoolean(p.getProperty("ship.present")) ? new WorldEntityConfig() {
@@ -135,12 +133,10 @@ public final class ChartPlotterRoutingAudit {
 				public int getBoundsWidth() {return integer("ship.width");}
 				public int getBoundsHeight() {return integer("ship.height");}
 			} : null;
-			speed = Double.parseDouble(p.getProperty(integer("schema") == 1 ? "maxSpeed" : "planningSpeed"));
-			fx = integer("schema") == 1 ? 0.5 : Double.parseDouble(p.getProperty("offsetX"));
-			fy = integer("schema") == 1 ? 0.5 : Double.parseDouble(p.getProperty("offsetY"));
+			speed = Double.parseDouble(p.getProperty("planningSpeed"));
 		}
 		int integer(String key) {return Integer.parseInt(p.getProperty(key));}
-		ChartPlotterRouteFinder search(int weight, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, integer("heading"), integer("sx"), integer("sy"), integer("tx"), integer("ty"), integer("turnBias"), Boolean.parseBoolean(p.getProperty("reverse")), speed, fx, fy, weight, cancel);}
+		ChartPlotterRouteFinder search(int weight, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, integer("sx"), integer("sy"), integer("tx"), integer("ty"), integer("turnBias"), speed, weight, cancel);}
 	}
 	static boolean hullClip(ChartPlotterCollisionData data, WorldEntityConfig config, double x, double y, int orientation) {
 		double hw = config.getBoundsWidth() / 256.0;

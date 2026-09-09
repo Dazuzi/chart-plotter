@@ -13,45 +13,45 @@ import static org.junit.Assert.*;
 
 public class ChartPlotterRouteValidationTest {
 	@Test
-	public void headingSearchMatchesIndependentDijkstra() {
+	public void freeDepartureSearchMatchesIndependentDijkstra() {
 		Random random = new Random(7612);
 		for (int trial = 0; trial < 30; trial++) {
-			Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(0, 0, 1, 1);
-			for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) if (x >= 12 || y >= 12 || random.nextInt(6) == 0 && x != 0 && x != 11) ChartPlotterRoutingAudit.block(chunks, x, y);
+			Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(0, 0, 3, 3);
+			for (int y = 0; y < 30; y++) for (int x = 0; x < 32; x++) if (x == 8 || random.nextInt(6) == 0 && x != 0 && x != 31) ChartPlotterRoutingAudit.block(chunks, x, y);
 			ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-			int heading = trial % 3 == 0 ? -1 : trial % 16;
 			int bias = trial % 2 == 0 ? 0 : 5;
 			double speed = trial % 2 == 0 ? 1 : 3;
-			int expected = dijkstra(data, new ChartPlotterRouteMotion(speed, 0.5, 0.5), heading, bias);
+			int expected = dijkstra(data, new ChartPlotterRouteMotion(speed, 0.5, 0.5), bias);
 			for (int weight : new int[]{100, 110, 140}) {
-				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, null, heading < 0 ? -1 : ChartPlotterRouteMoves.OR[heading], 0, 0, 11, 11, bias, false, speed, 0.5, 0.5, weight, () -> false);
+				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, null, 0, 0, 31, 0, bias, speed, weight, () -> false);
 				ChartPlotterRoute result = search.find();
+				assertNotNull(search.terrain);
 				if (expected == Integer.MAX_VALUE) assertEquals(ChartPlotterRoute.NO_ROUTE, result.status);
 				else {
 					assertEquals(ChartPlotterRoute.OK, result.status);
 					assertTrue("trial=" + trial, search.routeCost >= expected && search.routeCost <= (long) expected * weight / 100);
-					assertEquals(search.routeCost, cost(result, search.motion, heading, bias));
+					assertEquals(search.routeCost, cost(result, search.motion, bias));
 				}
 			}
 		}
 	}
 	@Test
-	public void openOffsetsUseOneSmallCorrection() {
+	public void openArrivalAreasAvoidUnnecessaryCorrections() {
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-3, -3, 20, 4));
 		for (int[] target : new int[][]{{40, 5}, {100, 1}}) {
-			ChartPlotterRouteFinder search = search(data, ChartPlotterRoutingAudit.offsetHull(), 1536, target[0], target[1], 1, () -> false);
+			ChartPlotterRouteFinder search = search(data, ChartPlotterRoutingAudit.offsetHull(), target[0], target[1], 1, () -> false);
 			ChartPlotterRoute route = search.find();
 			assertEquals(ChartPlotterRoute.OK, route.status);
-			assertEquals(3, route.n);
+			assertEquals(2, route.n);
 			assertEquals(0, route.y[1]);
-			assertEquals(target[0] + (Math.sqrt(5) - 2) * target[1], ChartPlotterRoutingAudit.length(route), 1e-8);
+			assertEquals(target[0] - ChartPlotterRoutes.REACH_RADIUS, ChartPlotterRoutingAudit.length(route), 1e-8);
 			assertNull(search.terrain);
 		}
 		for (double speed : new double[]{0.5, 2, 3, 5}) for (int[] target : new int[][]{{40, 5}, {100, 1}}) {
-			ChartPlotterRoute route = search(data, ChartPlotterRoutingAudit.offsetHull(), 1536, target[0], target[1], speed, () -> false).find();
+			ChartPlotterRoute route = search(data, ChartPlotterRoutingAudit.offsetHull(), target[0], target[1], speed, () -> false).find();
 			assertEquals(ChartPlotterRoute.OK, route.status);
-			assertEquals(3, route.n);
-			assertTrue(ChartPlotterRoutingAudit.length(route) <= target[0] + (Math.sqrt(2) - 1) * target[1] + 1e-8);
+			assertEquals(2, route.n);
+			assertEquals(target[0] - ChartPlotterRoutes.REACH_RADIUS, ChartPlotterRoutingAudit.length(route), 1e-8);
 		}
 	}
 	@Test
@@ -119,24 +119,24 @@ public class ChartPlotterRouteValidationTest {
 	@Test
 	public void statusAndCancellationRemainDistinct() {
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-3, -3, 4, 4);
-		ChartPlotterRoutingAudit.block(chunks, 20, 0);
+		for (int y = -14; y <= 14; y++) for (int x = 6; x <= 34; x++) ChartPlotterRoutingAudit.block(chunks, x, y);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-		ChartPlotterRoute blocked = search(data, null, 1536, 20, 0, 1, () -> false).find();
+		ChartPlotterRoute blocked = search(data, null, 20, 0, 1, () -> false).find();
 		assertEquals(ChartPlotterRoute.BLOCKED, blocked.status);
-		assertEquals(1536, blocked.heading);
-		assertEquals(-1, blocked.arrivalHeading());
+		assertEquals(-1, blocked.heading);
 		assertEquals(1, blocked.motion.speed, 0);
-		assertEquals(ChartPlotterRoute.UNCHARTED, search(data, null, -1, 1000, 0, 1, () -> false).find().status);
-		assertEquals(ChartPlotterRoute.OK, search(data, null, -1, 0, 0, 1, () -> false).find().status);
-		assertEquals(ChartPlotterRoute.PENDING, search(data, null, -1, 20, 20, 1, () -> true).find().status);
+		assertEquals(ChartPlotterRoute.UNCHARTED, search(data, null, 1000, 0, 1, () -> false).find().status);
+		assertEquals(ChartPlotterRoute.OK, search(data, null, 0, 0, 1, () -> false).find().status);
+		assertEquals(ChartPlotterRoute.PENDING, search(data, null, 20, 20, 1, () -> true).find().status);
 		int[] checks = {0};
-		assertEquals(ChartPlotterRoute.PENDING, search(data, null, -1, 25, 0, 1, () -> ++checks[0] > 30).find().status);
-		assertEquals(ChartPlotterRoute.OK, search(data, null, -1, 25, 0, 1, () -> false).find().status);
+		assertEquals(ChartPlotterRoute.PENDING, search(data, null, -20, 0, 1, () -> ++checks[0] > 1).find().status);
+		assertEquals(ChartPlotterRoute.OK, search(data, null, -20, 0, 1, () -> false).find().status);
 	}
-	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, WorldEntityConfig config, int heading, int tx, int ty, double speed, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, heading, 0, 0, tx, ty, 5, false, speed, 0.5, 0.5, 100, cancel);}
+	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, WorldEntityConfig config, int tx, int ty, double speed, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, 0, 0, tx, ty, 5, speed, 100, cancel);}
 	private static int turn(int a, int b, int bias) {int d = Math.abs(a - b); return a == b || bias == 0 ? 0 : 4000 + 2000 * Math.min(d, 16 - d);}
-	private static int cost(ChartPlotterRoute route, ChartPlotterRouteMotion motion, int last, int bias) {
+	private static int cost(ChartPlotterRoute route, ChartPlotterRouteMotion motion, int bias) {
 		int cost = 0;
+		int last = -1;
 		for (int i = 1; i < route.n; i++) {
 			int dx = route.x[i] - route.x[i - 1];
 			int dy = route.y[i] - route.y[i - 1];
@@ -148,29 +148,29 @@ public class ChartPlotterRouteValidationTest {
 		}
 		return cost;
 	}
-	private static int dijkstra(ChartPlotterCollisionData data, ChartPlotterRouteMotion motion, int heading, int bias) {
-		int[] distance = new int[12 * 12 * 16];
+	private static int dijkstra(ChartPlotterCollisionData data, ChartPlotterRouteMotion motion, int bias) {
+		int[] distance = new int[32 * 32 * 16];
 		Arrays.fill(distance, Integer.MAX_VALUE);
 		PriorityQueue<int[]> queue = new PriorityQueue<>(Comparator.comparingInt(a -> a[1]));
-		for (int d = 0; d < 16; d++) if (heading < 0 || heading == d) {distance[d] = 0; queue.add(new int[]{d, 0});}
+		for (int d = 0; d < 16; d++) {distance[d] = 0; queue.add(new int[]{d, 0});}
 		while (!queue.isEmpty()) {
 			int[] entry = queue.remove();
 			int a = entry[0];
 			if (entry[1] != distance[a]) continue;
-			int x = (a >>> 4) % 12;
-			int y = (a >>> 4) / 12;
-			if (x == 11 && y == 11) return entry[1];
+			int x = (a >>> 4) % 32;
+			int y = (a >>> 4) / 32;
+			if (Math.max(Math.abs(x - 31), y) <= ChartPlotterRoutes.REACH_RADIUS) return entry[1];
 			for (int d = 0; d < 16; d++) {
 				int nx = x + motion.x[d];
 				int ny = y + motion.y[d];
-				if (nx < 0 || ny < 0 || nx >= 12 || ny >= 12) continue;
+				if (nx < 0 || ny < 0 || nx >= 32 || ny >= 32) continue;
 				boolean open = true;
 				for (int yy = Math.min(y, ny); yy <= Math.max(y, ny); yy++) for (int xx = Math.min(x, nx); xx <= Math.max(x, nx); xx++) {
 					if (data.flagAt(xx, yy) == ChartPlotterCollisionData.OPEN) continue;
 					if (new java.awt.geom.Rectangle2D.Double(xx - 1e-8, yy - 1e-8, 1 + 2e-8, 1 + 2e-8).intersectsLine(x + 0.5, y + 0.5, nx + 0.5, ny + 0.5)) open = false;
 				}
 				if (!open) continue;
-				int b = (nx + ny * 12) * 16 + d;
+				int b = (nx + ny * 32) * 16 + d;
 				int next = entry[1] + motion.cost[d] + turn(a & 15, d, bias);
 				if (next >= distance[b]) continue;
 				distance[b] = next;

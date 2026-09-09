@@ -10,16 +10,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 public class ChartPlotterRouteShapeTest {
 	@Test
-	public void smoothPreservesFractionalPositionsAndReverseHullClearance() {
+	public void smoothPreservesHullClearanceAtDifferentSpeeds() {
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 8, 8);
 		for (int y = -10; y <= 10; y++) ChartPlotterRoutingAudit.block(chunks, 20, y);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-		for (boolean reverse : new boolean[]{false, true}) for (double offset : new double[]{0, 0.25, 0.5, 0.75}) {
-			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), reverse ? 512 : 1536, 0, 0, 40, 0, 40, reverse, reverse ? 0.5 : 3, offset, 0.75, 140, () -> false);
+		for (double speed : new double[]{0.5, 1, 3}) {
+			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), 0, 0, 40, 0, 40, speed, 140, () -> false);
 			ChartPlotterRoute route = search.find();
 			assertEquals(ChartPlotterRoute.OK, route.status);
-			assertEquals(offset, route.offsetX, 0);
-			assertEquals(0.75, route.offsetY, 0);
+			assertEquals(0.5, route.offsetX, 0);
+			assertEquals(0.5, route.offsetY, 0);
 			assertTrue(route.valid(data, () -> false));
 			assertArrayEquals(new int[]{0, 0}, ChartPlotterRoutingAudit.clips(data, ChartPlotterRoutingAudit.offsetHull(), route));
 		}
@@ -84,5 +84,5 @@ public class ChartPlotterRouteShapeTest {
 		assertArrayEquals(balanced.x, smooth.x);
 		assertArrayEquals(balanced.y, smooth.y);
 	}
-	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, int weight, int bias, java.util.function.BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, null, 1536, 0, 0, 40, 0, bias, false, 1, 0.5, 0.5, weight, cancel);}
+	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, int weight, int bias, java.util.function.BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, null, 0, 0, 40, 0, bias, 1, weight, cancel);}
 }

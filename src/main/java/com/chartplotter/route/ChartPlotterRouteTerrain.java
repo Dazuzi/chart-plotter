@@ -5,7 +5,6 @@ import java.util.function.BooleanSupplier;
 final class ChartPlotterRouteTerrain {
 	static final int MAX_AREA = 8 << 20;
 	static final int MAX_COST = Integer.MAX_VALUE / 4;
-	private final ChartPlotterCollisionData data;
 	boolean limited;
 	final ChartPlotterRouteMotion motion;
 	final int[][] traversed = new int[16][];
@@ -17,7 +16,6 @@ final class ChartPlotterRouteTerrain {
 	final int[] distance;
 	final int[] delta = new int[16];
 	private ChartPlotterRouteTerrain(ChartPlotterCollisionData data, ChartPlotterRouteMotion motion, int minX, int minY, int width, int height, BooleanSupplier cancel) {
-		this.data = data;
 		this.motion = motion;
 		this.minX = minX;
 		this.minY = minY;
@@ -100,7 +98,7 @@ final class ChartPlotterRouteTerrain {
 		ChartPlotterPathQueue heap = new ChartPlotterPathQueue(distance, step);
 		for (int y = gy - radius; y <= gy + radius; y++) for (int x = gx - radius; x <= gx + radius; x++) {
 			int a = at(x, y);
-			if (a < 0 || !data.clear(x + hull.offsetX, y + hull.offsetY, gx + 0.5, gy + 0.5)) continue;
+			if (a < 0) continue;
 			for (ChartPlotterRouteHull.Mask pose : hull.hull) {
 				if (!pose.clear(this, a)) continue;
 				distance[a] = 1;
