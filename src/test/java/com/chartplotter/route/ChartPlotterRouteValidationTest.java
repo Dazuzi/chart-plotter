@@ -48,7 +48,7 @@ public class ChartPlotterRouteValidationTest {
 			Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(0, 0, 3, 3);
 			for (int y = 0; y < 30; y++) for (int x = 0; x < 32; x++) if (x == 8 || random.nextInt(6) == 0 && x != 0 && x != 31) ChartPlotterRoutingAudit.block(chunks, x, y);
 			ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
-			int bias = trial % 2 == 0 ? 0 : 5;
+			int bias = new int[]{0, 5, 40}[trial % 3];
 			double speed = trial % 2 == 0 ? 1 : 3;
 			int expected = dijkstra(data, new ChartPlotterRouteMotion(speed, 0.5, 0.5), bias);
 			for (int weight : new int[]{100, 110, 140}) {
@@ -156,7 +156,7 @@ public class ChartPlotterRouteValidationTest {
 		assertEquals(ChartPlotterRoute.OK, search(data, null, -20, 0, 1, () -> false).find().status);
 	}
 	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, WorldEntityConfig config, int tx, int ty, double speed, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, 0, 0, tx, ty, 5, speed, 100, cancel);}
-	private static int turn(int a, int b, int bias) {int d = Math.abs(a - b); return a == b || bias == 0 ? 0 : 4000 + 2000 * Math.min(d, 16 - d);}
+	private static int turn(int a, int b, int bias) {int d = Math.abs(a - b); return a == b || bias == 0 ? 0 : 800 * bias + 2000 * Math.min(d, 16 - d);}
 	private static int cost(ChartPlotterRoute route, ChartPlotterRouteMotion motion, int bias) {
 		int cost = 0;
 		int last = -1;

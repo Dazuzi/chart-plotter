@@ -64,7 +64,7 @@ public interface ChartPlotterConfig extends Config {
 	default boolean worldMapTripHints() {return true;}
 	@ConfigSection(name = "Charting", description = "Trip route settings. Tight turns may require slowing or stopping.", position = 4)
 	String chartingSection = "chartingSection";
-	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Direct favors short routes. Balanced favors fewer, gentler turns. Smooth favors fewer turns with at most 10% extra distance over Balanced.", section = chartingSection, position = 0)
+	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Direct favors short routes. Balanced trades modest distance for fewer, gentler turns and longer legs. Smooth accepts more distance to simplify the route further.", section = chartingSection, position = 0)
 	default ChartPlotterTurnPreference routeShape() {return ChartPlotterTurnPreference.BALANCED;}
 	@ConfigItem(keyName = "routeEffort", name = "Search effort", description = "Fast prioritizes speed (up to 1 second per leg). Balanced trades some speed for route quality (3 seconds). Maximum compares routes more extensively (8 seconds).", section = chartingSection, position = 1)
 	default ChartPlotterRouteEffort routeEffort() {return ChartPlotterRouteEffort.BALANCED;}

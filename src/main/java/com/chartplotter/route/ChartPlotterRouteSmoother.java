@@ -2,10 +2,9 @@ package com.chartplotter.route;
 import java.util.Arrays;
 final class ChartPlotterRouteSmoother {
 	private ChartPlotterRouteSmoother() {}
-	static ChartPlotterRoute smooth(ChartPlotterRouteFinder search, ChartPlotterRoute route, double limit) {
+	static ChartPlotterRoute smooth(ChartPlotterRouteFinder search, ChartPlotterRoute route) {
 		ChartPlotterRouteMotion motion = search.motion;
 		int direction = route.heading < 0 ? -1 : ((((route.heading - 1024 + 64) & 2047) >>> 7) + (search.hull.reverse ? 8 : 0)) & 15;
-		double length = length(route);
 		while (route.n > 2 && !search.cancel.getAsBoolean()) {
 			int bestI = -1;
 			int bestJ = 0;
@@ -13,16 +12,19 @@ final class ChartPlotterRouteSmoother {
 			int bestY = 0;
 			int bestSaved = 0;
 			boolean bestCorner = false;
-			double bestExtra = Double.POSITIVE_INFINITY;
+			long bestGain = 0;
 			for (int i = 0; i < route.n - 2; i++) {
 				int before = i == 0 ? direction : motion.dir(route.x[i] - route.x[i - 1], route.y[i] - route.y[i - 1]);
 				int oldFirst = motion.dir(route.x[i + 1] - route.x[i], route.y[i + 1] - route.y[i]);
-				double oldLength = Math.hypot(route.x[i + 1] - route.x[i], route.y[i + 1] - route.y[i]);
+				long oldCost = search.turnCost(before, oldFirst);
+				int previous = oldFirst;
+				oldCost += (long) motion.cost[oldFirst] * (motion.x[oldFirst] == 0 ? (route.y[i + 1] - route.y[i]) / motion.y[oldFirst] : (route.x[i + 1] - route.x[i]) / motion.x[oldFirst]);
 				for (int j = i + 2; j < route.n; j++) {
 					if (search.cancel.getAsBoolean()) return route;
-					oldLength += Math.hypot(route.x[j] - route.x[j - 1], route.y[j] - route.y[j - 1]);
 					int after = j + 1 == route.n ? -1 : motion.dir(route.x[j + 1] - route.x[j], route.y[j + 1] - route.y[j]);
 					int oldLast = motion.dir(route.x[j] - route.x[j - 1], route.y[j] - route.y[j - 1]);
+					oldCost += search.turnCost(previous, oldLast) + (long) motion.cost[oldLast] * (motion.x[oldLast] == 0 ? (route.y[j] - route.y[j - 1]) / motion.y[oldLast] : (route.x[j] - route.x[j - 1]) / motion.x[oldLast]);
+					previous = oldLast;
 					int oldTurns = j - i - 1 + change(before, oldFirst) + change(oldLast, after);
 					long vx = (long) route.x[j] - route.x[i];
 					long vy = (long) route.y[j] - route.y[i];
@@ -48,9 +50,9 @@ final class ChartPlotterRouteSmoother {
 						}
 						if (a <= 0 || a > Integer.MAX_VALUE || b > Integer.MAX_VALUE) continue;
 						int saved = oldTurns - change(before, d) - (b == 0 ? 0 : 1) - change(e, after);
-						if (saved <= 0 || saved < bestSaved) continue;
-						double extra = a * Math.hypot(motion.x[d], motion.y[d]) + b * Math.hypot(motion.x[e], motion.y[e]) - oldLength;
-						if (length + extra > limit || saved == bestSaved && extra >= bestExtra) continue;
+						if (saved < 0) continue;
+						long gain = oldCost + search.turnCost(oldLast, after) - a * motion.cost[d] - b * motion.cost[e] - search.turnCost(before, d) - search.turnCost(d, e) - search.turnCost(e, after);
+						if (gain < bestGain || gain == bestGain && saved <= bestSaved) continue;
 						long mx = route.x[i] + a * motion.x[d];
 						long my = route.y[i] + a * motion.y[d];
 						if (mx < Integer.MIN_VALUE || mx > Integer.MAX_VALUE || my < Integer.MIN_VALUE || my > Integer.MAX_VALUE) continue;
@@ -62,7 +64,7 @@ final class ChartPlotterRouteSmoother {
 						bestY = (int) my;
 						bestCorner = b > 0;
 						bestSaved = saved;
-						bestExtra = extra;
+						bestGain = gain;
 					}
 				}
 			}
@@ -83,14 +85,8 @@ final class ChartPlotterRouteSmoother {
 				y[count++] = y[i];
 			}
 			route = ChartPlotterRoute.ok(route.sx, route.sy, route.tx, route.ty, count == n ? x : Arrays.copyOf(x, count), count == n ? y : Arrays.copyOf(y, count), count, route.turnBias, route.weight);
-			length = length(route);
 		}
 		return route;
 	}
 	private static int change(int a, int b) {return a < 0 || b < 0 || a == b ? 0 : 1;}
-	static double length(ChartPlotterRoute route) {
-		double length = 0;
-		for (int i = 1; i < route.n; i++) length += Math.hypot(route.x[i] - route.x[i - 1], route.y[i] - route.y[i - 1]);
-		return length;
-	}
 }

@@ -49,7 +49,7 @@ public class ChartPlotterCoastalRouteTest {
 		ChartPlotterRouteFinder[] finder = new ChartPlotterRouteFinder[1];
 		finder[0] = new ChartPlotterRouteFinder(new ChartPlotterCollisionData(text.data), ChartPlotterRoutingAudit.offsetHull(), 2700, 3100, 2650, 3105, 40, 3, 100, () -> {
 			if (finder[0].heap != null) heaps.add(finder[0].heap);
-			return false;
+			return heaps.size() > 1;
 		});
 		assertEquals(ChartPlotterRoute.OK, finder[0].find().status);
 		heaps.add(finder[0].heap);
