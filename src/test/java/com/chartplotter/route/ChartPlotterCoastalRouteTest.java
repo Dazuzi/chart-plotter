@@ -107,7 +107,8 @@ public class ChartPlotterCoastalRouteTest {
 	}
 	@Test(timeout = 30_000)
 	public void largeBoatCanArriveAtAndLeaveBundledCoastalWater() {
-		ChartPlotterCollisionCodec.Text text = ChartPlotterCollisionCodec.readText(getClass().getResourceAsStream("/com/chartplotter/collision.txt"));
+		long started = System.nanoTime();
+		ChartPlotterCollisionCodec.Text text = ChartPlotterCollisionCodec.readText(getClass().getResourceAsStream("/com/chartplotter/collision.txt"), () -> false);
 		assertNotNull("Bundled collision data must load", text);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(text.data);
 		int[][] coast = {{2700, 3200}, {2722, 3147}, {2736, 3136}, {2752, 3124}, {2757, 3100}, {2754, 3076}, {2748, 3052}, {2730, 3034}, {2700, 3067}, {2650, 2990}, {2687, 3087}, {2684, 3093}, {2681, 3100}, {2683, 3108}, {2686, 3114}, {2678, 3149}};
@@ -119,7 +120,7 @@ public class ChartPlotterCoastalRouteTest {
 			assertTrue(Math.abs(y - ints[1]) <= 10);
 			assertEquals(ChartPlotterCollisionData.OPEN, data.flagAt(x, y));
 			for (boolean departure : new boolean[]{false, true}) {
-				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), departure ? x : 2700, departure ? y : 3100, departure ? 2700 : x, departure ? 3100 : y, 5, 3, 140, null, () -> Thread.currentThread().isInterrupted());
+				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, ChartPlotterRoutingAudit.offsetHull(), departure ? x : 2700, departure ? y : 3100, departure ? 2700 : x, departure ? 3100 : y, 5, 3, 140, null, () -> System.nanoTime() - started >= 25_000_000_000L);
 				ChartPlotterRoute route = search.find();
 				assertEquals("coast=" + x + "," + y + " departure=" + departure, ChartPlotterRoute.OK, route.status);
 				assertTrue(Math.max(Math.abs(route.x[0] - route.sx), Math.abs(route.y[0] - route.sy)) <= ChartPlotterRoutes.REACH_RADIUS);
@@ -133,7 +134,7 @@ public class ChartPlotterCoastalRouteTest {
 	}
 	@Test
 	public void disconnectedBundledCoastalTilesCannotBeReachedFromNearbyWater() {
-		ChartPlotterCollisionCodec.Text text = ChartPlotterCollisionCodec.readText(getClass().getResourceAsStream("/com/chartplotter/collision.txt"));
+		ChartPlotterCollisionCodec.Text text = ChartPlotterCollisionCodec.readText(getClass().getResourceAsStream("/com/chartplotter/collision.txt"), () -> false);
 		assertNotNull(text);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(text.data);
 		assertEquals(ChartPlotterCollisionData.OPEN, data.flagAt(2760, 3103));

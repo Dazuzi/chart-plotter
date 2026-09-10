@@ -35,7 +35,7 @@ public final class ChartPlotterRoutingAudit {
 		}
 	}
 	private void benchmark() {
-		ChartPlotterCollisionCodec.Text bundled = ChartPlotterCollisionCodec.readText(ChartPlotterRoutingAudit.class.getResourceAsStream("/com/chartplotter/collision.txt"));
+		ChartPlotterCollisionCodec.Text bundled = ChartPlotterCollisionCodec.readText(ChartPlotterRoutingAudit.class.getResourceAsStream("/com/chartplotter/collision.txt"), () -> false);
 		if (bundled == null) throw new AssertionError("Bundled collision data must load");
 		System.out.printf("routingAudit java=%s data=%s warmups=%d samples=%d%n", System.getProperty("java.version"), bundled.version, WARMUPS, SAMPLES);
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = open(0, 0, 127, 127);

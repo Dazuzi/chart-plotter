@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 @Singleton
 public final class ChartPlotterCollisionCache {
@@ -27,11 +28,12 @@ public final class ChartPlotterCollisionCache {
 	public static final int VOID = ChartPlotterCollisionData.VOID;
 	public static final int MOVE = ChartPlotterCollisionData.MOVE;
 	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
+	private final Object fileLock = new Object();
 	private final Map<Long, Chunk> chunks = new HashMap<>();
 	private volatile ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private volatile boolean loaded;
 	private volatile boolean cleaned;
-	private ScheduledExecutorService io;
+	private volatile ScheduledExecutorService io;
 	private ScheduledFuture<?> flushTask;
 	private volatile long rev;
 	private long savedRev;
@@ -46,14 +48,18 @@ public final class ChartPlotterCollisionCache {
 		});
 		next.setKeepAliveTime(35, TimeUnit.SECONDS);
 		next.allowCoreThreadTimeOut(true);
+		next.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
 		io = next;
 		ScheduledExecutorService ex = io;
 		if (!cleaned) ex.execute(() -> {
-			try {
-				ChartPlotterMigration.files(dir);
-				cleaned = true;
-			} catch (IOException e) {
-				LoggerFactory.getLogger(ChartPlotterCollisionCache.class).warn("Unable to remove obsolete sparse routing data", e);
+			synchronized (fileLock) {
+				if (io != ex || cleaned) return;
+				try {
+					ChartPlotterMigration.files(dir);
+					cleaned = true;
+				} catch (IOException e) {
+					LoggerFactory.getLogger(ChartPlotterCollisionCache.class).warn("Unable to remove obsolete sparse routing data", e);
+				}
 			}
 		});
 		if (!loaded) ex.execute(() -> loadQuiet(ex));
@@ -70,7 +76,7 @@ public final class ChartPlotterCollisionCache {
 		}
 		if (ex == null) return;
 		if (task != null) task.cancel(false);
-		ex.shutdownNow();
+		ex.shutdown();
 	}
 	public void capture(WorldView wv) {
 		ScheduledExecutorService ex;
@@ -113,14 +119,17 @@ public final class ChartPlotterCollisionCache {
 		}
 		Map<Long, Builder> data = new HashMap<>();
 		for (int sx = 0; sx < scan.width; sx++) {
-			if (Thread.currentThread().isInterrupted()) return;
+			if (io != ex) return;
 			for (int sy = 0; sy < scan.height; sy++) {
 				int f = scan.flags[sx * scan.height + sy];
 				if (f == VOID) continue;
 				put(data, scan.baseX + sx, scan.baseY + sy, f);
 			}
 		}
-		for (int i = 0; i < scan.objects.length; i += 4) putObject(data, scan, i);
+		for (int i = 0; i < scan.objects.length; i += 4) {
+			if (io != ex) return;
+			putObject(data, scan, i);
+		}
 		synchronized (this) {
 			if (!loaded || io != ex) return;
 			if (merge(data)) scheduleFlush(ex, 30);
@@ -158,19 +167,25 @@ public final class ChartPlotterCollisionCache {
 		return a == b || a != null && b != null && a.known == b.known && a.blocked == b.blocked;
 	}
 	private void loadQuiet(ScheduledExecutorService ex) {
-		try {
-			load(ex);
-		} catch (Exception ignored) {
+		synchronized (fileLock) {
+			if (io != ex) return;
+			try {
+				load(ex);
+			} catch (Exception ignored) {
+			}
 		}
 	}
 	private void load(ScheduledExecutorService ex) {
+		BooleanSupplier cancel = () -> io != ex;
 		File f = file();
-		String defaultVersion = defaultVersion();
+		String defaultVersion = defaultVersion(cancel);
+		if (cancel.getAsBoolean()) return;
 		boolean replace = defaultVersion != null && (!f.isFile() || ChartPlotterVersions.newer(defaultVersion, ChartPlotterVersions.read(dir, KEY)));
-		ChartPlotterCollisionCodec.Text seed = replace ? defaults() : null;
-		Map<Long, Chunk> data = seed == null ? ChartPlotterCollisionCodec.read(f) : seed.data;
+		ChartPlotterCollisionCodec.Text seed = replace ? defaults(cancel) : null;
+		Map<Long, Chunk> data = seed == null ? ChartPlotterCollisionCodec.read(f, cancel) : seed.data;
+		if (cancel.getAsBoolean()) return;
 		if (data.isEmpty() && defaultVersion != null && !replace) {
-			seed = defaults();
+			seed = defaults(cancel);
 			if (seed != null) {
 				replace = true;
 				data = seed.data;
@@ -188,16 +203,16 @@ public final class ChartPlotterCollisionCache {
 		}
 		if (replace && seed != null && !flush(ex)) synchronized (this) {if (io == ex) scheduleFlush(ex, 30);}
 	}
-	private String defaultVersion() {
+	private String defaultVersion(BooleanSupplier cancel) {
 		try (InputStream in = ChartPlotterCollisionCache.class.getResourceAsStream("/com/chartplotter/collision.txt")) {
-			return in == null ? null : ChartPlotterCollisionCodec.readVersion(in);
+			return in == null ? null : ChartPlotterCollisionCodec.readVersion(in, cancel);
 		} catch (Exception ignored) {
 			return null;
 		}
 	}
-	private ChartPlotterCollisionCodec.Text defaults() {
+	private ChartPlotterCollisionCodec.Text defaults(BooleanSupplier cancel) {
 		try (InputStream in = ChartPlotterCollisionCache.class.getResourceAsStream("/com/chartplotter/collision.txt")) {
-			return in == null ? null : ChartPlotterCollisionCodec.readText(in);
+			return in == null ? null : ChartPlotterCollisionCodec.readText(in, cancel);
 		} catch (Exception ignored) {
 			return null;
 		}
@@ -218,27 +233,29 @@ public final class ChartPlotterCollisionCache {
 		}
 	}
 	private boolean flush(ScheduledExecutorService ex) {
-		ChartPlotterCollisionData out;
-		long save;
-		synchronized (this) {
-			if (io != ex) return false;
-			long r = rev;
-			if (r == savedRev) return true;
-			out = snapshot();
-			save = r;
-		}
-		if (ChartPlotterCollisionCodec.write(dir, file(), out)) {
-			String seed;
+		synchronized (fileLock) {
+			ChartPlotterCollisionData out;
+			long save;
 			synchronized (this) {
 				if (io != ex) return false;
-				if (savedRev < save) savedRev = save;
-				seed = seedVersion;
-				seedVersion = null;
+				long r = rev;
+				if (r == savedRev) return true;
+				out = snapshot();
+				save = r;
 			}
-			if (seed != null) ChartPlotterVersions.write(dir, KEY, seed);
-			return true;
+			if (ChartPlotterCollisionCodec.write(dir, file(), out, () -> io != ex)) {
+				String seed;
+				synchronized (this) {
+					if (io != ex) return false;
+					if (savedRev < save) savedRev = save;
+					seed = seedVersion;
+					seedVersion = null;
+				}
+				if (seed != null) ChartPlotterVersions.write(dir, KEY, seed);
+				return true;
+			}
+			return false;
 		}
-		return false;
 	}
 	private File file() {return new File(dir, "collision.bin");}
 	private static int clean(int f) {

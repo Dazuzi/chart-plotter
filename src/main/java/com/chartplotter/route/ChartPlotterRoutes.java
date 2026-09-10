@@ -368,7 +368,7 @@ public final class ChartPlotterRoutes {
 		AtomicReference<Future<?>> nextRef = new AtomicReference<>();
 		FutureTask<Void> next = new FutureTask<>(() -> {
 			try {
-				BooleanSupplier cancelled = () -> id != seq.get() || Thread.currentThread().isInterrupted();
+				BooleanSupplier cancelled = () -> id != seq.get();
 				for (int i = 0; i < selected.length; i++) {
 					ChartPlotterTrip current = trip.get();
 					if (current.generation() != id || cancelled.getAsBoolean()) return;
@@ -406,15 +406,12 @@ public final class ChartPlotterRoutes {
 			}
 		}, null) {
 			@Override
-			protected void done() {
-				try {get();}
-				catch (CancellationException ignored) {}
-				catch (InterruptedException e) {Thread.currentThread().interrupt();}
-				catch (ExecutionException e) {
-					LoggerFactory.getLogger(ChartPlotterRoutes.class).warn("Routing failed", e.getCause());
-					trip.updateAndGet(current -> current.failed(id, awaiting));
-					if (id == seq.get()) rev = data.rev;
-				}
+			protected void setException(Throwable error) {
+				super.setException(error);
+				if (id != seq.get()) return;
+				LoggerFactory.getLogger(ChartPlotterRoutes.class).warn("Routing failed", error);
+				trip.updateAndGet(current -> current.failed(id, awaiting));
+				if (id == seq.get()) rev = data.rev;
 			}
 		};
 		nextRef.set(next);
@@ -433,7 +430,7 @@ public final class ChartPlotterRoutes {
 		int id = seq.incrementAndGet();
 		Future<?> old = work.getAndSet(null);
 		if (old != null) {
-			old.cancel(true);
+			old.cancel(false);
 			ThreadPoolExecutor ex = exec;
 			if (ex != null && old instanceof Runnable) ex.remove((Runnable) old);
 		}
@@ -452,7 +449,7 @@ public final class ChartPlotterRoutes {
 	private void idle() {
 		ThreadPoolExecutor ex = exec;
 		if (ex != null) {
-			ex.shutdownNow();
+			ex.shutdown();
 			exec = null;
 		}
 		clearPreview();
