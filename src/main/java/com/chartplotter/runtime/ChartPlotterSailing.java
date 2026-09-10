@@ -16,7 +16,7 @@ public final class ChartPlotterSailing {
 	private static final int COURSE_STALL = 2;
 	private final Client client;
 	private volatile WorldView top;
-	private volatile boolean boarded;
+	volatile boolean boarded;
 	private double baseSpeed;
 	private double accel;
 	private int moveMode;

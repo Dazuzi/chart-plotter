@@ -1,5 +1,6 @@
 package com.chartplotter.route;
 import com.chartplotter.ChartPlotterRouteEffort;
+import com.chartplotter.collision.ChartPlotterCollisionData;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public class ChartPlotterTripTest {
@@ -44,17 +45,17 @@ public class ChartPlotterTripTest {
 		assertEquals(100, trip.x(0));
 		assertEquals(100, trip.y(0));
 		ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(route, 0, 0, 0, 0, 3, 0);
-		assertEquals(97, turn.x);
-		assertEquals(95, turn.y);
-		assertEquals(0.25, turn.offsetX, 0);
-		assertEquals(0.75, turn.offsetY, 0);
+		assertEquals(100, turn.x);
+		assertEquals(100, turn.y);
+		assertEquals(0.5, turn.offsetX, 0);
+		assertEquals(0.5, turn.offsetY, 0);
 		assertTrue(turn.end);
 		ChartPlotterRoute replacement = ChartPlotterRoute.ok(0, 0, 100, 100, new int[]{0, 92}, new int[]{0, 100}, 2, 5, 100);
 		trip = trip.route(0, replacement);
 		assertEquals(100, trip.x(0));
 		assertEquals(100, trip.y(0));
 		turn = ChartPlotterRoutes.turn(trip.active(), 0, 0, 0, 0, 3, 0);
-		assertEquals(92, turn.x);
+		assertEquals(100, turn.x);
 		assertEquals(100, turn.y);
 		assertTrue(turn.end);
 		ChartPlotterTrip moved = trip.move(2, 0, 150, 200);
@@ -62,23 +63,23 @@ public class ChartPlotterTripTest {
 		assertEquals(200, moved.y(0));
 	}
 	@Test
-	public void waypointMarkersTrackSafeArrivalsAndPreserveStopTargets() {
+	public void waypointMarkersStayAtSelectedTilesAcrossTripChanges() {
 		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 100, 100, new int[]{0, 97}, new int[]{0, 95}, 2, 5, 100).plan(new ChartPlotterRouteMotion(3, 0.25, 0.75), null, 1536);
 		ChartPlotterTrip destination = ChartPlotterTrip.single(1, 100, 100, route);
 		assertEquals(100.5, destination.markerX(0), 0);
 		assertEquals(100.5, destination.markerY(0), 0);
 		ChartPlotterTrip trip = destination.append(2, 200, 100, route(97, 95, 200, 100));
 		assertSame(route, trip.active());
-		assertEquals(97.25, trip.markerX(0), 0);
-		assertEquals(95.75, trip.markerY(0), 0);
+		assertEquals(100.5, trip.markerX(0), 0);
+		assertEquals(100.5, trip.markerY(0), 0);
 		assertEquals(200.5, trip.markerX(1), 0);
 		assertEquals(100.5, trip.markerY(1), 0);
 		trip = trip.pending(3, 10, 10, 5, 100, ChartPlotterRouteEffort.MAXIMUM, new boolean[]{true, false});
-		assertEquals(97.25, trip.markerX(0), 0);
-		assertEquals(95.75, trip.markerY(0), 0);
+		assertEquals(100.5, trip.markerX(0), 0);
+		assertEquals(100.5, trip.markerY(0), 0);
 		ChartPlotterRoute replacement = ChartPlotterRoute.ok(0, 0, 100, 100, new int[]{0, 92}, new int[]{0, 100}, 2, 5, 100);
 		trip = trip.route(0, replacement);
-		assertEquals(92.5, trip.markerX(0), 0);
+		assertEquals(100.5, trip.markerX(0), 0);
 		assertEquals(100.5, trip.markerY(0), 0);
 		assertEquals(100, trip.x(0));
 		assertEquals(100, trip.y(0));
@@ -198,19 +199,42 @@ public class ChartPlotterTripTest {
 		assertSame(second, trip.active());
 	}
 	@Test
-	public void intermediateStopsWaitForTheirPlannedConnection() {
-		ChartPlotterRoute first = ChartPlotterRoute.ok(0, 0, 100, 0, new int[]{0, 100}, new int[]{0, 0}, 2, 5, 100);
+	public void arrivalDoesNotDependOnPruningOrHavingAnotherStop() {
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-4, -4, 30, 10));
+		ChartPlotterRoute first = new ChartPlotterRouteFinder(data, null, 0, 0, 100, 0, 5, 1, 100, () -> false).find();
 		ChartPlotterTrip single = ChartPlotterTrip.single(1, 100, 0, first);
 		ChartPlotterTrip trip = single.append(1, 200, 0, route(100, 0, 200, 0));
-		assertTrue(single.reached(86, 0, 2));
-		assertFalse(trip.reached(86, 0, 2));
-		assertFalse(trip.reached(98, 4, 2));
-		assertTrue(trip.reached(98, 0, 2));
-		assertTrue(trip.reached(100, 0, 2));
+		assertTrue(single.reached(86, 0, data));
+		assertTrue(trip.reached(86, 0, data));
+		assertTrue(trip.reached(98, 4, data));
+		assertTrue(trip.reached(100, 0, data));
 		ChartPlotterTrip pruned = trip.route(0, first.advance(99.5, 0.5, 20, 32, 2));
-		assertTrue(pruned.reached(94, 0, 2));
-		assertFalse(pruned.reached(120, 0, 2));
-		assertFalse(ChartPlotterTrip.empty(1).reached(100, 0, 2));
+		ChartPlotterRoute prunedRoute = pruned.active();
+		assertNotNull(prunedRoute);
+		assertEquals(1, prunedRoute.n);
+		for (int x : new int[]{85, 86, 94, 100, 114, 115}) for (int y : new int[]{0, 14, 15}) assertEquals(trip.reached(x, y, data), pruned.reached(x, y, data));
+		assertSame(first.target, prunedRoute.target);
+		assertSame(first.connection, prunedRoute.connection);
+		assertFalse(pruned.reached(120, 0, data));
+		assertFalse(trip.route(0, first.recalculate()).reached(100, 0, data));
+		assertFalse(ChartPlotterTrip.empty(1).reached(100, 0, data));
+	}
+	@Test
+	public void collisionChangesInvalidateArrivalWithoutMovingTheSelectedTile() {
+		java.util.Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-4, -4, 30, 10);
+		ChartPlotterCollisionData data = new ChartPlotterCollisionData(chunks);
+		ChartPlotterRoute first = new ChartPlotterRouteFinder(data, null, 0, 0, 100, 0, 5, 1, 100, () -> false).find();
+		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 100, 0, first);
+		assertTrue(trip.reached(86, 0, data));
+		ChartPlotterRoutingAudit.block(chunks, 94, 0);
+		ChartPlotterCollisionData changed = new ChartPlotterCollisionData(chunks);
+		assertFalse(trip.reached(86, 0, changed));
+		ChartPlotterRoute replacement = new ChartPlotterRouteFinder(changed, null, 86, 0, 100, 0, 5, 1, 100, () -> false).find();
+		ChartPlotterTrip updated = trip.route(0, replacement);
+		assertTrue(updated.reached(86, 0, changed));
+		assertTrue(ChartPlotterRoutingAudit.connectionClear(changed, replacement));
+		assertEquals(trip.markerX(0), updated.markerX(0), 0);
+		assertEquals(trip.markerY(0), updated.markerY(0), 0);
 	}
 	@Test
 	public void generationChangesWithoutMutatingThePreviousTrip() {
@@ -236,11 +260,11 @@ public class ChartPlotterTripTest {
 		assertSame(trip.route(1), moved.route(1));
 	}
 	@Test
-	public void subsequentLegStartsAtTheActualArrivalPoint() {
+	public void subsequentLegStartsAtTheSelectedWaypoint() {
 		ChartPlotterRoute route = ChartPlotterRoute.ok(0, 0, 10, 20, new int[]{0, 7}, new int[]{0, 12}, 2, 0, 250);
 		ChartPlotterTrip trip = ChartPlotterTrip.single(1, 10, 20, route);
-		assertEquals(7, ChartPlotterRoutes.legStartX(trip, 1, 5));
-		assertEquals(12, ChartPlotterRoutes.legStartY(trip, 1, 6));
+		assertEquals(10, ChartPlotterRoutes.legStartX(trip, 1, 5));
+		assertEquals(20, ChartPlotterRoutes.legStartY(trip, 1, 6));
 		assertEquals(5, ChartPlotterRoutes.legStartX(trip, 0, 5));
 		assertEquals(6, ChartPlotterRoutes.legStartY(trip, 0, 6));
 	}

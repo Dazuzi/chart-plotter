@@ -1,6 +1,6 @@
 package com.chartplotter.route;
 import com.chartplotter.ChartPlotterRouteEffort;
-import com.chartplotter.util.ChartPlotterMath;
+import com.chartplotter.collision.ChartPlotterCollisionData;
 import java.util.Arrays;
 public final class ChartPlotterTrip {
 	private static final int[] EMPTY_INT = new int[0];
@@ -25,24 +25,14 @@ public final class ChartPlotterTrip {
 	public int totalStops() {return completed + x.length;}
 	public int x(int i) {return x[i];}
 	public int y(int i) {return y[i];}
-	public double markerX(int i) {
-		ChartPlotterRoute route = waypoint(i);
-		return route == null ? x[i] + 0.5 : route.x[route.n - 1] + route.offsetX;
-	}
-	public double markerY(int i) {
-		ChartPlotterRoute route = waypoint(i);
-		return route == null ? y[i] + 0.5 : route.y[route.n - 1] + route.offsetY;
-	}
-	private ChartPlotterRoute waypoint(int i) {
-		ChartPlotterRoute route = routes[i];
-		return i + 1 < routes.length && route != null && route.status == ChartPlotterRoute.OK && route.n > 0 && route.tx == x[i] && route.ty == y[i] ? route : null;
-	}
+	public double markerX(int i) {return x[i] + 0.5;}
+	public double markerY(int i) {return y[i] + 0.5;}
 	public ChartPlotterRoute route(int i) {return routes[i];}
 	public Object stopKey() {return x;}
 	public ChartPlotterRoute active() {return routes.length == 0 ? null : routes[0];}
-	boolean reached(int bx, int by, int radius) {
+	boolean reached(int bx, int by, ChartPlotterCollisionData data) {
 		ChartPlotterRoute route = active();
-		return route != null && route.status == ChartPlotterRoute.OK && route.n > 0 && route.n <= 2 && ChartPlotterRoutes.near(bx, by, x[0], y[0]) && (size() == 1 || route.n == 1 || ChartPlotterMath.chebyshev(bx, by, route.x[route.n - 1], route.y[route.n - 1]) <= radius);
+		return route != null && route.status == ChartPlotterRoute.OK && !route.recalculating && route.target != null && route.target.contains(bx, by) && route.target.matches(data);
 	}
 	public double distance(double bx, double by, boolean total) {
 		if (empty()) return Double.NaN;
@@ -51,12 +41,26 @@ public final class ChartPlotterTrip {
 			ChartPlotterRoute route = routes[i];
 			if (route == null || route.status != ChartPlotterRoute.OK || route.n == 0) return Double.NaN;
 			if (i > 0) {
-				bx = route.x[0] + route.offsetX;
-				by = route.y[0] + route.offsetY;
+				bx = route.sx + 0.5;
+				by = route.sy + 0.5;
+			}
+			for (int j = 1; j < route.departure.length; j++) {
+				double x = route.departureX(j);
+				double y = route.departureY(j);
+				distance += Math.hypot(x - bx, y - by);
+				bx = x;
+				by = y;
 			}
 			for (int j = Math.min(1, route.n - 1); j < route.n; j++) {
 				double x = route.x[j] + route.offsetX;
 				double y = route.y[j] + route.offsetY;
+				distance += Math.hypot(x - bx, y - by);
+				bx = x;
+				by = y;
+			}
+			for (int j = 1; j < route.connection.length; j++) {
+				double x = route.connectionX(j);
+				double y = route.connectionY(j);
 				distance += Math.hypot(x - bx, y - by);
 				bx = x;
 				by = y;
@@ -110,7 +114,7 @@ public final class ChartPlotterTrip {
 		ChartPlotterRoute[] nr = routes.clone();
 		for (int i = 0; i < nr.length; i++) {
 			if (!selected[i]) continue;
-			if (nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == x[i] && nr[i].ty == y[i]) {
+			if (nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == x[i] && nr[i].ty == y[i] && (i == 0 || nr[i].start(x[i - 1], y[i - 1]))) {
 				nr[i] = nr[i].recalculate();
 				continue;
 			}
@@ -132,7 +136,6 @@ public final class ChartPlotterTrip {
 	ChartPlotterTrip route(int i, ChartPlotterRoute route) {
 		ChartPlotterRoute[] nr = routes.clone();
 		nr[i] = route != null && route.status == ChartPlotterRoute.PENDING && nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == route.tx && nr[i].ty == route.ty ? nr[i].recalculate() : route;
-		for (int j = i + 1; j < nr.length; j++) if (nr[j] != null && nr[j].status == ChartPlotterRoute.OK && !nr[j].continues(nr[j - 1])) nr[j] = null;
 		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
 }

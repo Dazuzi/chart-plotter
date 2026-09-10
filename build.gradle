@@ -47,7 +47,10 @@ tasks.named('test', Test) {
 	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(11) }
 	testLogging.events = []
 	afterTest { test, result ->
-		result.exceptions.each { error -> logger.quiet("FAIL ${test.className}.${test.name}: ${error.toString().replaceAll('[\\r\\n]+', ' ')}") }
+		result.exceptions.each { Throwable error ->
+			StackTraceElement frame = error.stackTrace.find { it.className == test.className } ?: error.stackTrace.find { it.className.startsWith('com.chartplotter.') }
+			logger.quiet("FAIL ${test.className}.${test.name}${frame == null ? '' : " ${frame.fileName}:${frame.lineNumber}"}: ${error.toString().replaceAll('[\\r\\n]+', ' ')}")
+		}
 	}
 	afterSuite { suite, result ->
 		if (!suite.parent) logger.quiet("tests total=${result.testCount} passed=${result.successfulTestCount} failed=${result.failedTestCount} skipped=${result.skippedTestCount}")

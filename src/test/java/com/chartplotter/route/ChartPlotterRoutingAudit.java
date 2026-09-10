@@ -51,7 +51,10 @@ public final class ChartPlotterRoutingAudit {
 		benchmark("disconnected-interior", new ChartPlotterCollisionData(chunks), 64, 512, 320, 512, 3, ChartPlotterRoute.NO_ROUTE);
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(bundled.data);
 		benchmark("coastal", data, 2700, 3100, 2736, 3136, 3, ChartPlotterRoute.OK);
-		benchmark("coastal-departure", data, 2736, 3136, 2700, 3100, 3, ChartPlotterRoute.OK);
+		benchmark("coastal-bend", data, 2700, 3100, 2650, 3105, 3, ChartPlotterRoute.OK);
+		benchmark("coastal-bend-departure", data, 2650, 3105, 2700, 3100, 3, ChartPlotterRoute.OK);
+		long coast = ChartPlotterRoutes.target(data, 2736, 3136, 2700, 3100, 10, null);
+		benchmark("coastal-departure", data, (int) (coast >> 32), (int) coast, 2700, 3100, 3, ChartPlotterRoute.OK);
 		benchmark("regional", data, 2700, 3100, 2650, 2990, 3, ChartPlotterRoute.OK);
 		benchmark("long-crossing", data, 2799, 3405, 2382, 3539, 1, ChartPlotterRoute.OK);
 		benchmark("long-crossing-speed3", data, 2799, 3405, 2382, 3539, 3, ChartPlotterRoute.OK);
@@ -60,7 +63,7 @@ public final class ChartPlotterRoutingAudit {
 	}
 	private void benchmark(String name, ChartPlotterCollisionData data, int sx, int sy, int tx, int ty, double speed, int expected) {
 		if (cases != null && !cases.remove(name)) return;
-		long target = ChartPlotterRoutes.target(data, tx, ty, sx, sy, 10);
+		long target = ChartPlotterRoutes.target(data, tx, ty, sx, sy, 10, null);
 		tx = (int) (target >> 32);
 		ty = (int) target;
 		WorldEntityConfig config = offsetHull();
@@ -72,18 +75,19 @@ public final class ChartPlotterRoutingAudit {
 			ChartPlotterRouteEffort effort = efforts[engine];
 			String context = "case=" + name + " effort=" + effort.name() + " shape=" + shape.name() + " sample=" + sample;
 			long started = System.nanoTime();
-			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, config, sx, sy, tx, ty, shape.bias, speed, effort.weight, null, () -> System.nanoTime() - started >= effort.nanos);
+			ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, config, sx, sy, tx, ty, shape.bias, speed, effort.weight, () -> System.nanoTime() - started >= effort.nanos);
 			ChartPlotterRoute route = search.find();
 			long nanos = System.nanoTime() - started;
 			if (route.status != expected) throw new AssertionError(context + " expected=" + status + " actual=" + (route.status == ChartPlotterRoute.OK ? "OK" : route.status == ChartPlotterRoute.PENDING ? "TIMED_OUT" : route.text()));
 			if (route.status == ChartPlotterRoute.OK) {
 				if (!route.valid(data, () -> false)) throw new AssertionError(context + " invalid_route");
+				if (!connectionClear(data, route)) throw new AssertionError(context + " invalid_connection");
 				int[] clips = clips(data, config, route);
 				if (clips[0] != 0 || clips[1] != 0) throw new AssertionError(context + " hull_clips=" + Arrays.toString(clips));
 			}
 			if (sample < 0) continue;
 			elapsed[engine][sample] = nanos;
-			results[engine][sample] = String.format("cost=%d length=%.3f turns=%d expanded=%d peak_open=%d array_mib=%.3f", search.routeCost, length(route), turns(route), search.expanded, search.heap == null ? 0 : search.heap.peak, search.bytes() / 1048576.0);
+			results[engine][sample] = String.format("cost=%d length=%.3f turns=%d expanded=%d peak_open=%d array_mib=%.3f", search.routeCost, length(route), turns(route), search.expanded, search.peakOpen, search.bytes() / 1048576.0);
 		}
 		for (int i = 0; i < efforts.length; i++) {
 			long[] sorted = elapsed[i].clone();
@@ -93,6 +97,26 @@ public final class ChartPlotterRoutingAudit {
 			System.out.printf("case=%s effort=%s shape=%s speed=%.2f status=%s median_ms=%.3f max_ms=%.3f %s%n", name, efforts[i].name(), shape.name(), speed, status, sorted[SAMPLES / 2] / 1e6, sorted[SAMPLES - 1] / 1e6, results[i][median]);
 			passed++;
 		}
+	}
+	static boolean near(int ax, int ay, int bx, int by) {return Math.max(Math.abs(ax - bx), Math.abs(ay - by)) <= ChartPlotterRouteTarget.RADIUS;}
+	static boolean connectionClear(ChartPlotterCollisionData data, ChartPlotterRoute route) {
+		int from = route.departure.length;
+		if (route.source != null && (from == 0 || route.departureX(0) != route.source.x + 0.5 || route.departureY(0) != route.source.y + 0.5 || route.departureX(from - 1) != route.x[0] + route.offsetX || route.departureY(from - 1) != route.y[0] + route.offsetY)) return false;
+		double departureLength = 0;
+		for (int i = 1; i < from; i++) {
+			if (!data.clear(route.departureX(i - 1), route.departureY(i - 1), route.departureX(i), route.departureY(i))) return false;
+			departureLength += Math.hypot(route.departureX(i) - route.departureX(i - 1), route.departureY(i) - route.departureY(i - 1));
+		}
+		double maxLength = 20 + Math.hypot(route.offsetX - 0.5, route.offsetY - 0.5);
+		if (departureLength > maxLength) return false;
+		int n = route.connection.length;
+		if (n == 0 || route.connectionX(0) != route.x[route.n - 1] + route.offsetX || route.connectionY(0) != route.y[route.n - 1] + route.offsetY || route.connectionX(n - 1) != route.tx + 0.5 || route.connectionY(n - 1) != route.ty + 0.5) return false;
+		double length = 0;
+		for (int i = 1; i < n; i++) {
+			if (!data.clear(route.connectionX(i - 1), route.connectionY(i - 1), route.connectionX(i), route.connectionY(i))) return false;
+			length += Math.hypot(route.connectionX(i) - route.connectionX(i - 1), route.connectionY(i) - route.connectionY(i - 1));
+		}
+		return length <= maxLength;
 	}
 	static int[] clips(ChartPlotterCollisionData data, WorldEntityConfig config, ChartPlotterRoute route) {
 		if (route.n == 0) throw new AssertionError("Empty route");

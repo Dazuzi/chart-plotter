@@ -115,8 +115,8 @@ public class ChartPlotterOverlay extends Overlay {
 			if (showChart) {
 				Color color = config.chartColor();
 				ChartPlotterRouteMoves.Model model = routeModel();
-				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color), model, trip.size() == 2);
-				drawRoute(g, top, trip.active(), area, color, model, trip.size() == 1);
+				if (trip.size() > 1) drawRoute(g, top, trip.route(1), area, faded(color), model);
+				drawRoute(g, top, trip.active(), area, color, model);
 				if (trip.size() > 1) waypointVisible = drawWaypoint(g, top, area, trip.markerX(0), trip.markerY(0), color);
 			}
 			if (showCourse || showProjected) {
@@ -266,27 +266,22 @@ public class ChartPlotterOverlay extends Overlay {
 		}
 		return Perspective.localToCanvas(client, new LocalPoint(ax, ay, wv), 0);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color, ChartPlotterRouteMoves.Model model, boolean destination) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, ChartPlotterScene.Area area, Color color, ChartPlotterRouteMoves.Model model) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0 || area == null) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.worldLineWidth());
 		Stroke dash = routeStroke.dashed(config.worldLineWidth());
 		g.setColor(color);
-		for (int i = 1; i < r.n; i++) {
-			line.reset();
-			if (!routeSegment(line, wv, area, r.x[i - 1] + r.offsetX, r.y[i - 1] + r.offsetY, r.x[i] + r.offsetX, r.y[i] + r.offsetY)) continue;
-			g.setStroke(ChartPlotterRouteMoves.solid(r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], model) ? solid : dash);
-			g.draw(line);
-		}
-		int ax = r.x[r.n - 1];
-		int ay = r.y[r.n - 1];
-		line.reset();
-		if (destination && (ax != r.tx || ay != r.ty) && routeSegment(line, wv, area, ax + r.offsetX, ay + r.offsetY, r.tx + 0.5, r.ty + 0.5)) {
-			g.setStroke(dash);
-			g.setColor(faded(color));
-			g.draw(line);
-		}
+		for (int i = 1; i < r.n; i++) routeLine(g, wv, area, r.x[i - 1] + r.offsetX, r.y[i - 1] + r.offsetY, r.x[i] + r.offsetX, r.y[i] + r.offsetY, model, solid, dash);
+		for (int i = 1; i < r.departure.length; i++) routeLine(g, wv, area, r.departureX(i - 1), r.departureY(i - 1), r.departureX(i), r.departureY(i), model, solid, dash);
+		for (int i = 1; i < r.connection.length; i++) routeLine(g, wv, area, r.connectionX(i - 1), r.connectionY(i - 1), r.connectionX(i), r.connectionY(i), model, solid, dash);
 		g.setStroke(old);
+	}
+	private void routeLine(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, double ax, double ay, double bx, double by, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash) {
+		line.reset();
+		if (!routeSegment(line, wv, area, ax, ay, bx, by)) return;
+		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, model) ? solid : dash);
+		g.draw(line);
 	}
 	private ChartPlotterRouteMoves.Model routeModel() {
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());

@@ -85,8 +85,8 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 			ChartPlotterTrip trip = plugin.trip();
 			Color color = config.chartColor();
 			ChartPlotterRouteMoves.Model model = routeModel();
-			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color), model, trip.size() == 2);
-			drawRoute(g, top, trip.active(), color, model, trip.size() == 1);
+			if (trip.size() > 1) drawRoute(g, top, trip.route(1), faded(color), model);
+			drawRoute(g, top, trip.active(), color, model);
 		}
 		if (showCourse || showProjected) {
 			int from = plugin.heading(ship);
@@ -170,24 +170,15 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
 		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
 	}
-	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model, boolean destination) {
+	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.minimapLineWidth());
 		Stroke dash = routeStroke.dashed(config.minimapLineWidth());
 		g.setColor(color);
-		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], r.offsetX, r.offsetY, model, solid, dash);
-		int ax = r.x[r.n - 1];
-		int ay = r.y[r.n - 1];
-		if (destination && (ax != r.tx || ay != r.ty) && routeVisible(wv, ax, ay, r.tx, r.ty)) {
-			Point a = routePoint(wv, ax, ay, r.offsetX, r.offsetY);
-			Point b = routePoint(wv, r.tx, r.ty, 0.5, 0.5);
-			if (a != null && b != null) {
-				g.setStroke(dash);
-				g.setColor(faded(color));
-				g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
-			}
-		}
+		for (int i = 1; i < r.n; i++) routeLine(g, wv, r.x[i - 1] + r.offsetX, r.y[i - 1] + r.offsetY, r.x[i] + r.offsetX, r.y[i] + r.offsetY, model, solid, dash);
+		for (int i = 1; i < r.departure.length; i++) routeLine(g, wv, r.departureX(i - 1), r.departureY(i - 1), r.departureX(i), r.departureY(i), model, solid, dash);
+		for (int i = 1; i < r.connection.length; i++) routeLine(g, wv, r.connectionX(i - 1), r.connectionY(i - 1), r.connectionX(i), r.connectionY(i), model, solid, dash);
 		g.setStroke(old);
 	}
 	private Color faded(Color color) {
@@ -198,15 +189,15 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		return fadeColor;
 	}
-	private void routeLine(Graphics2D g, WorldView wv, int ax, int ay, int bx, int by, double offsetX, double offsetY, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash) {
+	private void routeLine(Graphics2D g, WorldView wv, double ax, double ay, double bx, double by, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash) {
 		if (!routeVisible(wv, ax, ay, bx, by)) return;
-		Point a = routePoint(wv, ax, ay, offsetX, offsetY);
-		Point b = routePoint(wv, bx, by, offsetX, offsetY);
+		Point a = routePoint(wv, ax, ay);
+		Point b = routePoint(wv, bx, by);
 		if (a == null || b == null) return;
 		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, model) ? solid : dash);
 		g.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
 	}
-	private static boolean routeVisible(WorldView wv, int ax, int ay, int bx, int by) {
+	private static boolean routeVisible(WorldView wv, double ax, double ay, double bx, double by) {
 		int pad = DIST / Perspective.LOCAL_TILE_SIZE + 2;
 		int minX = wv.getBaseX() - pad;
 		int minY = wv.getBaseY() - pad;
@@ -222,9 +213,9 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		return routeModel;
 	}
-	private Point routePoint(WorldView wv, int wx, int wy, double offsetX, double offsetY) {
-		int lx = (int) Math.round((wx + offsetX - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE);
-		int ly = (int) Math.round((wy + offsetY - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE);
+	private Point routePoint(WorldView wv, double wx, double wy) {
+		int lx = (int) Math.round((wx - wv.getBaseX()) * Perspective.LOCAL_TILE_SIZE);
+		int ly = (int) Math.round((wy - wv.getBaseY()) * Perspective.LOCAL_TILE_SIZE);
 		return Perspective.localToMinimap(client, new LocalPoint(lx, ly, wv), DIST);
 	}
 	private int hoverHeading(WorldView wv, LocalPoint anchor, Widget w, Shape clip) {

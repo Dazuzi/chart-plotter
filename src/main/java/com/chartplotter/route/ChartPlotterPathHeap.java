@@ -4,13 +4,14 @@ final class ChartPlotterPathHeap {
 	int[] cost;
 	int[] tie;
 	int[] position;
-	int[] nodes = new int[16384];
+	int[] nodes;
 	int size;
 	int peak;
 	ChartPlotterPathHeap(int[] cost, int[] tie) {
 		this.cost = cost;
 		this.tie = tie;
 		position = new int[cost.length];
+		nodes = new int[Math.min(16384, cost.length)];
 	}
 	void add(int node) {
 		int i = position[node] - 1;

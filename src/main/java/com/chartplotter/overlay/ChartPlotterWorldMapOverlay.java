@@ -34,6 +34,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private static final Color PREVIEW_OK = new Color(80, 255, 120, 235);
 	private static final Color PREVIEW_SNAP = new Color(255, 200, 40, 235);
 	private static final Color PREVIEW_BAD = new Color(255, 70, 60, 235);
+	private static final Color PREVIEW_PENDING = new Color(190, 190, 190, 235);
 	private static final Color REMOVE = new Color(255, 70, 60, 235);
 	private static final float[] DASH = {8, 6};
 	private static final long TIP_MS = 3000;
@@ -307,7 +308,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			ChartPlotterRoute r = trip.route(i);
 			if (r == null || r.status != ChartPlotterRoute.OK) continue;
 			boolean removing = remove >= 0 && (tail ? i >= remove : i == remove || i == remove + 1);
-			drawRoutePath(g, s, r, removing ? REMOVE : routeColor(r, i > 0), model, i + 1 == trip.size());
+			drawRoutePath(g, s, r, removing ? REMOVE : routeColor(r, i > 0), model);
 		}
 		if (movedPoint) {
 			Stroke stroke = g.getStroke();
@@ -366,27 +367,22 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.setColor(c);
 		g.drawString(text, x, y);
 	}
-	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c, ChartPlotterRouteMoves.Model model, boolean destination) {
+	private void drawRoutePath(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterRoute r, Color c, ChartPlotterRouteMoves.Model model) {
 		if (r.n < 1) return;
 		Stroke old = g.getStroke();
 		Stroke solid = routeStroke.solid(config.worldMapLineWidth());
 		Stroke dash = routeStroke.dashed(config.worldMapLineWidth());
 		int pad = linePad(s);
 		g.setColor(c);
-		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1], r.y[i - 1], r.x[i], r.y[i], r.offsetX, r.offsetY, model, solid, dash, pad);
-		int ax = r.x[r.n - 1];
-		int ay = r.y[r.n - 1];
-		if (destination && (ax != r.tx || ay != r.ty) && lineVisible(s, ax, ay, r.tx, r.ty, pad)) {
-			g.setStroke(dash);
-			g.setColor(faded(c));
-			g.drawLine(map.pointX(s, ax + r.offsetX), map.pointY(s, ay + r.offsetY), map.pointX(s, r.tx + 0.5), map.pointY(s, r.ty + 0.5));
-		}
+		for (int i = 1; i < r.n; i++) routeLine(g, s, r.x[i - 1] + r.offsetX, r.y[i - 1] + r.offsetY, r.x[i] + r.offsetX, r.y[i] + r.offsetY, model, solid, dash, pad);
+		for (int i = 1; i < r.departure.length; i++) routeLine(g, s, r.departureX(i - 1), r.departureY(i - 1), r.departureX(i), r.departureY(i), model, solid, dash, pad);
+		for (int i = 1; i < r.connection.length; i++) routeLine(g, s, r.connectionX(i - 1), r.connectionY(i - 1), r.connectionX(i), r.connectionY(i), model, solid, dash, pad);
 		g.setStroke(old);
 	}
-	private void routeLine(Graphics2D g, ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by, double offsetX, double offsetY, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash, int pad) {
+	private void routeLine(Graphics2D g, ChartPlotterWorldMap.State s, double ax, double ay, double bx, double by, ChartPlotterRouteMoves.Model model, Stroke solid, Stroke dash, int pad) {
 		if (!lineVisible(s, ax, ay, bx, by, pad)) return;
 		g.setStroke(ChartPlotterRouteMoves.solid(ax, ay, bx, by, model) ? solid : dash);
-		g.drawLine(map.pointX(s, ax + offsetX), map.pointY(s, ay + offsetY), map.pointX(s, bx + offsetX), map.pointY(s, by + offsetY));
+		g.drawLine(map.pointX(s, ax), map.pointY(s, ay), map.pointX(s, bx), map.pointY(s, by));
 	}
 	private ChartPlotterRouteMoves.Model routeModel() {
 		double speed = ChartPlotterRouteMoves.speedBucket(plugin.speed());
@@ -490,7 +486,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		int[] t = tile;
 		ChartPlotterRoutes.Preview pv = plugin.coursePreview(t[0], t[1], append);
 		if (pv.state == ChartPlotterRoutes.PV_NONE) return;
-		Color c = pv.state == ChartPlotterRoutes.PV_OK ? PREVIEW_OK : pv.state == ChartPlotterRoutes.PV_BAD ? PREVIEW_BAD : PREVIEW_SNAP;
+		Color c = pv.state == ChartPlotterRoutes.PV_OK ? PREVIEW_OK : pv.state == ChartPlotterRoutes.PV_BAD ? PREVIEW_BAD : pv.state == ChartPlotterRoutes.PV_PENDING ? PREVIEW_PENDING : PREVIEW_SNAP;
 		int dstX = map.pointX(s, pv.x + 0.5);
 		int dstY = map.pointY(s, pv.y + 0.5);
 		if (pv.x != t[0] || pv.y != t[1]) {
@@ -611,7 +607,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		double maxY = s.pos.getY() + s.ht / 2.0 + pad;
 		return x >= minX && x <= maxX && y >= minY && y <= maxY;
 	}
-	private static boolean lineVisible(ChartPlotterWorldMap.State s, int ax, int ay, int bx, int by, int pad) {
+	private static boolean lineVisible(ChartPlotterWorldMap.State s, double ax, double ay, double bx, double by, int pad) {
 		double minX = s.pos.getX() - s.wt / 2.0 - pad;
 		double minY = s.pos.getY() - s.ht / 2.0 - pad;
 		double maxX = s.pos.getX() + s.wt / 2.0 + pad;

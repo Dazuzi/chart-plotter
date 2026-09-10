@@ -77,7 +77,6 @@ public class ChartPlotterFeaturesTest {
 			assertEquals(enabled, features.input);
 			assertEquals(enabled, features.worldMapOverlay);
 			assertEquals(enabled, features.cache(true));
-			assertFalse(false);
 			assertFalse(features.cacheView);
 			assertFalse(features.course);
 			assertFalse(features.scene);

@@ -35,7 +35,7 @@ public final class ChartPlotterRuntime {
 	private static final int CLICK_SLOP = 4;
 	private static final int MAX_WORLD_TILE = 0x3fff;
 	@Inject private Client client;
-	@Inject private ClientThread clientThread;
+	@Inject ClientThread clientThread;
 	@Inject private OverlayManager overlayManager;
 	@Inject private ChartPlotterOverlay overlay;
 	@Inject private ChartPlotterMinimapOverlay minimapOverlay;
@@ -44,8 +44,8 @@ public final class ChartPlotterRuntime {
 	@Inject private MouseManager mouseManager;
 	@Inject private ChartPlotterConfig config;
 	@Inject private ChartPlotterCollisionCache collisionCache;
-	@Inject private ChartPlotterSailing sailing;
-	@Inject private ChartPlotterRoutes routes;
+	@Inject ChartPlotterSailing sailing;
+	@Inject ChartPlotterRoutes routes;
 	@Inject private ChartPlotterScene scene;
 	@Inject private ChartPlotterProjection projection;
 	@Inject private Notifier notifier;
@@ -70,7 +70,7 @@ public final class ChartPlotterRuntime {
 	private boolean stopPress;
 	private int captureTick = Integer.MIN_VALUE;
 	private WorldView captureView;
-	private volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
+	volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent e) {

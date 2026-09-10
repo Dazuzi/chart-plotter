@@ -4,6 +4,7 @@ final class ChartPlotterRouteSmoother {
 	private ChartPlotterRouteSmoother() {}
 	static ChartPlotterRoute smooth(ChartPlotterRouteFinder search, ChartPlotterRoute route, double limit) {
 		ChartPlotterRouteMotion motion = search.motion;
+		int direction = route.heading < 0 ? -1 : ((((route.heading - 1024 + 64) & 2047) >>> 7) + (search.hull.reverse ? 8 : 0)) & 15;
 		double length = length(route);
 		while (route.n > 2 && !search.cancel.getAsBoolean()) {
 			int bestI = -1;
@@ -14,7 +15,7 @@ final class ChartPlotterRouteSmoother {
 			boolean bestCorner = false;
 			double bestExtra = Double.POSITIVE_INFINITY;
 			for (int i = 0; i < route.n - 2; i++) {
-				int before = i == 0 ? search.direction : motion.dir(route.x[i] - route.x[i - 1], route.y[i] - route.y[i - 1]);
+				int before = i == 0 ? direction : motion.dir(route.x[i] - route.x[i - 1], route.y[i] - route.y[i - 1]);
 				int oldFirst = motion.dir(route.x[i + 1] - route.x[i], route.y[i + 1] - route.y[i]);
 				double oldLength = Math.hypot(route.x[i + 1] - route.x[i], route.y[i + 1] - route.y[i]);
 				for (int j = i + 2; j < route.n; j++) {

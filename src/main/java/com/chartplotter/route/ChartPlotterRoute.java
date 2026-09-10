@@ -4,6 +4,7 @@ import com.chartplotter.collision.ChartPlotterCollisionData;
 import java.util.function.BooleanSupplier;
 public final class ChartPlotterRoute {
 	private static final int[] EMPTY = new int[0];
+	private static final long[] EMPTY_CONNECTION = new long[0];
 	public static final int PENDING = 0;
 	public static final int OK = 1;
 	public static final int UNCHARTED = 2;
@@ -21,6 +22,10 @@ public final class ChartPlotterRoute {
 	public final int[] x;
 	public final int[] y;
 	public final int n;
+	final ChartPlotterRouteTarget source;
+	final ChartPlotterRouteTarget target;
+	public final long[] departure;
+	public final long[] connection;
 	final ChartPlotterRouteMotion motion;
 	final ChartPlotterRouteHull hull;
 	final int heading;
@@ -31,7 +36,7 @@ public final class ChartPlotterRoute {
 	public final ChartPlotterRouteEffort effort;
 	public final long time;
 	public final long updated;
-	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, ChartPlotterRouteMotion motion, ChartPlotterRouteHull hull, int heading, int turnBias, int weight, ChartPlotterRouteEffort effort, long time, long updated, boolean recalculating) {
+	private ChartPlotterRoute(int status, int sx, int sy, int tx, int ty, int[] x, int[] y, int n, ChartPlotterRouteTarget source, ChartPlotterRouteTarget target, long[] departure, long[] connection, ChartPlotterRouteMotion motion, ChartPlotterRouteHull hull, int heading, int turnBias, int weight, ChartPlotterRouteEffort effort, long time, long updated, boolean recalculating) {
 		this.status = status;
 		this.recalculating = recalculating;
 		this.sx = sx;
@@ -41,6 +46,10 @@ public final class ChartPlotterRoute {
 		this.x = x;
 		this.y = y;
 		this.n = n;
+		this.source = source;
+		this.target = target;
+		this.departure = departure;
+		this.connection = connection;
 		this.motion = motion;
 		this.hull = hull;
 		this.heading = heading;
@@ -54,7 +63,7 @@ public final class ChartPlotterRoute {
 	}
 	private static ChartPlotterRoute empty(int status, int sx, int sy, int tx, int ty, int turnBias, int weight) {
 		long now = System.currentTimeMillis();
-		return new ChartPlotterRoute(status, sx, sy, tx, ty, EMPTY, EMPTY, 0, null, null, -1, turnBias, weight, null, now, now, false);
+		return new ChartPlotterRoute(status, sx, sy, tx, ty, EMPTY, EMPTY, 0, null, null, EMPTY_CONNECTION, EMPTY_CONNECTION, null, null, -1, turnBias, weight, null, now, now, false);
 	}
 	public static ChartPlotterRoute pending(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(PENDING, sx, sy, tx, ty, turnBias, weight);}
 	public static ChartPlotterRoute uncharted(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(UNCHARTED, sx, sy, tx, ty, turnBias, weight);}
@@ -64,20 +73,31 @@ public final class ChartPlotterRoute {
 	public static ChartPlotterRoute blocked(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(BLOCKED, sx, sy, tx, ty, turnBias, weight);}
 	public static ChartPlotterRoute ok(int sx, int sy, int tx, int ty, int[] x, int[] y, int n, int turnBias, int weight) {
 		long now = System.currentTimeMillis();
-		return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, null, null, -1, turnBias, weight, null, now, now, false);
+		return new ChartPlotterRoute(OK, sx, sy, tx, ty, x, y, n, null, null, EMPTY_CONNECTION, EMPTY_CONNECTION, null, null, -1, turnBias, weight, null, now, now, false);
 	}
-	ChartPlotterRoute plan(ChartPlotterRouteMotion motion, ChartPlotterRouteHull hull, int heading) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);}
-	public ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);}
-	ChartPlotterRoute recalculate() {return recalculating ? this : new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, motion, hull, heading, turnBias, weight, effort, time, updated, true);}
+	ChartPlotterRoute plan(ChartPlotterRouteMotion motion, ChartPlotterRouteHull hull, int heading) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, source, target, departure, connection, motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);}
+	ChartPlotterRoute connect(ChartPlotterCollisionData data, ChartPlotterRouteTarget source, ChartPlotterRouteTarget target) {
+		if (status != OK || n == 0 || target == null || target.x != tx || target.y != ty) throw new IllegalArgumentException("Invalid route destination");
+		long[] from = source == null ? EMPTY_CONNECTION : connection(data, source, x[0], y[0]);
+		for (int i = 0, j = from.length - 1; i < j; i++, j--) {long a = from[i]; from[i] = from[j]; from[j] = a;}
+		return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, source, target, from, connection(data, target, x[n - 1], y[n - 1]), motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);
+	}
+	private long[] connection(ChartPlotterCollisionData data, ChartPlotterRouteTarget target, int x, int y) {
+		long[] path = target.path(data, x, y);
+		if (offsetX == 0.5 && offsetY == 0.5) return path;
+		long[] connected = new long[path.length + 1];
+		connected[0] = path[0];
+		System.arraycopy(path, 0, connected, 1, path.length);
+		return connected;
+	}
+	public double departureX(int i) {return (int) (departure[i] >> 32) + (i + 1 == departure.length ? offsetX : 0.5);}
+	public double departureY(int i) {return (int) departure[i] + (i + 1 == departure.length ? offsetY : 0.5);}
+	public double connectionX(int i) {return (int) (connection[i] >> 32) + (i == 0 ? offsetX : 0.5);}
+	public double connectionY(int i) {return (int) connection[i] + (i == 0 ? offsetY : 0.5);}
+	public ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, source, target, departure, connection, motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);}
+	ChartPlotterRoute recalculate() {return recalculating ? this : new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, source, target, departure, connection, motion, hull, heading, turnBias, weight, effort, time, updated, true);}
 	public static ChartPlotterRoute failed(int sx, int sy, int tx, int ty, int turnBias, int weight) {return empty(FAILED, sx, sy, tx, ty, turnBias, weight);}
 	public boolean start(int x, int y) {return sx == x && sy == y;}
-	int arrivalHeading() {
-		int d = n < 2 || motion == null ? -1 : motion.dir(x[n - 1] - x[n - 2], y[n - 1] - y[n - 2]);
-		return d < 0 ? heading : (ChartPlotterRouteMoves.OR[d] + (hull.reverse ? 1024 : 0)) & 2047;
-	}
-	boolean continues(ChartPlotterRoute incoming) {
-		return status == OK && n > 0 && incoming != null && incoming.status == OK && incoming.n > 0 && start(incoming.x[incoming.n - 1], incoming.y[incoming.n - 1]) && x[0] == sx && y[0] == sy && heading == incoming.arrivalHeading();
-	}
 	public ChartPlotterRoute advance(double sx, double sy, int prune, int follow, double lead) {
 		if (status != OK || n == 0) return null;
 		if (n == 1) return Math.hypot(sx - x[0] - offsetX, sy - y[0] - offsetY) <= follow ? this : null;
@@ -123,7 +143,7 @@ public final class ChartPlotterRoute {
 		int incoming = step == 0 ? segment - 1 : segment;
 		int dir = motion == null || incoming < 0 ? -1 : motion.dir(x[incoming + 1] - x[incoming], y[incoming + 1] - y[incoming]);
 		int start = dir < 0 ? heading : (ChartPlotterRouteMoves.OR[dir] + (hull.reverse ? 1024 : 0)) & 2047;
-		return new ChartPlotterRoute(status, px, py, tx, ty, nx, ny, nx.length, motion, hull, start, turnBias, weight, effort, time, System.currentTimeMillis(), recalculating);
+		return new ChartPlotterRoute(status, px, py, tx, ty, nx, ny, nx.length, null, target, EMPTY_CONNECTION, connection, motion, hull, start, turnBias, weight, effort, time, System.currentTimeMillis(), recalculating);
 	}
 	private boolean departureClear(ChartPlotterCollisionData data) {
 		if (status != OK || hull == null || motion == null || n == 0) return false;
@@ -133,7 +153,9 @@ public final class ChartPlotterRoute {
 		return previous < 0 || d < 0 || previous == d || hull.circle.flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN || hull.turn[previous * 16 + d].flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN;
 	}
 	boolean valid(ChartPlotterCollisionData data, BooleanSupplier cancel) {
-		if (cancel.getAsBoolean() || !departureClear(data)) return false;
+		if (cancel.getAsBoolean() || !departureClear(data) || target == null || !target.contains(x[n - 1], y[n - 1])) return false;
+		for (int i = 1; i < departure.length; i++) if (!data.clear(departureX(i - 1), departureY(i - 1), departureX(i), departureY(i))) return false;
+		for (int i = 1; i < connection.length; i++) if (!data.clear(connectionX(i - 1), connectionY(i - 1), connectionX(i), connectionY(i))) return false;
 		int previous = -1;
 		for (int i = 1; i < n; i++) {
 			int dx = x[i] - x[i - 1];
@@ -148,7 +170,14 @@ public final class ChartPlotterRoute {
 			}
 			previous = d;
 		}
-		return !cancel.getAsBoolean() && ChartPlotterRoutes.near(x[n - 1], y[n - 1], tx, ty) && data.clear(x[n - 1] + offsetX, y[n - 1] + offsetY, tx + 0.5, ty + 0.5);
+		return !cancel.getAsBoolean();
+	}
+	ChartPlotterRoute refresh(ChartPlotterCollisionData data, BooleanSupplier cancel) {
+		if (!valid(data, cancel)) return null;
+		ChartPlotterRouteTarget from = source == null || source.matches(data) ? source : ChartPlotterRouteTarget.create(data, source.x, source.y, cancel);
+		ChartPlotterRouteTarget to = target.matches(data) ? target : ChartPlotterRouteTarget.create(data, tx, ty, cancel);
+		if (to == null || !to.contains(x[n - 1], y[n - 1]) || source != null && (from == null || !from.contains(x[0], y[0])) || cancel.getAsBoolean()) return null;
+		return from == source && to == target ? this : new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, from, to, departure, connection, motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);
 	}
 	public String text() {
 		if (status == PENDING) return "Charting course";

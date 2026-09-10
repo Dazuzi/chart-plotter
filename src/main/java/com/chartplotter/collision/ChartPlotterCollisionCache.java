@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
 @Singleton
-public final class ChartPlotterCollisionCache {
+public class ChartPlotterCollisionCache {
 	private static final String KEY = "collision";
 	public static final int UNKNOWN = ChartPlotterCollisionData.UNKNOWN;
 	public static final int OPEN = ChartPlotterCollisionData.OPEN;
@@ -33,8 +33,8 @@ public final class ChartPlotterCollisionCache {
 	private volatile ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
 	private volatile boolean loaded;
 	private volatile boolean cleaned;
-	private volatile ScheduledExecutorService io;
-	private ScheduledFuture<?> flushTask;
+	volatile ScheduledExecutorService io;
+	ScheduledFuture<?> flushTask;
 	private volatile long rev;
 	private long savedRev;
 	private volatile long viewRev = -1;

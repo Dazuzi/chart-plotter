@@ -52,26 +52,27 @@ public class ChartPlotterRouteValidationTest {
 			double speed = trial % 2 == 0 ? 1 : 3;
 			int expected = dijkstra(data, new ChartPlotterRouteMotion(speed, 0.5, 0.5), bias);
 			for (int weight : new int[]{100, 110, 140}) {
-				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, null, 0, 0, 31, 0, bias, speed, weight, null, () -> false);
+				String context = "trial=" + trial + " speed=" + speed + " weight=" + weight;
+				ChartPlotterRouteFinder search = new ChartPlotterRouteFinder(data, null, 0, 0, 31, 0, bias, speed, weight, () -> false);
 				ChartPlotterRoute result = search.find();
-				assertNotNull(search.terrain);
-				if (expected == Integer.MAX_VALUE) assertEquals(ChartPlotterRoute.NO_ROUTE, result.status);
+				assertNotNull(context, search.terrain);
+				if (expected == Integer.MAX_VALUE) assertEquals(context, ChartPlotterRoute.NO_ROUTE, result.status);
 				else {
-					assertEquals(ChartPlotterRoute.OK, result.status);
-					assertTrue("trial=" + trial, search.routeCost >= expected && search.routeCost <= (long) expected * weight / 100);
-					assertEquals(search.routeCost, cost(result, search.motion, bias));
+					assertEquals(context, ChartPlotterRoute.OK, result.status);
+					assertTrue(context + " cost=" + search.routeCost + " optimum=" + expected, search.routeCost >= expected && search.routeCost <= (long) expected * weight / 100);
+					assertEquals(context, search.routeCost, cost(result, search.motion, bias));
 				}
 			}
 		}
 	}
 	@Test
-	public void openWaterRoutesReachAValidApproachAtDifferentSpeeds() {
+	public void openWaterRoutesReachTheExactWaypointAtDifferentSpeeds() {
 		ChartPlotterCollisionData data = new ChartPlotterCollisionData(ChartPlotterRoutingAudit.open(-3, -3, 20, 4));
 		for (double speed : new double[]{0.5, 1, 2, 3, 5}) for (int[] target : new int[][]{{40, 5}, {100, 1}}) {
 			ChartPlotterRoute route = search(data, ChartPlotterRoutingAudit.offsetHull(), target[0], target[1], speed, () -> false).find();
 			assertEquals(ChartPlotterRoute.OK, route.status);
-			assertTrue(ChartPlotterRoutes.near(route.x[route.n - 1], route.y[route.n - 1], target[0], target[1]));
-			assertTrue(data.clear(route.x[route.n - 1] + 0.5, route.y[route.n - 1] + 0.5, target[0] + 0.5, target[1] + 0.5));
+			assertEquals(target[0], route.x[route.n - 1]);
+			assertEquals(target[1], route.y[route.n - 1]);
 			assertTrue(route.valid(data, () -> false));
 			assertArrayEquals(new int[]{0, 0}, ChartPlotterRoutingAudit.clips(data, ChartPlotterRoutingAudit.offsetHull(), route));
 		}
@@ -108,7 +109,7 @@ public class ChartPlotterRouteValidationTest {
 		ChartPlotterRouteTerrain terrain = ChartPlotterRouteTerrain.create(data, motion, 0, -12, () -> false);
 		assertNotNull(terrain);
 		ChartPlotterRouteHull hull = new ChartPlotterRouteHull(ChartPlotterRoutingAudit.offsetHull(), motion, terrain.width, false);
-		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(data, terrain, hull, 0, 16, 0, 0, -12, 0, () -> false);
+		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(terrain, hull, 0, 16, 0, 0, -12, 0, ChartPlotterRouteTarget.create(data, 0, 16, () -> false), () -> false);
 		for (int y = -22; y <= 22; y++) for (int x = -22; x <= 22; x++) for (int d = 0; d < 16; d++) {
 			int a = terrain.at(x, y);
 			int b = terrain.at(x + motion.x[d], y + motion.y[d]);
@@ -154,7 +155,7 @@ public class ChartPlotterRouteValidationTest {
 		assertEquals(ChartPlotterRoute.PENDING, search(data, null, -20, 0, 1, () -> ++checks[0] > 1).find().status);
 		assertEquals(ChartPlotterRoute.OK, search(data, null, -20, 0, 1, () -> false).find().status);
 	}
-	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, WorldEntityConfig config, int tx, int ty, double speed, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, 0, 0, tx, ty, 5, speed, 100, null, cancel);}
+	private static ChartPlotterRouteFinder search(ChartPlotterCollisionData data, WorldEntityConfig config, int tx, int ty, double speed, BooleanSupplier cancel) {return new ChartPlotterRouteFinder(data, config, 0, 0, tx, ty, 5, speed, 100, cancel);}
 	private static int turn(int a, int b, int bias) {int d = Math.abs(a - b); return a == b || bias == 0 ? 0 : 4000 + 2000 * Math.min(d, 16 - d);}
 	private static int cost(ChartPlotterRoute route, ChartPlotterRouteMotion motion, int bias) {
 		int cost = 0;
@@ -181,7 +182,7 @@ public class ChartPlotterRouteValidationTest {
 			if (entry[1] != distance[a]) continue;
 			int x = (a >>> 4) % 32;
 			int y = (a >>> 4) / 32;
-			if (Math.max(Math.abs(x - 31), Math.abs(y)) <= 14 && data.clear(x + 0.5, y + 0.5, 31.5, 0.5)) return entry[1];
+			if (x == 31 && y == 0) return entry[1];
 			for (int d = 0; d < 16; d++) {
 				int nx = x + motion.x[d];
 				int ny = y + motion.y[d];

@@ -38,7 +38,7 @@ public final class ChartPlotterProjection {
 	private int footprintH;
 	private int next;
 	@Inject
-	private ChartPlotterProjection(ChartPlotterSailing sailing, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene, ChartPlotterConfig config) {
+	ChartPlotterProjection(ChartPlotterSailing sailing, ChartPlotterCollisionCache collisionCache, ChartPlotterScene scene, ChartPlotterConfig config) {
 		this.sailing = sailing;
 		this.collisionCache = collisionCache;
 		this.scene = scene;
@@ -75,16 +75,16 @@ public final class ChartPlotterProjection {
 		for (Slot s : cache) {
 			if (s != null && s.key.same(key)) return s.path;
 		}
-		Path p = raw(wv, wc, anchor, from, target, cap, area, showExt);
+		Path p = raw(wv.getBaseX(), wv.getBaseY(), wc, anchor, from, target, cap, area, showExt);
 		cache[next++ & cache.length - 1] = new Slot(new Key(key), p);
 		return p;
 	}
 	private Key key(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
 		return probe.set(wv.getBaseX(), wv.getBaseY(), wv.getPlane(), anchor.getX(), anchor.getY(), from, target, cap, sailing.turnDir(), wid(wc), wcat(wc), wx(wc), wy(wc), ww(wc), wh(wc), Double.doubleToLongBits(sailing.speed()), Double.doubleToLongBits(sailing.accel()), Double.doubleToLongBits(sailing.maxSpeed()), sailing.reversing(), showExt, collisionCache.rev(), ChartPlotterScene.key(area), config.sailingSlide(), sailing.moveMode(), sailing.movesOnHeading());
 	}
-	private Path raw(WorldView wv, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
+	Path raw(int baseX, int baseY, WorldEntityConfig wc, LocalPoint anchor, int from, int target, int cap, ChartPlotterScene.Area area, boolean showExt) {
 		if (memo == null) memo = new FlagMemo();
-		Blocker b = new Blocker(wv.getBaseX(), wv.getBaseY(), collisionCache.snapshot(), footprint(wc), memo.reset());
+		Blocker b = new Blocker(baseX, baseY, collisionCache.snapshot(), footprint(wc), memo.reset());
 		if (config.sailingSlide()) return rawSlide(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, b);
 		return raw(anchor.getX(), anchor.getY(), from, target, cap, area, showExt, motion, b);
 	}

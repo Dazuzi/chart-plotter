@@ -11,28 +11,43 @@ import static org.junit.Assert.*;
 
 public class ChartPlotterRouteDistancesTest {
 	@Test
-	public void chunkConnectivityRequiresAnOpenSharedEdgeAndHonoursArrivalRadius() {
+	public void chunkConnectivityRequiresAnOpenSharedEdge() {
 		Map<Long, ChartPlotterCollisionData.Chunk> chunks = ChartPlotterRoutingAudit.open(-2, -2, 3, 3);
 		for (int y = -16; y < 32; y++) ChartPlotterRoutingAudit.block(chunks, 8, y);
 		ChartPlotterCollisionData blocked = new ChartPlotterCollisionData(chunks);
-		assertFalse(ChartPlotterRouteTerrain.connected(blocked, 0, 0, 24, 0, 14, () -> false));
-		assertTrue(ChartPlotterRouteTerrain.connected(blocked, 0, 0, 21, 0, 14, () -> false));
+		ChartPlotterRouteComponent component = ChartPlotterRouteComponent.create(blocked, 0, 0, () -> false);
+		assertNotNull(component);
+		assertFalse(component.contains(24, 0));
 		chunks.put(ChartPlotterCollisionData.key(1, 3), new ChartPlotterCollisionData.Chunk(-1L, 0));
 		ChartPlotterCollisionData open = new ChartPlotterCollisionData(chunks);
-		assertTrue(ChartPlotterRouteTerrain.connected(open, 0, 0, 24, 0, 0, () -> false));
-		assertTrue(ChartPlotterRouteTerrain.connected(open, 24, 0, 0, 0, 0, () -> false));
-		assertTrue(ChartPlotterRouteTerrain.connected(open, 0, -10, 0, 24, 0, () -> false));
-		assertTrue(ChartPlotterRouteTerrain.connected(open, 0, 24, 0, -10, 0, () -> false));
-		assertFalse(ChartPlotterRouteTerrain.connected(open, 0, 0, 24, 0, 0, () -> true));
+		component = ChartPlotterRouteComponent.create(open, 0, 0, () -> false);
+		assertNotNull(component);
+		assertTrue(component.contains(24, 0));
+		component = ChartPlotterRouteComponent.create(open, 24, 0, () -> false);
+		assertNotNull(component);
+		assertTrue(component.contains(0, 0));
+		component = ChartPlotterRouteComponent.create(open, 0, -10, () -> false);
+		assertNotNull(component);
+		assertTrue(component.contains(0, 24));
+		component = ChartPlotterRouteComponent.create(open, 0, 24, () -> false);
+		assertNotNull(component);
+		assertTrue(component.contains(0, -10));
+		assertNull(ChartPlotterRouteComponent.create(open, 0, 0, () -> true));
 		chunks.clear();
 		chunks.put(ChartPlotterCollisionData.key(0, 0), new ChartPlotterCollisionData.Chunk(-1L, 0));
 		chunks.put(ChartPlotterCollisionData.key(1, 1), new ChartPlotterCollisionData.Chunk(-1L, 0));
-		assertFalse(ChartPlotterRouteTerrain.connected(new ChartPlotterCollisionData(chunks), 7, 7, 8, 8, 0, () -> false));
+		component = ChartPlotterRouteComponent.create(new ChartPlotterCollisionData(chunks), 7, 7, () -> false);
+		assertNotNull(component);
+		assertFalse(component.contains(8, 8));
 		chunks.put(ChartPlotterCollisionData.key(0, 1), new ChartPlotterCollisionData.Chunk(-1L, 0));
-		assertTrue(ChartPlotterRouteTerrain.connected(new ChartPlotterCollisionData(chunks), 7, 7, 8, 8, 0, () -> false));
+		component = ChartPlotterRouteComponent.create(new ChartPlotterCollisionData(chunks), 7, 7, () -> false);
+		assertNotNull(component);
+		assertTrue(component.contains(8, 8));
 		chunks = ChartPlotterRoutingAudit.open(-2, -2, 3, 3);
 		for (int y = -16; y < 32; y++) ChartPlotterRoutingAudit.block(chunks, 12, y);
-		assertFalse(ChartPlotterRouteTerrain.connected(new ChartPlotterCollisionData(chunks), 0, 0, 24, 0, 0, () -> false));
+		component = ChartPlotterRouteComponent.create(new ChartPlotterCollisionData(chunks), 0, 0, () -> false);
+		assertNotNull(component);
+		assertFalse(component.contains(24, 0));
 	}
 	@Test
 	public void chunkFloodMatchesTileFloodAcrossDisconnectedPiecesAndUnknownTiles() {
@@ -59,14 +74,9 @@ public class ChartPlotterRouteDistancesTest {
 					queue.add(nx + ny * 32);
 				}
 			}
-			for (int query = 0; query < 20; query++) {
-				int x = random.nextInt(32);
-				int y = random.nextInt(32);
-				int radius = query % 3;
-				boolean expected = false;
-				for (int ny = Math.max(0, y - radius); ny <= Math.min(31, y + radius); ny++) for (int nx = Math.max(0, x - radius); nx <= Math.min(31, x + radius); nx++) expected |= seen[nx + ny * 32];
-				assertEquals(expected, ChartPlotterRouteTerrain.connected(data, 0, 0, x, y, radius, () -> false));
-			}
+			ChartPlotterRouteComponent component = ChartPlotterRouteComponent.create(data, 0, 0, () -> false);
+			assertNotNull(component);
+			for (int a = 0; a < seen.length; a++) assertEquals("trial=" + trial + " tile=" + a % 32 + "," + a / 32, seen[a], component.contains(a % 32, a / 32));
 		}
 	}
 	@Test
@@ -103,7 +113,7 @@ public class ChartPlotterRouteDistancesTest {
 			assertNotNull(terrain);
 			for (int[] goal : new int[][]{{54, 12, 2}, {10, 25, 0}}) {
 				int[] expected = dijkstra(data, motion, hull, goal[0], goal[1], goal[2]);
-				ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(data, terrain, hull, goal[0], goal[1], goal[2], 5, 5, 14, () -> false);
+				ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(terrain, hull, goal[0], goal[1], goal[2], 5, 5, 14, ChartPlotterRouteTarget.create(data, goal[0], goal[1], () -> false), () -> false);
 				List<Integer> order = new ArrayList<>();
 				for (int a = 0; a < expected.length; a++) order.add(a);
 				Collections.shuffle(order, random);
@@ -121,7 +131,8 @@ public class ChartPlotterRouteDistancesTest {
 		ChartPlotterRouteTerrain terrain = ChartPlotterRouteTerrain.create(data, motion, 400, 512, () -> false);
 		assertNotNull(terrain);
 		AtomicBoolean cancel = new AtomicBoolean();
-		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(data, terrain, hull, 600, 512, 0, 400, 512, 0, cancel::get);
+		ChartPlotterRouteTarget target = ChartPlotterRouteTarget.create(data, 600, 512, () -> false);
+		ChartPlotterRouteDistances distance = new ChartPlotterRouteDistances(terrain, hull, 600, 512, 0, 400, 512, 0, target, cancel::get);
 		assertEquals(200001, distance.get(terrain.at(400, 512)));
 		assertTrue(distance.expanded < terrain.clearance.length / 8);
 		assertTrue(distance.bytes() < terrain.clearance.length * 5L);
@@ -130,15 +141,17 @@ public class ChartPlotterRouteDistancesTest {
 		cancel.set(false);
 		assertEquals(600001, distance.get(terrain.at(0, 512)));
 		cancel.set(true);
-		ChartPlotterRouteDistances cancelled = new ChartPlotterRouteDistances(data, terrain, hull, 600, 512, 0, 400, 512, 0, cancel::get);
+		ChartPlotterRouteDistances cancelled = new ChartPlotterRouteDistances(terrain, hull, 600, 512, 0, 400, 512, 0, target, cancel::get);
 		cancel.set(false);
 		assertEquals(-1, cancelled.get(terrain.at(600, 512)));
 	}
 	private static int[] dijkstra(ChartPlotterCollisionData data, ChartPlotterRouteMotion motion, ChartPlotterRouteHull hull, int gx, int gy, int radius) {
 		int[] distance = new int[64 * 48];
+		ChartPlotterRouteTarget target = ChartPlotterRouteTarget.create(data, gx, gy, () -> false);
+		if (target == null) return distance;
 		PriorityQueue<int[]> queue = new PriorityQueue<>(Comparator.comparingInt(a -> a[1]));
 		for (int y = gy - radius; y <= gy + radius; y++) for (int x = gx - radius; x <= gx + radius; x++) {
-			if (!data.clear(x + 0.5, y + 0.5, gx + 0.5, gy + 0.5) || hull.flag(data, x, y, -1) != ChartPlotterCollisionData.OPEN) continue;
+			if (!target.contains(x, y) || hull.flag(data, x, y, -1) != ChartPlotterCollisionData.OPEN) continue;
 			distance[x + y * 64] = 1;
 			queue.add(new int[]{x + y * 64, 1});
 		}
