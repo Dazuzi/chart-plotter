@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 public final class ChartPlotterMigration {
-	private static final String[] KEYS = {"routeEffort", "infoTripEta", "infoStopEta", "infoTurnEta", "nodeEditor", "sparseRouteDebug", "recordNextRoute", "sailingSlide"};
+	private static final String[] KEYS = {"routeEffort", "nodeEditor", "sparseRouteDebug", "sailingSlide"};
 	private ChartPlotterMigration() {}
 	static void config(Function<String, String> read, BiConsumer<String, String> write) {
 		for (String key : KEYS) {
@@ -25,14 +25,8 @@ public final class ChartPlotterMigration {
 	static String value(String key, String value) {
 		switch (key) {
 			case "routeEffort":
-				if ("HIGH".equals(value) || "REFINED".equals(value)) return ChartPlotterRouteEffort.BALANCED.name();
+				if ("HIGH".equals(value)) return ChartPlotterRouteEffort.BALANCED.name();
 				if ("VERY_HIGH".equals(value)) return ChartPlotterRouteEffort.MAXIMUM.name();
-				return value;
-			case "infoTripEta":
-			case "infoStopEta":
-			case "infoTurnEta":
-				if ("true".equalsIgnoreCase(value)) return ChartPlotterEtaMode.SECONDS.name();
-				if ("false".equalsIgnoreCase(value)) return ChartPlotterEtaMode.OFF.name();
 				return value;
 			case "worldMapTripHints":
 				if ("true".equalsIgnoreCase(value)) return ChartPlotterMapTooltip.BOTH.name();
@@ -40,7 +34,6 @@ public final class ChartPlotterMigration {
 				return null;
 			case "nodeEditor":
 			case "sparseRouteDebug":
-			case "recordNextRoute":
 			case "sailingSlide":
 				return null;
 			default:
