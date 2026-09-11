@@ -120,6 +120,7 @@ public final class ChartPlotterProjection {
 		path.n = 1;
 		path.unknown = true;
 		path.unknownAt = 1;
+		path.unknownTick = 0;
 		path.clearUntil = 1;
 		return path;
 	}
@@ -149,6 +150,7 @@ public final class ChartPlotterProjection {
 		if (initial != ChartPlotterCollisionData.OPEN) {
 			path.unknown = true;
 			path.unknownAt = 1;
+			path.unknownTick = 0;
 		}
 		int horizon = motion.starts && from != target ? 0 : Math.min(cap, motion.horizon);
 		double speed = motion.speed;
@@ -158,8 +160,8 @@ public final class ChartPlotterProjection {
 		double steppedSpeed = Double.NaN;
 		ChartPlotterSailing.Step step = null;
 		for (int i = 0; i < cap; i++) {
-			if (Thread.currentThread().isInterrupted()) {path.unknown = true; path.unknownAt = Math.min(path.unknownAt, path.n); path.clearUntil = Math.min(path.clearUntil, path.n); return path;}
-			if (i >= horizon && !path.unknown) {path.unknown = true; path.unknownAt = path.n;}
+			if (Thread.currentThread().isInterrupted()) {path.unknown = true; path.unknownAt = Math.min(path.unknownAt, path.n); path.unknownTick = Math.min(path.unknownTick, i + 1); path.clearUntil = Math.min(path.clearUntil, path.n); return path;}
+			if (i >= horizon && !path.unknown) {path.unknown = true; path.unknownAt = path.n; path.unknownTick = i + 1;}
 			if (step == null || heading != target || steppedSpeed != speed) {
 				steppedSpeed = speed;
 				step = ChartPlotterSailing.step(speed, motion.acceleration, motion.maximum, heading, target, motion.turn, motion.reverse);
@@ -170,7 +172,7 @@ public final class ChartPlotterProjection {
 			if (!path.blocked && blocker != null && blocker.footprint != null) {
 				Block contact = block(blocker, flags, x, y, heading, nx, ny, step.heading);
 				if (contact != null) {
-					if (!path.unknown) {path.unknown = true; path.unknownAt = path.n;}
+					if (!path.unknown) {path.unknown = true; path.unknownAt = path.n; path.unknownTick = i + 1;}
 					path.clearUntil = Math.min(path.clearUntil, path.n);
 					if (contact.flag == ChartPlotterCollisionData.BLOCKED && (contact.sx != x || contact.sy != y || contact.so != heading)) {
 						path.x[path.n] = contact.sx;
@@ -180,6 +182,7 @@ public final class ChartPlotterProjection {
 					if (contact.flag == ChartPlotterCollisionData.BLOCKED) {
 						path.blocked = true;
 						path.blockedAt = path.n;
+						path.blockedTick = i + 1;
 						if (!extension) return path;
 					}
 				}
@@ -299,6 +302,8 @@ public final class ChartPlotterProjection {
 		public boolean unknown;
 		public int blockedAt = Integer.MAX_VALUE;
 		public int unknownAt = Integer.MAX_VALUE;
+		private int blockedTick = Integer.MAX_VALUE;
+		private int unknownTick = Integer.MAX_VALUE;
 		int clearFrom;
 		int clearUntil = Integer.MAX_VALUE;
 		private Path(int cap) {x = new int[cap]; y = new int[cap]; o = new int[cap];}
@@ -306,13 +311,15 @@ public final class ChartPlotterProjection {
 			x = source.x;
 			y = source.y;
 			o = source.o;
-			n = Math.min(source.n, cap + 1);
+			blockedTick = source.blockedTick;
+			unknownTick = source.unknownTick;
+			blocked = source.blocked && blockedTick <= cap;
+			n = Math.min(source.n, cap + 1 + (blocked && source.blockedAt > blockedTick ? 1 : 0));
 			verifiedTicks = Math.min(source.verifiedTicks, cap);
-			blocked = source.blocked && source.blockedAt <= n;
 			blockedAt = blocked ? source.blockedAt : Integer.MAX_VALUE;
 			if (!extension) n = Math.min(n, blockedAt);
-			unknownAt = source.unknownAt;
-			unknown = unknownAt <= n;
+			unknown = source.unknown && unknownTick <= cap;
+			unknownAt = unknown ? source.unknownAt : Integer.MAX_VALUE;
 			clearFrom = source.clearFrom;
 			clearUntil = source.clearUntil;
 			start = source.start;

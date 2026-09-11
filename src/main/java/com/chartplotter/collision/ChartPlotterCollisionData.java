@@ -102,7 +102,11 @@ public final class ChartPlotterCollisionData {
 		while (true) {
 			if (flagAt(x, y) != OPEN) return false;
 			if (dx == 0 && ax == x && flagAt(x - 1, y) != OPEN || dy == 0 && ay == y && flagAt(x, y - 1) != OPEN) return false;
-			if (Math.min(nextX, nextY) > 1) return true;
+			if (Math.min(nextX, nextY) > 1) {
+				x = (int) Math.floor(bx);
+				y = (int) Math.floor(by);
+				return flagAt(x, y) == OPEN && (bx != x || flagAt(x - 1, y) == OPEN) && (by != y || flagAt(x, y - 1) == OPEN) && (bx != x || by != y || flagAt(x - 1, y - 1) == OPEN);
+			}
 			if (Math.abs(nextX - nextY) <= 1e-12) {
 				if (flagAt(x + dx, y) != OPEN || flagAt(x, y + dy) != OPEN) return false;
 				x += dx;
