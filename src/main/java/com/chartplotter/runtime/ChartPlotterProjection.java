@@ -144,10 +144,10 @@ public final class ChartPlotterProjection {
 		path.n = 1;
 		int initial = blocker == null || blocker.footprint == null ? ChartPlotterCollisionData.UNKNOWN : blocker.footprint.pose(blocker.data, blocker.baseX + ax / 128.0, blocker.baseY + ay / 128.0, from);
 		boolean initialOverlap = initial == ChartPlotterCollisionData.BLOCKED;
+		Set<Long> overlap = initialOverlap ? new HashSet<>() : null;
 		IntBinaryOperator flags = blocker == null ? null : blocker.data::flagAt;
 		if (initialOverlap) {
 			path.clearFrom = cap + 2;
-			Set<Long> overlap = new HashSet<>();
 			blocker.footprint.tiles(from, blocker.baseX + ax / 128.0, blocker.baseY + ay / 128.0, 0, 0, 0, (x, y) -> {
 				if (blocker.data.flagAt(x, y) == ChartPlotterCollisionData.BLOCKED) overlap.add(ChartPlotterCollisionData.key(x, y));
 				return ChartPlotterCollisionData.OPEN;
@@ -180,7 +180,7 @@ public final class ChartPlotterProjection {
 			int nx = x + step.x;
 			int ny = y + step.y;
 			if (!path.blocked && blocker != null && blocker.footprint != null) {
-				Block contact = block(blocker, flags, x, y, heading, nx, ny, step.heading);
+				Block contact = block(blocker, flags, initialOverlap ? overlap : null, x, y, heading, nx, ny, step.heading);
 				if (contact != null) {
 					if (!path.unknown) {path.unknown = true; path.unknownAt = path.n; path.unknownTick = i + 1;}
 					path.clearUntil = Math.min(path.clearUntil, path.n);
@@ -232,7 +232,8 @@ public final class ChartPlotterProjection {
 		y[2] = oy + hh;
 		y[3] = oy - hh;
 	}
-	private static Block block(Blocker b, IntBinaryOperator flags, int ax, int ay, int ao, int bx, int by, int bo) {
+	private static Block block(Blocker b, IntBinaryOperator flags, Set<Long> overlap, int ax, int ay, int ao, int bx, int by, int bo) {
+		if (overlap != null) overlap.removeIf(tile -> !b.footprint.recedes(b.baseX + ax / 128.0, b.baseY + ay / 128.0, ao, b.baseX + bx / 128.0, b.baseY + by / 128.0, bo, (int) (tile >> 32), (int) (long) tile));
 		int full = b.footprint.sweep(b.baseX + ax / 128.0, b.baseY + ay / 128.0, ao, b.baseX + bx / 128.0, b.baseY + by / 128.0, bo, flags);
 		if (full == ChartPlotterCollisionData.OPEN) return null;
 		if (full == ChartPlotterCollisionData.UNKNOWN || b.footprint.tiles(ao, b.baseX + ax / 128.0, b.baseY + ay / 128.0, 0, 0, 0, flags) == ChartPlotterCollisionData.BLOCKED) return new Block(ax, ay, ao, full);
