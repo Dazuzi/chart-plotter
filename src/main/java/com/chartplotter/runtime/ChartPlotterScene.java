@@ -150,10 +150,10 @@ public final class ChartPlotterScene {
 			int y = Math.floorDiv(ly, TS) + offY;
 			return x < 0 || y < 0 || x >= tiles.length || tiles[x] == null || y >= tiles[x].length || tiles[x][y] == null;
 		}
-		public boolean chunk(int x, int y) {
+		public boolean missingChunk(int x, int y) {
 			x -= minCX;
 			y -= minCY;
-			return x >= 0 && y >= 0 && x < cw && y < ch && chunks[x * ch + y];
+			return x < 0 || y < 0 || x >= cw || y >= ch || !chunks[x * ch + y];
 		}
 		public int minWX() {return baseX + minX;}
 		public int minWY() {return baseY + minY;}

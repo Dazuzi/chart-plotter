@@ -416,7 +416,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		Color[] cache = colorCache[i] = new Color[256];
 		return cache[alpha] = new Color(key | alpha << 24, true);
 	}
-	private void drawCache(Graphics2D g, ChartPlotterWorldMap.State s) {
+	void drawCache(Graphics2D g, ChartPlotterWorldMap.State s) {
 		Stroke old = g.getStroke();
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		int minWX = (int) Math.floor(s.pos.getX() - s.wt / 2.0) - 8;
@@ -457,9 +457,9 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private void drawCacheChunk(Graphics2D g, ChartPlotterWorldMap.State s, ChartPlotterCollisionData data, int cx, int cy) {
 		int wx = cx << 3;
 		int wy = cy << 3;
-		if (data.uncached(cx - 1, cy)) drawCacheEdge(g, s, wx, wy, 0, 0, wx, wy + 7, 0, 1);
+		drawCacheEdge(g, s, wx, wy, 0, 0, wx, wy + 7, 0, 1);
 		if (data.uncached(cx + 1, cy)) drawCacheEdge(g, s, wx + 7, wy, 1, 0, wx + 7, wy + 7, 1, 1);
-		if (data.uncached(cx, cy - 1)) drawCacheEdge(g, s, wx, wy, 0, 0, wx + 7, wy, 1, 0);
+		drawCacheEdge(g, s, wx, wy, 0, 0, wx + 7, wy, 1, 0);
 		if (data.uncached(cx, cy + 1)) drawCacheEdge(g, s, wx, wy + 7, 0, 1, wx + 7, wy + 7, 1, 1);
 	}
 	private boolean cacheChunkHidden(ChartPlotterWorldMap.State s, int cx, int cy, int minWX, int minWY, int maxWX, int maxWY) {

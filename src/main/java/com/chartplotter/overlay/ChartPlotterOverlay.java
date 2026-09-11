@@ -385,10 +385,10 @@ public class ChartPlotterOverlay extends Overlay {
 			int x1 = Math.min(wx + 8, area.maxWX());
 			int y1 = Math.min(wy + 8, area.maxWY());
 			if (x0 >= x1 || y0 >= y1) continue;
-			if (area.chunk(cx - 1, cy) && data.uncached(cx - 1, cy)) drawCacheEdge(g, wv, x0, y0, x0, y1);
-			if (area.chunk(cx + 1, cy) && data.uncached(cx + 1, cy)) drawCacheEdge(g, wv, x1, y0, x1, y1);
-			if (area.chunk(cx, cy - 1) && data.uncached(cx, cy - 1)) drawCacheEdge(g, wv, x0, y0, x1, y0);
-			if (area.chunk(cx, cy + 1) && data.uncached(cx, cy + 1)) drawCacheEdge(g, wv, x0, y1, x1, y1);
+			drawCacheEdge(g, wv, x0, y0, x0, y1);
+			if (area.missingChunk(cx + 1, cy) || data.uncached(cx + 1, cy)) drawCacheEdge(g, wv, x1, y0, x1, y1);
+			drawCacheEdge(g, wv, x0, y0, x1, y0);
+			if (area.missingChunk(cx, cy + 1) || data.uncached(cx, cy + 1)) drawCacheEdge(g, wv, x0, y1, x1, y1);
 		}
 		g.setStroke(old);
 	}

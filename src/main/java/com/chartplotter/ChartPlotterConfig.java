@@ -86,6 +86,6 @@ public interface ChartPlotterConfig extends Config {
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "worldMapTooltips", name = "Map tooltips", description = "Show trip controls and/or remaining distance and estimated time at boat base speed on hover. Estimates exclude boosts, acceleration, and time spent at stops. Off hides all map tooltips.", section = tweaksSection, position = 0)
 	default ChartPlotterMapTooltip worldMapTooltips() {return ChartPlotterMapTooltip.BOTH;}
-	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision-cache coverage.", section = tweaksSection, position = 3)
+	@ConfigItem(keyName = "cacheOverlayMode", name = "Collision chunks", description = "Outline every recorded 8x8 collision chunk in the world and/or world map while aboard a boat. Load an area to refresh its collision data.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
 }
