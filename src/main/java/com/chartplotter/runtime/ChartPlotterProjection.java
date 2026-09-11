@@ -16,6 +16,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntBinaryOperator;
 
 @Singleton
@@ -56,7 +57,7 @@ public final class ChartPlotterProjection {
 		ChartPlotterSailing.Forecast preview = sailing.preview(collisionCache.refreshing() || sailing.unobserved(previous.blocker.baseX * TS + previous.x, previous.blocker.baseY * TS + previous.y, previous.from));
 		if (data == previous.blocker.data && previous.motion.same(sailing.forecast) && previous.preview.same(preview)) return;
 		if (data.scene != previous.blocker.data.scene) {
-			if (work != null) work.cancel(true);
+			if (work != null) work.cancel(false);
 			work = null;
 			result = previous.provisional;
 			return;
@@ -64,7 +65,7 @@ public final class ChartPlotterProjection {
 		queue(new Request(previous.view, previous.plane, previous.x, previous.y, previous.from, sailing.forecast, preview, new Blocker(previous.blocker.baseX, previous.blocker.baseY, data, previous.blocker.footprint)));
 	}
 	synchronized void queue(Request next) {
-		if (work != null) work.cancel(true);
+		if (work != null) work.cancel(false);
 		if (executor != null) executor.getQueue().clear();
 		if (next.blocker.footprint == null) {requested = next; result = null; return;}
 		next.provisional = new Result(next, new Path[16]);
@@ -79,12 +80,12 @@ public final class ChartPlotterProjection {
 			executor.allowCoreThreadTimeOut(true);
 		}
 		work = executor.submit(() -> {
+			BooleanSupplier cancel = () -> requested != next || collisionCache.snapshot() != next.blocker.data;
 			Path[] paths = new Path[16];
 			for (int i = 0; i < paths.length; i++) {
-				if (Thread.currentThread().isInterrupted() || requested != next) return;
-				paths[i] = raw(next.x, next.y, next.from, i * 128, HORIZON, true, next.preview, next.blocker);
+				paths[i] = raw(next.x, next.y, next.from, i * 128, HORIZON, true, next.preview, next.blocker, cancel);
+				if (paths[i] == null) return;
 			}
-			if (Thread.currentThread().isInterrupted()) return;
 			synchronized (ChartPlotterProjection.this) {
 				collisionCache.publish(next.blocker.data, () -> {
 					if (requested != next) return false;
@@ -97,7 +98,7 @@ public final class ChartPlotterProjection {
 	public synchronized void clear() {
 		requested = null;
 		result = null;
-		if (work != null) work.cancel(true);
+		if (work != null) work.cancel(false);
 		work = null;
 		if (executor != null) executor.shutdownNow();
 		executor = null;
@@ -110,7 +111,7 @@ public final class ChartPlotterProjection {
 		if (!request.motion.same(sailing.forecast) || request.blocker.data != collisionCache.snapshot() || collisionCache.refreshing()) cached = request.provisional;
 		return cached.limited(target >>> 7, Math.max(0, Math.min(cap, HORIZON)), extension);
 	}
-	Path raw(int baseX, int baseY, WorldEntityConfig config, LocalPoint anchor, int from, int target, int cap, boolean extension) {return raw(anchor.getX(), anchor.getY(), from, target, cap, extension, sailing.forecast, new Blocker(baseX, baseY, collisionCache.snapshot(), config == null ? null : new ChartPlotterHull(config)));}
+	Path raw(int baseX, int baseY, WorldEntityConfig config, LocalPoint anchor, int from, int target, int cap, boolean extension) {return raw(anchor.getX(), anchor.getY(), from, target, cap, extension, sailing.forecast, new Blocker(baseX, baseY, collisionCache.snapshot(), config == null ? null : new ChartPlotterHull(config)), () -> false);}
 	private static Path empty(int x, int y, int from) {
 		Path path = new Path(1);
 		path.x[0] = x;
@@ -124,7 +125,8 @@ public final class ChartPlotterProjection {
 		path.clearUntil = 1;
 		return path;
 	}
-	private static Path raw(int ax, int ay, int from, int target, int cap, boolean extension, ChartPlotterSailing.Forecast motion, Blocker blocker) {
+	private static Path raw(int ax, int ay, int from, int target, int cap, boolean extension, ChartPlotterSailing.Forecast motion, Blocker blocker, BooleanSupplier cancel) {
+		if (cancel.getAsBoolean()) return null;
 		Path path = new Path(cap + 2);
 		path.x[0] = ax;
 		path.y[0] = ay;
@@ -160,7 +162,7 @@ public final class ChartPlotterProjection {
 		double steppedSpeed = Double.NaN;
 		ChartPlotterSailing.Step step = null;
 		for (int i = 0; i < cap; i++) {
-			if (Thread.currentThread().isInterrupted()) {path.unknown = true; path.unknownAt = Math.min(path.unknownAt, path.n); path.unknownTick = Math.min(path.unknownTick, i + 1); path.clearUntil = Math.min(path.clearUntil, path.n); return path;}
+			if (cancel.getAsBoolean()) return null;
 			if (i >= horizon && !path.unknown) {path.unknown = true; path.unknownAt = path.n; path.unknownTick = i + 1;}
 			if (step == null || heading != target || steppedSpeed != speed) {
 				steppedSpeed = speed;
@@ -277,7 +279,7 @@ public final class ChartPlotterProjection {
 		Result(Request request, Path[] paths) {this.request = request; this.paths = paths;}
 		Path limited(int heading, int cap, boolean extension) {
 			for (View view : views) if (view != null && view.heading == heading && view.cap == cap && view.extension == extension) return view.path;
-			if (paths[heading] == null) paths[heading] = raw(request.x, request.y, request.from, heading * 128, HORIZON, true, request.preview, null);
+			if (paths[heading] == null) paths[heading] = raw(request.x, request.y, request.from, heading * 128, HORIZON, true, request.preview, null, () -> false);
 			Path path = new Path(paths[heading], cap, extension);
 			views[next++ & 31] = new View(heading, cap, extension, path);
 			return path;

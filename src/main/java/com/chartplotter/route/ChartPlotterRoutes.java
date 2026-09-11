@@ -211,7 +211,7 @@ public class ChartPlotterRoutes {
 		ChartPlotterRouteComponent reachable = component;
 		long origin = target(data, s.x, s.y, s.x, s.y, 2, null);
 		if (reachable != null && (reachable.data != data || !reachable.contains((int) (origin >> 32), (int) origin))) reachable = null;
-		if (reachable == null && p.empty() && !placing && !resolvingPreview) resolve(s, data, null);
+		if (reachable == null && !placing && !resolvingPreview && work.get() == null) resolve(s, data, null);
 		PreviewSlot cached = previewSlot;
 		if (cached != null && cached.same(tx, ty, append, sx, sy, p, data, reachable)) return cached.preview;
 		Preview result;
@@ -322,9 +322,9 @@ public class ChartPlotterRoutes {
 	public boolean canAppend() {return trip.get().size() < MAX_STOPS;}
 	public void clearPreview() {
 		previewSlot = null;
-		if (!trip.get().empty() || placing) return;
+		if (placing) return;
 		if (resolvingPreview) cancel();
-		idle();
+		if (trip.get().empty()) idle();
 	}
 	private LocalPoint routeLoc(WorldView top, WorldEntity ship, LocalPoint loc) {
 		WorldEntityConfig wc = ship.getConfig();

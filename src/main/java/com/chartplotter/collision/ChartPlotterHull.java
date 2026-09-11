@@ -40,9 +40,9 @@ public final class ChartPlotterHull {
 	}
 	public int circle(double ax, double ay, IntBinaryOperator flags) {
 		boolean unknown = false;
-		for (int y = (int) Math.floor(ay - turnRadius); y <= (int) Math.floor(ay + turnRadius); y++) for (int x = (int) Math.floor(ax - turnRadius); x <= (int) Math.floor(ax + turnRadius); x++) {
-			if (Math.hypot(Math.max(0, Math.max(x - ax, ax - x - 1)), Math.max(0, Math.max(y - ay, ay - y - 1))) > turnRadius) continue;
-			int flag = flags.applyAsInt(x, y);
+		for (int py = (int) Math.floor(ay - turnRadius); py <= (int) Math.floor(ay + turnRadius); py++) for (int px = (int) Math.floor(ax - turnRadius); px <= (int) Math.floor(ax + turnRadius); px++) {
+			if (Math.hypot(Math.max(0, Math.max(px - ax, ax - px - 1)), Math.max(0, Math.max(py - ay, ay - py - 1))) > turnRadius) continue;
+			int flag = flags.applyAsInt(px, py);
 			if (flag == ChartPlotterCollisionData.BLOCKED) return flag;
 			unknown |= flag != ChartPlotterCollisionData.OPEN;
 		}

@@ -51,7 +51,7 @@ public class ChartPlotterPlugin extends Plugin {
 	}
 	@Override
 	protected void shutDown() {
-		if (cleanup != null) cleanup.cancel(true);
+		if (cleanup != null) cleanup.cancel(false);
 		cleanup = null;
 		runtime.stop();
 	}
