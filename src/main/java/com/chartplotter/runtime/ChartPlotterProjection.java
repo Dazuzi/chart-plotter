@@ -157,12 +157,6 @@ public final class ChartPlotterProjection {
 		int heading = from;
 		double steppedSpeed = Double.NaN;
 		ChartPlotterSailing.Step step = null;
-		if (motion.horizon == 0 && speed == 0 && motion.maximum > 0) {
-			heading = target;
-			speed = motion.maximum;
-			path.start = target;
-			path.o[0] = target;
-		}
 		for (int i = 0; i < cap; i++) {
 			if (Thread.currentThread().isInterrupted()) {path.unknown = true; path.unknownAt = Math.min(path.unknownAt, path.n); path.clearUntil = Math.min(path.clearUntil, path.n); return path;}
 			if (i >= horizon && !path.unknown) {path.unknown = true; path.unknownAt = path.n;}
@@ -170,7 +164,7 @@ public final class ChartPlotterProjection {
 				steppedSpeed = speed;
 				step = ChartPlotterSailing.step(speed, motion.acceleration, motion.maximum, heading, target, motion.turn, motion.reverse);
 			}
-			if (step.x == 0 && step.y == 0 && step.heading == heading) return path;
+			if (step.x == 0 && step.y == 0 && step.heading == heading && step.speed == speed) return path;
 			int nx = x + step.x;
 			int ny = y + step.y;
 			if (!path.blocked && blocker != null && blocker.footprint != null) {

@@ -243,9 +243,9 @@ public final class ChartPlotterSailing {
 	boolean unobserved(int x, int y, int heading) {return observation == null || observation.x != x || observation.y != y || observation.heading != heading;}
 	Forecast preview(boolean uncertain) {
 		Forecast motion = forecast;
-		if (motion.maximum > 0) return uncertain ? new Forecast(motion.speed, motion.acceleration, motion.maximum, motion.reverse, motion.turn, 0, motion.starts) : motion;
-		double maximum = Math.max(speed, maxSpeed());
-		return new Forecast(speed > 0 || moveMode == 0 || moveMode == 1 ? speed : maximum, speed > 0 ? accel : 0, maximum, reversing(), turnDir, 0, false);
+		if (motion != Forecast.UNKNOWN) return uncertain ? new Forecast(motion.speed, motion.acceleration, motion.maximum, motion.reverse, motion.turn, 0, motion.starts) : motion;
+		double maximum = speed > 0 ? Math.max(speed, maxSpeed()) : moveMode == 0 ? 0 : Math.min(routeSpeed(), maxSpeed());
+		return new Forecast(speed, maximum > 0 ? accel : 0, maximum, reversing(), turnDir, 0, startOnHeading != 0 && moveMode == 0);
 	}
 	private int targetHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getTargetOrientation());}
 	private void syncTop() {
