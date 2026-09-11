@@ -80,11 +80,11 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigSection(name = "Info panel", description = "Movable sailing information panel.", position = 5)
 	String infoSection = "infoSection";
 	@ConfigItem(keyName = "infoStopProgress", name = "Stop progress", description = "Show the stop you are heading toward out of the trip total when it exceeds one; the total updates when stops are added or removed.", section = infoSection, position = 0)
-	default boolean infoStopProgress() {return false;}
+	default boolean infoStopProgress() {return true;}
 	@ConfigItem(keyName = "infoTripEta", name = "Trip ETA", description = "Estimate sailing time through all remaining stops using the last 5 ticks of speed; excludes time spent at stops.", section = infoSection, position = 1)
-	default ChartPlotterEtaMode infoTripEta() {return ChartPlotterEtaMode.OFF;}
+	default ChartPlotterEtaMode infoTripEta() {return ChartPlotterEtaMode.SECONDS;}
 	@ConfigItem(keyName = "infoStopEta", name = "Next stop", description = "Estimate sailing time to the next stop using the last 5 ticks of speed. Hidden on the last stop when Trip ETA uses the same units.", section = infoSection, position = 2)
-	default ChartPlotterEtaMode infoStopEta() {return ChartPlotterEtaMode.OFF;}
+	default ChartPlotterEtaMode infoStopEta() {return ChartPlotterEtaMode.SECONDS;}
 	@ConfigItem(keyName = "infoTurnEta", name = "Next turn", description = "Show time to the next turn before the next stop in the info panel.", section = infoSection, position = 3)
 	default ChartPlotterEtaMode infoTurnEta() {return ChartPlotterEtaMode.OFF;}
 	@ConfigItem(keyName = "infoBoatSpeed", name = "Speed", description = "Show current measured boat speed in tiles per tick, including when no trip is charted.", section = infoSection, position = 4)

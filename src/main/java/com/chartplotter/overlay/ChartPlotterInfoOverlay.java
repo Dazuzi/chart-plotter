@@ -14,6 +14,7 @@ import net.runelite.api.Perspective;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.client.ui.overlay.OverlayMenuEntry;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;
@@ -22,6 +23,7 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 import javax.inject.Inject;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.util.List;
 
 import static net.runelite.client.ui.overlay.OverlayManager.OPTION_CONFIGURE;
 
@@ -30,6 +32,7 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 	private final ChartPlotterConfig config;
 	private final ChartPlotterSailing sailing;
 	private final ChartPlotterRoutes routes;
+	private Object menuStops;
 	private ChartPlotterTrip cachedTrip;
 	private long cachedMotion = Long.MIN_VALUE;
 	@Inject
@@ -42,7 +45,19 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		setClearChildren(false);
 		setPosition(OverlayPosition.TOP_LEFT);
 		setPriority(PRIORITY_LOW);
-		addMenuEntry(MenuAction.RUNELITE_OVERLAY_CONFIG, OPTION_CONFIGURE, "Chart Plotter info");
+	}
+	@Override
+	public List<OverlayMenuEntry> getMenuEntries() {
+		ChartPlotterTrip trip = routes.trip();
+		Object stops = trip.stopKey();
+		if (stops != menuStops) {
+			menuStops = stops;
+			super.getMenuEntries().clear();
+			addMenuEntry(MenuAction.RUNELITE_OVERLAY_CONFIG, OPTION_CONFIGURE, "Chart Plotter info");
+			if (trip.size() > 1) addMenuEntry(MenuAction.RUNELITE_OVERLAY, "Skip next stop", "Chart Plotter info", e -> {if (routes.trip().stopKey() == stops) routes.remove(0);});
+			if (!trip.empty()) addMenuEntry(MenuAction.RUNELITE_OVERLAY, "Clear trip", "Chart Plotter info", e -> routes.clear());
+		}
+		return super.getMenuEntries();
 	}
 	@Override
 	public Dimension render(Graphics2D g) {
@@ -83,6 +98,8 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		return super.render(g);
 	}
 	public void clear() {
+		super.getMenuEntries().clear();
+		menuStops = null;
 		panelComponent.getChildren().clear();
 		cachedTrip = null;
 		cachedMotion = Long.MIN_VALUE;
