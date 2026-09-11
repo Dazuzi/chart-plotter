@@ -11,9 +11,20 @@ import com.chartplotter.overlay.ChartPlotterWorldMapOverlay;
 import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.route.ChartPlotterTrip;
-import net.runelite.api.*;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.MenuAction;
+import net.runelite.api.Perspective;
+import net.runelite.api.Point;
+import net.runelite.api.TileObject;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.events.*;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WorldViewLoaded;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.events.ConfigChanged;
@@ -98,7 +109,6 @@ public final class ChartPlotterRuntime {
 					draggedX = stop[1];
 					draggedY = stop[2];
 					stopPress = true;
-					worldMapOverlay.dragStop(draggedStop, draggedX, draggedY, m);
 					e.consume();
 				}
 			}
@@ -155,7 +165,7 @@ public final class ChartPlotterRuntime {
 		public MouseEvent mouseDragged(MouseEvent e) {
 			if (down && (Math.abs(e.getX() - downX) > CLICK_SLOP || Math.abs(e.getY() - downY) > CLICK_SLOP)) dragged = true;
 			if (draggedStop >= 0) {
-				worldMapOverlay.dragStop(draggedStop, draggedX, draggedY, new Point(e.getX(), e.getY()));
+				if (dragged) worldMapOverlay.dragStop(draggedStop, draggedX, draggedY, new Point(e.getX(), e.getY()));
 				e.consume();
 			}
 			worldMapOverlay.courseMods(e.isControlDown(), e.isShiftDown());

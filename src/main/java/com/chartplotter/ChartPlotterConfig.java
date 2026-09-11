@@ -1,8 +1,13 @@
 package com.chartplotter;
 
-import net.runelite.client.config.*;
+import net.runelite.client.config.Alpha;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
-import java.awt.*;
+import java.awt.Color;
 
 @SuppressWarnings("SameReturnValue")
 @ConfigGroup("chartplotter")
@@ -11,6 +16,8 @@ public interface ChartPlotterConfig extends Config {
 	Color DEFAULT_POTENTIAL_COLOR = new Color(80, 255, 120, 185);
 	Color DEFAULT_CHART_COLOR = new Color(255, 101, 255, 185);
 	Color DEFAULT_BLOCKED_COLOR = new Color(255, 80, 60, 140);
+	@ConfigItem(keyName = "worldMapTooltips", name = "Map tooltips", description = "Show trip controls and/or remaining distance and estimated time at boat base speed on hover. Estimates exclude boosts, acceleration, and time spent at stops. Off hides all map tooltips.")
+	default ChartPlotterMapTooltip worldMapTooltips() {return ChartPlotterMapTooltip.BOTH;}
 	@ConfigSection(name = "Colors", description = "Shared overlay colors.", position = 0)
 	String colorsSection = "colorsSection";
 	@Alpha
@@ -72,11 +79,11 @@ public interface ChartPlotterConfig extends Config {
 	default boolean courseTurnAlert() {return true;}
 	@ConfigSection(name = "Info panel", description = "Movable sailing information panel.", position = 5)
 	String infoSection = "infoSection";
-	@ConfigItem(keyName = "infoStopProgress", name = "Stop progress", description = "Show the stop you are heading toward out of the trip total; the total updates when stops are added or removed.", section = infoSection, position = 0)
+	@ConfigItem(keyName = "infoStopProgress", name = "Stop progress", description = "Show the stop you are heading toward out of the trip total when it exceeds one; the total updates when stops are added or removed.", section = infoSection, position = 0)
 	default boolean infoStopProgress() {return false;}
 	@ConfigItem(keyName = "infoTripEta", name = "Trip ETA", description = "Estimate sailing time through all remaining stops using the last 5 ticks of speed; excludes time spent at stops.", section = infoSection, position = 1)
 	default ChartPlotterEtaMode infoTripEta() {return ChartPlotterEtaMode.OFF;}
-	@ConfigItem(keyName = "infoStopEta", name = "Next stop", description = "Estimate sailing time to the next stop using the last 5 ticks of speed.", section = infoSection, position = 2)
+	@ConfigItem(keyName = "infoStopEta", name = "Next stop", description = "Estimate sailing time to the next stop using the last 5 ticks of speed. Hidden on the last stop when Trip ETA uses the same units.", section = infoSection, position = 2)
 	default ChartPlotterEtaMode infoStopEta() {return ChartPlotterEtaMode.OFF;}
 	@ConfigItem(keyName = "infoTurnEta", name = "Next turn", description = "Show time to the next turn before the next stop in the info panel.", section = infoSection, position = 3)
 	default ChartPlotterEtaMode infoTurnEta() {return ChartPlotterEtaMode.OFF;}
@@ -84,8 +91,6 @@ public interface ChartPlotterConfig extends Config {
 	default boolean infoBoatSpeed() {return false;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 6, closedByDefault = true)
 	String tweaksSection = "tweaksSection";
-	@ConfigItem(keyName = "worldMapTooltips", name = "Map tooltips", description = "Show trip controls and/or remaining distance and estimated time at boat base speed on hover. Estimates exclude boosts, acceleration, and time spent at stops. Off hides all map tooltips.", section = tweaksSection, position = 0)
-	default ChartPlotterMapTooltip worldMapTooltips() {return ChartPlotterMapTooltip.BOTH;}
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Collision chunks", description = "Outline every recorded 8x8 collision chunk in the world and/or world map while aboard a boat. Load an area to refresh its collision data.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
 }

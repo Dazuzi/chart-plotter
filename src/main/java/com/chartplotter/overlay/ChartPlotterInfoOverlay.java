@@ -7,7 +7,12 @@ import com.chartplotter.route.ChartPlotterRoute;
 import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterSailing;
-import net.runelite.api.*;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.MenuAction;
+import net.runelite.api.Perspective;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -15,7 +20,8 @@ import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 
 import javax.inject.Inject;
-import java.awt.*;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
 
 import static net.runelite.client.ui.overlay.OverlayManager.OPTION_CONFIGURE;
 
@@ -41,15 +47,15 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 	@Override
 	public Dimension render(Graphics2D g) {
 		if (!sailing.boarded() || client.getGameState() != GameState.LOGGED_IN) return null;
-		boolean showProgress = config.infoStopProgress();
+		ChartPlotterTrip trip = routes.trip();
+		boolean showProgress = config.infoStopProgress() && trip.totalStops() > 1;
 		ChartPlotterEtaMode tripMode = config.infoTripEta();
 		ChartPlotterEtaMode stopMode = config.infoStopEta();
 		ChartPlotterEtaMode turnMode = config.infoTurnEta();
 		boolean showTrip = tripMode != ChartPlotterEtaMode.OFF;
-		boolean showStop = stopMode != ChartPlotterEtaMode.OFF;
+		boolean showStop = stopMode != ChartPlotterEtaMode.OFF && (trip.size() > 1 || stopMode != tripMode);
 		boolean showTurn = turnMode != ChartPlotterEtaMode.OFF;
 		boolean showSpeed = config.infoBoatSpeed();
-		ChartPlotterTrip trip = routes.trip();
 		if (!showSpeed && (trip.empty() || !showProgress && !showTrip && !showStop && !showTurn)) return null;
 		WorldEntity ship = sailing.ship();
 		WorldView top = sailing.top();
