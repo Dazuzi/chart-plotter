@@ -10,6 +10,7 @@ import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.*;
+import net.runelite.client.RuneLite;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -17,8 +18,13 @@ import net.runelite.client.events.PluginMessage;
 import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import java.io.File;
+import java.io.IOException;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 
 @PluginDescriptor(
 	name = "Chart Plotter",
@@ -30,16 +36,31 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private ChartPlotterRuntime runtime;
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
+	@Inject private ConfigManager configManager;
+	@Inject private ScheduledExecutorService executor;
+	private Future<?> cleanup;
+	private boolean migrating;
 	@Override
-	protected void startUp() {runtime.start();}
+	protected void startUp() {
+		migrateConfig(configManager);
+		cleanup = executor.submit(() -> {
+			try {ChartPlotterMigration.files(new File(RuneLite.RUNELITE_DIR, "chart-plotter"));}
+			catch (IOException e) {LoggerFactory.getLogger(ChartPlotterPlugin.class).warn("Unable to remove obsolete sparse routing data", e);}
+		});
+		runtime.start();
+	}
 	@Override
-	protected void shutDown() {runtime.stop();}
+	protected void shutDown() {
+		if (cleanup != null) cleanup.cancel(true);
+		cleanup = null;
+		runtime.stop();
+	}
 	@Subscribe
 	public void onConfigChanged(ConfigChanged e) {
-		if ("chartplotter".equals(e.getGroup()) && e.getProfile() == null) runtime.config(e);
+		if ("chartplotter".equals(e.getGroup()) && e.getProfile() == null && migrateConfig(configManager)) runtime.config(e);
 	}
 	@Subscribe(priority = 1)
-	public void onProfileChanged(ProfileChanged ignored) {runtime.start();}
+	public void onProfileChanged(ProfileChanged ignored) {if (migrateConfig(configManager)) runtime.start();}
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged e) {runtime.varbit(e);}
 	@Subscribe
@@ -75,7 +96,21 @@ public class ChartPlotterPlugin extends Plugin {
 	@Subscribe
 	public void onPluginMessage(PluginMessage e) {runtime.message(e);}
 	@Provides
-	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
+	public ChartPlotterConfig provideConfig(ConfigManager cm) {
+		migrateConfig(cm);
+		return cm.getConfig(ChartPlotterConfig.class);
+	}
+	private synchronized boolean migrateConfig(ConfigManager cm) {
+		if (migrating) return false;
+		migrating = true;
+		try {
+			ChartPlotterMigration.config(key -> cm.getConfiguration("chartplotter", key), (key, value) -> {
+				if (value == null) cm.unsetConfiguration("chartplotter", key);
+				else cm.setConfiguration("chartplotter", key, value);
+			});
+			return true;
+		} finally {migrating = false;}
+	}
 	public WorldView top() {return sailing.top();}
 	public WorldEntity getShip() {return sailing.ship();}
 	public LocalPoint anchorLoc(WorldEntity ship) {return sailing.anchorLoc(ship);}

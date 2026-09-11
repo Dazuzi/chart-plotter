@@ -27,7 +27,7 @@ public class ChartPlotterCollisionCache {
 	public static final int BLOCKED = ChartPlotterCollisionData.BLOCKED;
 	public static final int VOID = ChartPlotterCollisionData.VOID;
 	public static final int MOVE = ChartPlotterCollisionData.MOVE;
-	private final File dir = new File(RuneLite.RUNELITE_DIR, "chart-plotter");
+	private final File dir;
 	private final Object fileLock = new Object();
 	private final Map<Long, Chunk> chunks = new HashMap<>();
 	private volatile ChartPlotterCollisionData view = new ChartPlotterCollisionData(new HashMap<>());
@@ -49,6 +49,8 @@ public class ChartPlotterCollisionCache {
 	private volatile long generation;
 	private long publication;
 	private String seedVersion;
+	public ChartPlotterCollisionCache() {this(new File(RuneLite.RUNELITE_DIR, "chart-plotter"));}
+	ChartPlotterCollisionCache(File dir) {this.dir = dir;}
 	public synchronized void start() {
 		if (io != null) return;
 		ScheduledThreadPoolExecutor next = new ScheduledThreadPoolExecutor(1, r -> {
@@ -310,14 +312,12 @@ public class ChartPlotterCollisionCache {
 			if (save == savedRev) return true;
 			ChartPlotterCollisionData out = new ChartPlotterCollisionData(chunks, save);
 			if (ChartPlotterCollisionCodec.write(dir, file(), out, () -> io != ex)) {
-				String seed;
+				if (io != ex || seedVersion != null && !ChartPlotterVersions.write(dir, KEY, seedVersion)) return false;
 				synchronized (this) {
 					if (io != ex) return false;
 					if (savedRev < save) savedRev = save;
-					seed = seedVersion;
 					seedVersion = null;
 				}
-				if (seed != null) ChartPlotterVersions.write(dir, KEY, seed);
 				return true;
 			}
 			return false;

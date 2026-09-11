@@ -31,6 +31,12 @@ public final class ChartPlotterWorldMap {
 	public ChartPlotterWorldMap(Client client) {
 		this.client = client;
 	}
+	public void clear() {
+		clipKey = null;
+		cachedClip = null;
+		surfaceData = null;
+		cachedClickBlocked = true;
+	}
 	public State state() {
 		Widget map = widget();
 		WorldMap wm = client.getWorldMap();

@@ -46,7 +46,7 @@ public final class ChartPlotterRuntime {
 	@Inject ChartPlotterCollisionCache collisionCache;
 	@Inject ChartPlotterSailing sailing;
 	@Inject ChartPlotterRoutes routes;
-	@Inject private ChartPlotterScene scene;
+	@Inject ChartPlotterScene scene;
 	@Inject ChartPlotterProjection projection;
 	@Inject private Notifier notifier;
 	@Inject private KeyManager keyManager;
@@ -181,9 +181,7 @@ public final class ChartPlotterRuntime {
 	};
 	public void start() {apply();}
 	public void stop() {
-		pendingView = null;
-		pendingBoat = null;
-		pendingAnchor = null;
+		clearCourses();
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
@@ -191,6 +189,7 @@ public final class ChartPlotterRuntime {
 		infoOverlay.clear();
 		overlay.clear();
 		minimapOverlay.clear();
+		worldMapOverlay.clear();
 		if (inputRegistered) {
 			mouseManager.unregisterMouseListener(mouse);
 			keyManager.unregisterKeyListener(key);
@@ -200,12 +199,13 @@ public final class ChartPlotterRuntime {
 		collisionActive = false;
 		features = ChartPlotterFeatures.off();
 		observedBoat = Integer.MIN_VALUE;
+		alertX = Integer.MIN_VALUE;
+		alertY = Integer.MIN_VALUE;
 		scene.clear();
 		collisionCache.stop();
 		routes.stop();
 		sailing.reset();
 		sailing.average(false);
-		projection.clear();
 	}
 	public void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
 	public void varbit(VarbitChanged e) {
@@ -219,11 +219,10 @@ public final class ChartPlotterRuntime {
 		}
 		routes.pause();
 		observedBoat = Integer.MIN_VALUE;
-		pendingView = null;
+		clearCourses();
 		collision(false, null);
 		sailing.clear();
 		scene.clear();
-		projection.clear();
 	}
 	public void state(GameStateChanged e) {
 		if (!features.tracking) return;
@@ -233,26 +232,24 @@ public final class ChartPlotterRuntime {
 			return;
 		}
 		if (e.getGameState() == GameState.LOADING) {
-			pendingView = null;
+			clearCourses();
 			collisionCache.invalidateScene();
 			routes.scene();
 			scene.clear();
-			projection.clear();
 			return;
 		}
 		sailing.reset();
 		observedBoat = Integer.MIN_VALUE;
-		pendingView = null;
+		clearCourses();
 		routes.clear();
 		collision(false, null);
 		scene.clear();
-		projection.clear();
 	}
 	public void loaded(WorldViewLoaded e) {
 		if (!features.tracking) return;
 		WorldView wv = e.getWorldView();
 		if (wv == null || !wv.isTopLevel()) return;
-		pendingView = null;
+		clearCourses();
 		sailing.loaded(wv);
 		routes.scene();
 		if (features.scene && sailing.boarded()) scene.update(wv);
@@ -293,7 +290,7 @@ public final class ChartPlotterRuntime {
 		if (ship == null) {
 			sailing.clear();
 			scene.clear();
-			projection.clear();
+			clearCourses();
 			routes.pause();
 			collision(false, null);
 			return;
@@ -302,7 +299,7 @@ public final class ChartPlotterRuntime {
 		if (loc == null) {
 			sailing.clear();
 			scene.clear();
-			projection.refresh();
+			clearCourses();
 			routes.pause();
 			collision(false, null);
 			return;
@@ -340,6 +337,12 @@ public final class ChartPlotterRuntime {
 	public void clientTick() {
 		courses();
 		if (features.course) projection.refresh(pendingBoat);
+	}
+	private void clearCourses() {
+		pendingView = null;
+		pendingBoat = null;
+		pendingAnchor = null;
+		projection.clear();
 	}
 	private void courses() {
 		WorldView top = pendingView;
@@ -407,7 +410,10 @@ public final class ChartPlotterRuntime {
 		}
 		if (next.worldMapOverlay != prev.worldMapOverlay) {
 			if (next.worldMapOverlay) overlayManager.add(worldMapOverlay);
-			else overlayManager.remove(worldMapOverlay);
+			else {
+				overlayManager.remove(worldMapOverlay);
+				worldMapOverlay.clear();
+			}
 		}
 		if (next.infoOverlay != prev.infoOverlay) {
 			if (next.infoOverlay) overlayManager.add(infoOverlay);
@@ -431,7 +437,7 @@ public final class ChartPlotterRuntime {
 			clearMods();
 		}
 		if (!next.cache(sailing.boarded())) collision(false, null);
-		if (prev.course && !next.course) projection.clear();
+		if (prev.course && !next.course) clearCourses();
 		if (!next.tracking) sailing.reset();
 		else if (!prev.tracking) clientThread.invoke(() -> {
 			if (!features.tracking) return;
@@ -471,6 +477,8 @@ public final class ChartPlotterRuntime {
 		worldMapOverlay.courseMods(ctrl, shift);
 	}
 	private void clearMods() {
+		down = false;
+		menuBlock = false;
 		cancelStopDrag();
 		worldMapOverlay.courseMods(false, false);
 	}

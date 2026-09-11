@@ -165,6 +165,15 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		}
 	}
 	public int[] tile(Point m) {return map.tile(m);}
+	public void clear() {
+		stopCache = StopCache.EMPTY;
+		tipTrip = null;
+		tipLines = null;
+		previewActive = false;
+		courseMods(false, false);
+		clearStopDrag();
+		map.clear();
+	}
 	public int stop(Point m) {
 		if (!config.worldMapChartLine()) return -1;
 		ChartPlotterWorldMap.State s = map.state();
