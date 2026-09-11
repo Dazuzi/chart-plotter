@@ -4,6 +4,7 @@ import com.chartplotter.ChartPlotterConfig;
 import com.chartplotter.ChartPlotterRouteEffort;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.collision.ChartPlotterHull;
 import com.chartplotter.runtime.ChartPlotterSailing;
 import com.chartplotter.util.ChartPlotterMath;
 import net.runelite.api.Perspective;
@@ -18,7 +19,11 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.ArrayDeque;
 import java.util.Arrays;
-import java.util.concurrent.*;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -69,7 +74,7 @@ public class ChartPlotterRoutes {
 		int cx = tx;
 		int cy = ty;
 		if (resolve(s, data, () -> set(cx, cy))) return;
-		long t = target(data, tx, ty, s.x, s.y, CLEAR_RADIUS, component);
+		long t = target(data, tx, ty, s.x, s.y, CLEAR_RADIUS, component, new ChartPlotterHull(s.config));
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		if (data.flagAt(tx, ty) != ChartPlotterCollisionData.OPEN || component != null && !component.contains(tx, ty)) return;
@@ -101,7 +106,7 @@ public class ChartPlotterRoutes {
 		int sy = legStartY(old, old.size(), s.y);
 		ChartPlotterCollisionData data = collisionCache.snapshot();
 		if (resolve(s, data, () -> append(cx, cy))) return;
-		long t = target(data, tx, ty, sx, sy, CLEAR_RADIUS, component);
+		long t = target(data, tx, ty, sx, sy, CLEAR_RADIUS, component, new ChartPlotterHull(s.config));
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		if (data.flagAt(tx, ty) != ChartPlotterCollisionData.OPEN || component != null && !component.contains(tx, ty)) return;
@@ -131,7 +136,7 @@ public class ChartPlotterRoutes {
 		int cx = tx;
 		int cy = ty;
 		if (resolve(s, data, () -> move(stop, oldX, oldY, cx, cy))) return;
-		long t = target(data, tx, ty, sx, sy, CLEAR_RADIUS, component);
+		long t = target(data, tx, ty, sx, sy, CLEAR_RADIUS, component, new ChartPlotterHull(s.config));
 		tx = (int) (t >> 32);
 		ty = (int) t;
 		if (data.flagAt(tx, ty) != ChartPlotterCollisionData.OPEN || component != null && !component.contains(tx, ty)) return;
@@ -209,20 +214,21 @@ public class ChartPlotterRoutes {
 		int sx = append && !p.empty() ? legStartX(p, p.size(), s.x) : s.x;
 		int sy = append && !p.empty() ? legStartY(p, p.size(), s.y) : s.y;
 		ChartPlotterRouteComponent reachable = component;
-		long origin = target(data, s.x, s.y, s.x, s.y, 2, null);
+		long origin = target(data, s.x, s.y, s.x, s.y, 2, null, null);
 		if (reachable != null && (reachable.data != data || !reachable.contains((int) (origin >> 32), (int) origin))) reachable = null;
 		if (reachable == null && !placing && !resolvingPreview && work.get() == null) resolve(s, data, null);
 		PreviewSlot cached = previewSlot;
-		if (cached != null && cached.same(tx, ty, append, sx, sy, p, data, reachable)) return cached.preview;
+		if (cached != null && cached.same(tx, ty, append, sx, sy, p, data, reachable, s.config)) return cached.preview;
+		ChartPlotterHull hull = new ChartPlotterHull(s.config);
 		Preview result;
 		if (append && p.size() >= MAX_STOPS) result = new Preview(PV_BAD, tx, ty);
 		else {
-			long t = reachable == null ? ChartPlotterCollisionData.key(tx, ty) : target(data, tx, ty, sx, sy, CLEAR_RADIUS, reachable);
+			long t = reachable == null ? ChartPlotterCollisionData.key(tx, ty) : target(data, tx, ty, sx, sy, CLEAR_RADIUS, reachable, hull);
 			int rx = (int) (t >> 32);
 			int ry = (int) t;
 			result = new Preview(data.flagAt(rx, ry) == ChartPlotterCollisionData.UNKNOWN || reachable != null && !reachable.contains(rx, ry) || append && !p.empty() && ChartPlotterMath.chebyshev(p.x(p.size() - 1), p.y(p.size() - 1), rx, ry) <= CLEAR_RADIUS ? PV_BAD : reachable == null ? PV_PENDING : rx == tx && ry == ty ? PV_OK : PV_SNAP, rx, ry);
 		}
-		previewSlot = new PreviewSlot(tx, ty, append, sx, sy, p, data, reachable, result);
+		previewSlot = new PreviewSlot(tx, ty, append, sx, sy, p, data, reachable, hull, result);
 		return result;
 	}
 	public void tick(WorldView top, WorldEntity ship, LocalPoint loc) {
@@ -334,9 +340,10 @@ public class ChartPlotterRoutes {
 		int y = Math.round(wc.getBoundsY() + (sailing.reversing() ? 1 : -1) * wc.getBoundsHeight() / 2f);
 		return new LocalPoint(ChartPlotterMath.rotateX(loc.getX(), o, x, y), ChartPlotterMath.rotateY(loc.getY(), o, x, y), top);
 	}
-	static long target(ChartPlotterCollisionData data, int tx, int ty, int sx, int sy, int radius, ChartPlotterRouteComponent component) {
+	static long target(ChartPlotterCollisionData data, int tx, int ty, int sx, int sy, int radius, ChartPlotterRouteComponent component, ChartPlotterHull hull) {
 		int flag = data.flagAt(tx, ty);
-		if (flag == ChartPlotterCollisionData.UNKNOWN || flag == ChartPlotterCollisionData.OPEN && (component == null || component.contains(tx, ty))) return ChartPlotterCollisionData.key(tx, ty);
+		boolean open = flag == ChartPlotterCollisionData.OPEN && (component == null || component.contains(tx, ty));
+		if (flag == ChartPlotterCollisionData.UNKNOWN || open && (hull == null || hull.circle(tx + 0.5, ty + 0.5, data::flagAt) == ChartPlotterCollisionData.OPEN)) return ChartPlotterCollisionData.key(tx, ty);
 		int bx = tx;
 		int by = ty;
 		int distance = Integer.MAX_VALUE;
@@ -347,12 +354,14 @@ public class ChartPlotterRoutes {
 			long dy = (long) y - sy;
 			int d = (x - tx) * (x - tx) + (y - ty) * (y - ty);
 			long score = dx * dx + dy * dy;
-			if (d < distance || d == distance && score < best) {bx = x; by = y; distance = d; best = score;}
+			if (d > distance || d == distance && score >= best) continue;
+			if (hull != null && (open && !data.clear(tx + 0.5, ty + 0.5, x + 0.5, y + 0.5) || hull.circle(x + 0.5, y + 0.5, data::flagAt) != ChartPlotterCollisionData.OPEN)) continue;
+			bx = x; by = y; distance = d; best = score;
 		}
-		return ChartPlotterCollisionData.key(bx, by);
+		return distance == Integer.MAX_VALUE && hull != null ? target(data, tx, ty, sx, sy, radius, component, null) : ChartPlotterCollisionData.key(bx, by);
 	}
 	private boolean resolve(Start s, ChartPlotterCollisionData data, Runnable action) {
-		long origin = target(data, s.x, s.y, s.x, s.y, 2, null);
+		long origin = target(data, s.x, s.y, s.x, s.y, 2, null, null);
 		int sx = (int) (origin >> 32);
 		int sy = (int) origin;
 		ChartPlotterRouteComponent cached = component;
@@ -468,7 +477,7 @@ public class ChartPlotterRoutes {
 					int sx = legStartX(current, i, s.x);
 					int sy = legStartY(current, i, s.y);
 					if (i == 0 && s.heading < 0) {
-						long origin = target(data, sx, sy, sx, sy, 2, null);
+						long origin = target(data, sx, sy, sx, sy, 2, null, null);
 						sx = (int) (origin >> 32);
 						sy = (int) origin;
 					}
@@ -639,8 +648,9 @@ public class ChartPlotterRoutes {
 		final Object stops;
 		final ChartPlotterCollisionData data;
 		final ChartPlotterRouteComponent component;
+		final ChartPlotterHull hull;
 		final Preview preview;
-		private PreviewSlot(int tx, int ty, boolean append, int sx, int sy, ChartPlotterTrip trip, ChartPlotterCollisionData data, ChartPlotterRouteComponent component, Preview preview) {
+		private PreviewSlot(int tx, int ty, boolean append, int sx, int sy, ChartPlotterTrip trip, ChartPlotterCollisionData data, ChartPlotterRouteComponent component, ChartPlotterHull hull, Preview preview) {
 			this.tx = tx;
 			this.ty = ty;
 			this.append = append;
@@ -649,9 +659,10 @@ public class ChartPlotterRoutes {
 			stops = trip.stopKey();
 			this.data = data;
 			this.component = component;
+			this.hull = hull;
 			this.preview = preview;
 		}
-		boolean same(int tx, int ty, boolean append, int sx, int sy, ChartPlotterTrip trip, ChartPlotterCollisionData data, ChartPlotterRouteComponent component) {return this.tx == tx && this.ty == ty && this.append == append && this.sx == sx && this.sy == sy && stops == trip.stopKey() && this.data == data && this.component == component;}
+		boolean same(int tx, int ty, boolean append, int sx, int sy, ChartPlotterTrip trip, ChartPlotterCollisionData data, ChartPlotterRouteComponent component, WorldEntityConfig config) {return this.tx == tx && this.ty == ty && this.append == append && this.sx == sx && this.sy == sy && stops == trip.stopKey() && this.data == data && this.component == component && hull.matches(config);}
 	}
 	public static Turn turn(ChartPlotterRoute r, double bx, double by, double speed, double accel, double max, long updated) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0) return Turn.NONE;
