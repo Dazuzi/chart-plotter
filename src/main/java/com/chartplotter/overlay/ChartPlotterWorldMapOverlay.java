@@ -522,7 +522,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		static final StopCache EMPTY = new StopCache();
 		final Shape clip;
 		final int[] hits;
-		final ChartPlotterTrip trip;
+		final Object stops;
 		final float zoom;
 		final int x;
 		final int y;
@@ -533,14 +533,14 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		private StopCache() {
 			clip = null;
 			hits = new int[0];
-			trip = null;
+			stops = null;
 			zoom = 0;
 			x = y = width = height = px = py = 0;
 		}
 		private StopCache(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, int[] hits) {
 			this.clip = clip;
 			this.hits = hits;
-			this.trip = trip;
+			stops = trip.stopKey();
 			zoom = s.z;
 			x = s.r.x;
 			y = s.r.y;
@@ -549,7 +549,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			px = s.pos.getX();
 			py = s.pos.getY();
 		}
-		boolean same(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {return this.clip == clip && this.trip == trip && Float.floatToIntBits(zoom) == Float.floatToIntBits(s.z) && x == s.r.x && y == s.r.y && width == s.r.width && height == s.r.height && px == s.pos.getX() && py == s.pos.getY();}
+		boolean same(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {return this.clip == clip && stops == trip.stopKey() && Float.floatToIntBits(zoom) == Float.floatToIntBits(s.z) && x == s.r.x && y == s.r.y && width == s.r.width && height == s.r.height && px == s.pos.getX() && py == s.pos.getY();}
 	}
 	private static boolean pointVisible(ChartPlotterWorldMap.State s, int x, int y, int pad) {
 		double minX = s.pos.getX() - s.wt / 2.0 - pad;

@@ -10,6 +10,7 @@ import java.util.Collection;
 
 public final class ChartPlotterCollisionScan {
 	static final int EDGE = 8;
+	private static final int[] EMPTY_OBJECTS = new int[0];
 	static boolean ready(WorldView view) {
 		if (view == null || view.isInstance() || view.getPlane() != 0) return false;
 		CollisionData[] maps = view.getCollisionMaps();
@@ -46,7 +47,7 @@ public final class ChartPlotterCollisionScan {
 		if (width <= 0 || height <= 0) return null;
 		int[] copy = new int[width * height];
 		for (int x = minX; x < maxX; x++) for (int y = minY; y < maxY; y++) copy[(x - minX) * height + y - minY] = flags[x] == null || y >= flags[x].length ? ChartPlotterCollisionData.VOID : flags[x][y];
-		int[] objects = new int[blockers.size() * 4];
+		int[] objects = blockers.isEmpty() ? EMPTY_OBJECTS : new int[blockers.size() * 4];
 		int n = 0;
 		for (GameObject object : blockers) {
 			Point min = object.getSceneMinLocation();
@@ -57,6 +58,6 @@ public final class ChartPlotterCollisionScan {
 			objects[n++] = Math.min(maxX - 1, max.getX()) - minX;
 			objects[n++] = Math.min(maxY - 1, max.getY()) - minY;
 		}
-		return new ChartPlotterCollisionScan(wv.getBaseX() + minX, wv.getBaseY() + minY, width, height, copy, Arrays.copyOf(objects, n));
+		return new ChartPlotterCollisionScan(wv.getBaseX() + minX, wv.getBaseY() + minY, width, height, copy, n == 0 ? EMPTY_OBJECTS : n == objects.length ? objects : Arrays.copyOf(objects, n));
 	}
 }

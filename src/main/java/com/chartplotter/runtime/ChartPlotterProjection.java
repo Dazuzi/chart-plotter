@@ -67,9 +67,7 @@ public final class ChartPlotterProjection {
 		if (work != null) work.cancel(true);
 		if (executor != null) executor.getQueue().clear();
 		if (next.blocker.footprint == null) {requested = next; result = null; return;}
-		Path[] previews = new Path[16];
-		for (int i = 0; i < previews.length; i++) previews[i] = raw(next.x, next.y, next.from, i * 128, HORIZON, true, next.preview, null);
-		next.provisional = new Result(next, previews);
+		next.provisional = new Result(next, new Path[16]);
 		requested = next;
 		result = next.provisional;
 		if (executor == null) {
@@ -157,6 +155,8 @@ public final class ChartPlotterProjection {
 		int x = ax;
 		int y = ay;
 		int heading = from;
+		double steppedSpeed = Double.NaN;
+		ChartPlotterSailing.Step step = null;
 		if (motion.horizon == 0 && speed == 0 && motion.maximum > 0) {
 			heading = target;
 			speed = motion.maximum;
@@ -166,7 +166,10 @@ public final class ChartPlotterProjection {
 		for (int i = 0; i < cap; i++) {
 			if (Thread.currentThread().isInterrupted()) {path.unknown = true; path.unknownAt = Math.min(path.unknownAt, path.n); path.clearUntil = Math.min(path.clearUntil, path.n); return path;}
 			if (i >= horizon && !path.unknown) {path.unknown = true; path.unknownAt = path.n;}
-			ChartPlotterSailing.Step step = ChartPlotterSailing.step(speed, motion.acceleration, motion.maximum, heading, target, motion.turn, motion.reverse);
+			if (step == null || heading != target || steppedSpeed != speed) {
+				steppedSpeed = speed;
+				step = ChartPlotterSailing.step(speed, motion.acceleration, motion.maximum, heading, target, motion.turn, motion.reverse);
+			}
 			if (step.x == 0 && step.y == 0 && step.heading == heading) return path;
 			int nx = x + step.x;
 			int ny = y + step.y;
@@ -277,6 +280,7 @@ public final class ChartPlotterProjection {
 		Result(Request request, Path[] paths) {this.request = request; this.paths = paths;}
 		Path limited(int heading, int cap, boolean extension) {
 			for (View view : views) if (view != null && view.heading == heading && view.cap == cap && view.extension == extension) return view.path;
+			if (paths[heading] == null) paths[heading] = raw(request.x, request.y, request.from, heading * 128, HORIZON, true, request.preview, null);
 			Path path = new Path(paths[heading], cap, extension);
 			views[next++ & 31] = new View(heading, cap, extension, path);
 			return path;

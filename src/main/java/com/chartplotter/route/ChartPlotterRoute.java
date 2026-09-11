@@ -167,7 +167,7 @@ public final class ChartPlotterRoute {
 			int dy = y[i] - y[i - 1];
 			int d = motion.dir(dx, dy);
 			if (d < 0) return false;
-			if (previous >= 0 && previous != d && hull.circle.flag(data, x[i - 1], y[i - 1]) != ChartPlotterCollisionData.OPEN && hull.turn[previous * 16 + d].flag(data, x[i - 1], y[i - 1]) != ChartPlotterCollisionData.OPEN) return false;
+			if (previous >= 0 && previous != d && hull.circle.flag(data, x[i - 1], y[i - 1]) != ChartPlotterCollisionData.OPEN && hull.turn(previous, d).flag(data, x[i - 1], y[i - 1]) != ChartPlotterCollisionData.OPEN) return false;
 			int steps = motion.x[d] != 0 ? dx / motion.x[d] : dy / motion.y[d];
 			for (int j = 0; j < steps; j++) {
 				if ((j & 31) == 0 && cancel.getAsBoolean()) return false;

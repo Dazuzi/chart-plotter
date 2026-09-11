@@ -50,15 +50,40 @@ public final class ChartPlotterCollisionData {
 		this.rev = rev;
 		this.scene = scene;
 	}
+	ChartPlotterCollisionData(ChartPlotterCollisionData base, Map<Long, Chunk> changes) {
+		int size = base.size;
+		for (Map.Entry<Long, Chunk> entry : changes.entrySet()) {
+			long key = entry.getKey();
+			if (base.chunks[base.index(key)] != null) size--;
+			if (entry.getValue() != null && !entry.getValue().empty()) size++;
+		}
+		int capacity = base.chunks.length;
+		while (capacity < size * 2) capacity <<= 1;
+		mask = capacity - 1;
+		keys = capacity == base.keys.length ? base.keys.clone() : new long[capacity];
+		chunks = capacity == base.chunks.length ? base.chunks.clone() : new Chunk[capacity];
+		if (capacity != base.chunks.length) for (int i = 0; i < base.chunks.length; i++) if (base.chunks[i] != null) put(base.keys[i], base.chunks[i]);
+		for (Map.Entry<Long, Chunk> entry : changes.entrySet()) {
+			if (entry.getValue() != null && !entry.getValue().empty()) continue;
+			int i = index(entry.getKey());
+			if (chunks[i] == null) continue;
+			chunks[i] = null;
+			for (i = i + 1 & mask; chunks[i] != null; i = i + 1 & mask) {
+				Chunk chunk = chunks[i];
+				chunks[i] = null;
+				put(keys[i], chunk);
+			}
+		}
+		for (Map.Entry<Long, Chunk> entry : changes.entrySet()) if (entry.getValue() != null && !entry.getValue().empty()) put(entry.getKey(), entry.getValue());
+		this.size = size;
+		rev = base.rev;
+		scene = base.scene;
+		pending = Set.of();
+	}
 	public Chunk chunk(int x, int y) {
 		long key = key(x, y);
-		if (pending.contains(key)) return null;
-		int i = hash(key) & mask;
-		while (chunks[i] != null) {
-			if (keys[i] == key) return chunks[i];
-			i = i + 1 & mask;
-		}
-		return null;
+		if (!pending.isEmpty() && pending.contains(key)) return null;
+		return chunks[index(key)];
 	}
 	public int flagAt(int x, int y) {
 		Chunk c = chunk(x >> 3, y >> 3);
@@ -101,13 +126,17 @@ public final class ChartPlotterCollisionData {
 	public boolean pending() {return !pending.isEmpty();}
 	public int capacity() {return chunks.length;}
 	public long keyAt(int i) {return keys[i];}
-	public Chunk chunkAt(int i) {return pending.contains(keys[i]) ? null : chunks[i];}
+	public Chunk chunkAt(int i) {return !pending.isEmpty() && pending.contains(keys[i]) ? null : chunks[i];}
 	public static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private void put(long key, Chunk chunk) {
-		int i = hash(key) & mask;
-		while (chunks[i] != null) i = i + 1 & mask;
+		int i = index(key);
 		keys[i] = key;
 		chunks[i] = chunk;
+	}
+	private int index(long key) {
+		int i = hash(key) & mask;
+		while (chunks[i] != null && keys[i] != key) i = i + 1 & mask;
+		return i;
 	}
 	private static int hash(long x) {
 		x += 0x9e3779b97f4a7c15L;

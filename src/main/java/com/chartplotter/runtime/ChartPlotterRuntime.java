@@ -182,6 +182,8 @@ public final class ChartPlotterRuntime {
 	public void start() {apply();}
 	public void stop() {
 		pendingView = null;
+		pendingBoat = null;
+		pendingAnchor = null;
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
@@ -208,7 +210,9 @@ public final class ChartPlotterRuntime {
 	public void config(ConfigChanged e) {if ("chartplotter".equals(e.getGroup())) apply();}
 	public void varbit(VarbitChanged e) {
 		if (!features.tracking) return;
+		boolean boarded = sailing.boarded();
 		sailing.varbit(e);
+		if (boarded == sailing.boarded()) return;
 		if (sailing.boarded()) {
 			updateScene();
 			return;
@@ -330,6 +334,7 @@ public final class ChartPlotterRuntime {
 		pendingTick = tick;
 		pendingHeading = sailing.heading(ship);
 		courses();
+		if (features.course && pendingView != null) projection.update(top, ship.getConfig(), loc, pendingHeading);
 	}
 	public void clientTick() {
 		courses();
@@ -338,10 +343,7 @@ public final class ChartPlotterRuntime {
 	private void courses() {
 		WorldView top = pendingView;
 		if (top == null) return;
-		if (collisionCache.refreshing()) {
-			if (features.course) projection.update(top, pendingBoat.getConfig(), pendingAnchor, pendingHeading);
-			return;
-		}
+		if (collisionCache.refreshing()) return;
 		pendingView = null;
 		if (features.course) {
 			sailing.observe(pendingTick, collisionCache.snapshot(), pendingBoat.getConfig(), top.getBaseX() * 128 + pendingAnchor.getX(), top.getBaseY() * 128 + pendingAnchor.getY(), pendingHeading);
@@ -431,6 +433,7 @@ public final class ChartPlotterRuntime {
 		if (prev.course && !next.course) projection.clear();
 		if (!next.tracking) sailing.reset();
 		else if (!prev.tracking) clientThread.invoke(() -> {
+			if (!features.tracking) return;
 			sailing.sync();
 			updateScene();
 		});

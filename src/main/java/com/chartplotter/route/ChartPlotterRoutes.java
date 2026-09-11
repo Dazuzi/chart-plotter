@@ -489,11 +489,6 @@ public class ChartPlotterRoutes {
 					reachable = finder.component;
 					if (cancelled.getAsBoolean()) return;
 					if (r.status == ChartPlotterRoute.PENDING) r = ChartPlotterRoute.timedOut(sx, sy, snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort);
-					ChartPlotterCollisionData latest = collisionCache.snapshot();
-					if (latest != data && r.status == ChartPlotterRoute.OK) {
-						ChartPlotterRoute refreshed = r.refresh(latest, cancelled);
-						r = refreshed == null ? ChartPlotterRoute.pending(sx, sy, snapshot.x(i), snapshot.y(i), turnBias, weight).effort(effort) : refreshed;
-					}
 					if (cancelled.getAsBoolean() || updateFailed(id, i, r, s)) return;
 					awaiting[i] = false;
 					if (i == 0 && id == seq.get()) activeBusy = false;

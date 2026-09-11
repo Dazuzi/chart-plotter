@@ -22,13 +22,13 @@ public final class ChartPlotterFeatures {
 		chart = wch || mch || wmch || infoTrip;
 		routes = course || chart;
 		cacheView = cache != ChartPlotterCacheOverlay.OFF;
-		worldOverlay = world || cache.world || nextTurn;
+		worldOverlay = world || cache.world || nextTurn && chart;
 		minimapOverlay = minimap;
 		worldMapOverlay = worldMap || chart || cache.worldMap;
 		infoOverlay = infoTrip || boatSpeed;
-		scene = worldOverlay || mc || mp;
+		scene = worldOverlay;
 		input = chart || minimapOverlay;
-		tracking = routes || cacheView || nextTurn || infoOverlay;
+		tracking = routes || cacheView || infoOverlay;
 	}
 	public static ChartPlotterFeatures of(ChartPlotterConfig config) {return of(config.worldLineMode().on, config.worldProjectedLineMode().on, config.worldChartLine(), config.minimapLineMode().on, config.minimapProjectedLineMode().on, config.minimapChartLine(), config.worldMapLineMode().on, config.worldMapProjectedLineMode().on, config.worldMapChartLine(), config.cacheOverlay(), config.courseTurnEta() != ChartPlotterEtaMode.OFF, config.infoStopProgress() || config.infoTripEta() != ChartPlotterEtaMode.OFF || config.infoStopEta() != ChartPlotterEtaMode.OFF || config.infoTurnEta() != ChartPlotterEtaMode.OFF, config.infoBoatSpeed());}
 	public static ChartPlotterFeatures of(boolean wc, boolean wp, boolean wch, boolean mc, boolean mp, boolean mch, boolean wmc, boolean wmp, boolean wmch, ChartPlotterCacheOverlay cache, boolean nextTurn, boolean infoTrip, boolean boatSpeed) {return new ChartPlotterFeatures(wc, wp, wch, mc, mp, mch, wmc, wmp, wmch, cache, nextTurn, infoTrip, boatSpeed);}

@@ -3,11 +3,13 @@ import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.collision.ChartPlotterHull;
 import net.runelite.api.WorldEntityConfig;
 import java.util.BitSet;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 final class ChartPlotterRouteHull {
 	final Mask[] hull = new Mask[16];
 	final Mask[] move = new Mask[16];
 	final Mask[] point = new Mask[16];
-	final Mask[] turn = new Mask[256];
+	private final AtomicReferenceArray<Mask> turns = new AtomicReferenceArray<>(256);
+	private final BitSet[] arcs = new BitSet[16];
 	final Mask circle;
 	final Mask core;
 	final double offsetX;
@@ -36,7 +38,6 @@ final class ChartPlotterRouteHull {
 		}
 		cells.set(radius + radius * side);
 		core = mask(cells);
-		BitSet[] arcs = new BitSet[16];
 		for (int d = 0; d < 16; d++) {
 			int o = (1024 + d * 128 + (reverse ? 1024 : 0)) & 2047;
 			cells.clear();
@@ -48,16 +49,32 @@ final class ChartPlotterRouteHull {
 			point[d] = mask(cells);
 			add(cells, o, motion.x[d], motion.y[d], 0);
 			move[d] = mask(cells);
-			arcs[d] = new BitSet(side * side);
-			for (int i = 0; i <= 128; i += 16) add(arcs[d], o + i, 0, 0, geometry.rotationPadding);
 		}
-		for (int d = 0; d < 16; d++) for (int next = 0; next < 16; next++) {
-			cells.clear();
-			int change = (next - d + 24 & 15) - 8;
-			if (change == 0) {turn[d * 16 + next] = hull[d]; continue;}
-			if (change == -8) {turn[d * 16 + next] = circle; continue;}
-			for (int i = 0; i < Math.abs(change); i++) cells.or(arcs[change > 0 ? d + i & 15 : d - i - 1 & 15]);
-			turn[d * 16 + next] = mask(cells);
+	}
+	Mask turn(int from, int to) {
+		int change = (to - from + 24 & 15) - 8;
+		if (change == 0) return hull[from];
+		if (change == -8) return circle;
+		Mask cached = turns.get(from * 16 + to);
+		if (cached != null) return cached;
+		synchronized (this) {
+			cached = turns.get(from * 16 + to);
+			if (cached != null) return cached;
+			BitSet cells = new BitSet(side * side);
+			for (int i = 0; i < Math.abs(change); i++) {
+				int d = change > 0 ? from + i & 15 : from - i - 1 & 15;
+				BitSet arc = arcs[d];
+				if (arc == null) {
+					arc = arcs[d] = new BitSet(side * side);
+					int o = ChartPlotterRouteMoves.OR[d] + (reverse ? 1024 : 0);
+					for (int angle = 0; angle <= 128; angle += 16) add(arc, o + angle, 0, 0, geometry.rotationPadding);
+				}
+				cells.or(arc);
+			}
+			cached = mask(cells);
+			turns.set(from * 16 + to, cached);
+			turns.set(to * 16 + from, cached);
+			return cached;
 		}
 	}
 	boolean matches(WorldEntityConfig config) {return geometry.matches(config);}

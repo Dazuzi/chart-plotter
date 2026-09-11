@@ -26,11 +26,6 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 	private final ChartPlotterRoutes routes;
 	private ChartPlotterTrip cachedTrip;
 	private long cachedMotion = Long.MIN_VALUE;
-	private String stopProgress;
-	private String tripEta;
-	private String stopEta;
-	private String turnEta;
-	private String boatSpeed;
 	@Inject
 	ChartPlotterInfoOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterSailing sailing, ChartPlotterRoutes routes) {
 		super(plugin);
@@ -38,6 +33,7 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		this.config = config;
 		this.sailing = sailing;
 		this.routes = routes;
+		setClearChildren(false);
 		setPosition(OverlayPosition.TOP_LEFT);
 		setPriority(PRIORITY_LOW);
 		addMenuEntry(MenuAction.RUNELITE_OVERLAY_CONFIG, OPTION_CONFIGURE, "Chart Plotter info");
@@ -63,30 +59,25 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		if (trip != cachedTrip || motion != cachedMotion) {
 			cachedTrip = trip;
 			cachedMotion = motion;
-			double bx = top.getBaseX() + loc.getX() / (double) Perspective.LOCAL_TILE_SIZE;
-			double by = top.getBaseY() + loc.getY() / (double) Perspective.LOCAL_TILE_SIZE;
+			panelComponent.getChildren().clear();
+			panelComponent.getChildren().add(TitleComponent.builder().text("Chart Plotter").build());
 			if (!trip.empty()) {
-				if (showProgress) stopProgress = trip.stopNumber() + " of " + trip.totalStops();
-				if (showTrip) tripEta = eta(trip, bx, by, true, tripMode);
-				if (showStop) stopEta = eta(trip, bx, by, false, stopMode);
+				double bx = top.getBaseX() + loc.getX() / (double) Perspective.LOCAL_TILE_SIZE;
+				double by = top.getBaseY() + loc.getY() / (double) Perspective.LOCAL_TILE_SIZE;
+				if (showProgress) panelComponent.getChildren().add(LineComponent.builder().left("Stop").right(trip.stopNumber() + " of " + trip.totalStops()).build());
+				if (showTrip) panelComponent.getChildren().add(LineComponent.builder().left("Trip ETA").right(eta(trip, bx, by, true, tripMode)).build());
+				if (showStop) panelComponent.getChildren().add(LineComponent.builder().left("Next stop").right(eta(trip, bx, by, false, stopMode)).build());
 				if (showTurn) {
 					ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(trip.active(), bx, by, sailing.reversing() ? -sailing.speed() : sailing.speed(), sailing.accel(), sailing.maxSpeed(), motion);
-					turnEta = !turn.valid || turn.end ? "-" : sailing.speed() == 0 ? "Stopped" : time(turn.ticks, turnMode);
+					panelComponent.getChildren().add(LineComponent.builder().left("Next turn").right(!turn.valid || turn.end ? "-" : sailing.speed() == 0 ? "Stopped" : time(turn.ticks, turnMode)).build());
 				}
 			}
-			if (showSpeed) boatSpeed = Double.toString(sailing.speed());
+			if (showSpeed) panelComponent.getChildren().add(LineComponent.builder().left("Speed").right(Double.toString(sailing.speed())).build());
 		}
-		panelComponent.getChildren().add(TitleComponent.builder().text("Chart Plotter").build());
-		if (!trip.empty()) {
-			if (showProgress) panelComponent.getChildren().add(LineComponent.builder().left("Stop").right(stopProgress).build());
-			if (showTrip) panelComponent.getChildren().add(LineComponent.builder().left("Trip ETA").right(tripEta).build());
-			if (showStop) panelComponent.getChildren().add(LineComponent.builder().left("Next stop").right(stopEta).build());
-			if (showTurn) panelComponent.getChildren().add(LineComponent.builder().left("Next turn").right(turnEta).build());
-		}
-		if (showSpeed) panelComponent.getChildren().add(LineComponent.builder().left("Speed").right(boatSpeed).build());
 		return super.render(g);
 	}
 	public void clear() {
+		panelComponent.getChildren().clear();
 		cachedTrip = null;
 		cachedMotion = Long.MIN_VALUE;
 	}

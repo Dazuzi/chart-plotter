@@ -134,8 +134,10 @@ public final class ChartPlotterTrip {
 		return new ChartPlotterTrip(generation, completed, x, y, next);
 	}
 	ChartPlotterTrip route(int i, ChartPlotterRoute route) {
+		ChartPlotterRoute next = route != null && route.status == ChartPlotterRoute.PENDING && routes[i] != null && routes[i].status == ChartPlotterRoute.OK && routes[i].tx == route.tx && routes[i].ty == route.ty ? routes[i].recalculate() : route;
+		if (next == routes[i]) return this;
 		ChartPlotterRoute[] nr = routes.clone();
-		nr[i] = route != null && route.status == ChartPlotterRoute.PENDING && nr[i] != null && nr[i].status == ChartPlotterRoute.OK && nr[i].tx == route.tx && nr[i].ty == route.ty ? nr[i].recalculate() : route;
+		nr[i] = next;
 		return new ChartPlotterTrip(generation, completed, x, y, nr);
 	}
 }

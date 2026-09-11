@@ -164,6 +164,7 @@ public class ChartPlotterCollisionCache {
 			Map<Long, Builder> recorded = new HashMap<>();
 			Map<Long, Builder> current = new HashMap<>();
 			for (ChartPlotterCollisionScan scan : scans) {
+				if (io != ex || generation != scene) return;
 				for (int sx = 0; sx < scan.width; sx++) for (int sy = 0; sy < scan.height; sy++) {
 					int f = scan.flags[sx * scan.height + sy];
 					int x = scan.baseX + sx;
@@ -178,24 +179,32 @@ public class ChartPlotterCollisionCache {
 				rev++;
 				scheduleFlush(ex, 30);
 			}
-			if (liveScene != scene) {live.clear(); liveScene = scene;}
+			boolean changedScene = liveScene != scene;
+			if (changedScene) {live.clear(); liveScene = scene;}
+			ChartPlotterCollisionData previousView = view;
+			Map<Long, Chunk> changes = new HashMap<>();
 			for (Map.Entry<Long, Builder> entry : current.entrySet()) {
 				long key = entry.getKey();
-				live.put(key, entry.getValue().chunk(live.getOrDefault(key, chunks.get(key))));
+				Chunk previous = live.getOrDefault(key, chunks.get(key));
+				Chunk next = entry.getValue().chunk(previous);
+				live.put(key, next);
+				if (!changedScene && previousView.chunk((int) (key >> 32), (int) key) != (next.empty() ? null : next)) changes.put(key, next);
 			}
-			publish(ex, scene, versions);
+			if (changedScene) publish(ex, scene, versions);
+			else publish(ex, scene, versions, changes.isEmpty() ? previousView : new ChartPlotterCollisionData(previousView, changes));
 		}
 	}
 	private void publish(ScheduledExecutorService ex, long scene, Map<Long, Long> versions) {
 		Map<Long, Chunk> combined = new HashMap<>(chunks);
 		if (liveScene == scene) combined.putAll(live);
 		ChartPlotterCollisionData next = new ChartPlotterCollisionData(combined);
-		synchronized (this) {
-			if (io != ex || generation != scene) return;
-			for (Map.Entry<Long, Long> entry : versions.entrySet()) pending.remove(entry.getKey(), entry.getValue());
-			view = new ChartPlotterCollisionData(next, Set.of(), ++publication, scene);
-			published = pending.isEmpty() ? view : new ChartPlotterCollisionData(view, pending.keySet(), publication, scene);
-		}
+		publish(ex, scene, versions, next);
+	}
+	private synchronized void publish(ScheduledExecutorService ex, long scene, Map<Long, Long> versions, ChartPlotterCollisionData next) {
+		if (io != ex || generation != scene) return;
+		for (Map.Entry<Long, Long> entry : versions.entrySet()) pending.remove(entry.getKey(), entry.getValue());
+		view = new ChartPlotterCollisionData(next, Set.of(), ++publication, scene);
+		published = pending.isEmpty() ? view : new ChartPlotterCollisionData(view, pending.keySet(), publication, scene);
 	}
 	private static void putObject(Map<Long, Builder> data, ChartPlotterCollisionScan scan, int i) {
 		for (int sx = scan.objects[i]; sx <= scan.objects[i + 2]; sx++) {
@@ -332,8 +341,9 @@ public class ChartPlotterCollisionCache {
 			else blocked &= ~bit;
 		}
 		Chunk chunk(Chunk base) {
-			if (base == null) return new Chunk(known, blocked & known);
-			return new Chunk(base.known & ~present | known, (base.blocked & ~present | blocked) & (base.known & ~present | known));
+			long nextKnown = base == null ? known : base.known & ~present | known;
+			long nextBlocked = (base == null ? blocked : base.blocked & ~present | blocked) & nextKnown;
+			return base != null && base.known == nextKnown && base.blocked == nextBlocked ? base : new Chunk(nextKnown, nextBlocked);
 		}
 	}
 }

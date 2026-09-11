@@ -337,7 +337,7 @@ final class ChartPlotterRouteFinder {
 		if (a == b) return false;
 		int tile = terrain == null ? -1 : terrain.at(x, y);
 		if (tile >= 0 && pages != null && pages[tile >>> 8] != null) return !freeTurn(tile) && turnBlocked(tile, a, b);
-		return hull.circle.flag(data, x, y) != ChartPlotterCollisionData.OPEN && hull.turn[a * 16 + b].flag(data, x, y) != ChartPlotterCollisionData.OPEN;
+		return hull.circle.flag(data, x, y) != ChartPlotterCollisionData.OPEN && hull.turn(a, b).flag(data, x, y) != ChartPlotterCollisionData.OPEN;
 	}
 	private boolean turnBlocked(int a, int from, int to) {
 		int change = (to - from + 24 & 15) - 8;
@@ -351,7 +351,7 @@ final class ChartPlotterRouteFinder {
 		for (int missing = mask & ~(flags >>> 16); missing != 0; missing &= missing - 1) {
 			int d = Integer.numberOfTrailingZeros(missing);
 			flags |= 1 << (d + 16);
-			if (!hull.turn[d * 16 + (d + 1 & 15)].clear(terrain, a)) {page[index] = flags; return true;}
+			if (!hull.turn(d, d + 1 & 15).clear(terrain, a)) {page[index] = flags; return true;}
 			flags |= 1 << d;
 		}
 		page[index] = flags;
