@@ -28,6 +28,7 @@ public final class ChartPlotterProjection {
 	private final ChartPlotterCollisionCache collisionCache;
 	private volatile Request requested;
 	volatile Result result;
+	private Result preview;
 	ThreadPoolExecutor executor;
 	private Future<?> work;
 	@Inject
@@ -67,6 +68,7 @@ public final class ChartPlotterProjection {
 	synchronized void queue(Request next) {
 		if (work != null) work.cancel(false);
 		if (executor != null) executor.getQueue().clear();
+		preview = null;
 		if (next.blocker.footprint == null) {requested = next; result = null; return;}
 		next.provisional = new Result(next, new Path[16]);
 		requested = next;
@@ -98,6 +100,7 @@ public final class ChartPlotterProjection {
 	public synchronized void clear() {
 		requested = null;
 		result = null;
+		preview = null;
 		if (work != null) work.cancel(false);
 		work = null;
 		if (executor != null) executor.shutdownNow();
@@ -107,8 +110,13 @@ public final class ChartPlotterProjection {
 	public Path path(WorldView view, WorldEntityConfig config, LocalPoint anchor, int from, int target, int cap, boolean extension) {
 		Result cached = result;
 		Request request = cached == null ? requested : cached.request;
-		if (cached == null || request == null || !request.same(view, config, anchor, from) || target < 0 || target > 2047 || (target & 127) != 0) return request != null && request.x == anchor.getX() && request.y == anchor.getY() && request.from == from ? request.empty : empty(anchor.getX(), anchor.getY(), from);
-		if (!request.motion.same(sailing.forecast) || request.blocker.data != collisionCache.snapshot() || collisionCache.refreshing()) cached = request.provisional;
+		if (cached == null || request == null || !request.same(view, config) || target < 0 || target > 2047 || (target & 127) != 0) return request != null && request.x == anchor.getX() && request.y == anchor.getY() && request.from == from ? request.empty : empty(anchor.getX(), anchor.getY(), from);
+		ChartPlotterSailing.Forecast motion = sailing.forecast == ChartPlotterSailing.Forecast.UNKNOWN ? sailing.preview(true) : null;
+		if (!request.same(view, config, anchor, from) || !request.motion.same(sailing.forecast) || motion != null && !request.preview.same(motion)) {
+			if (motion == null) motion = sailing.preview(true);
+			if (preview == null || !preview.request.same(view, config, anchor, from) || !preview.request.preview.same(motion)) preview = new Result(new Request(view, request.plane, anchor.getX(), anchor.getY(), from, sailing.forecast, motion, request.blocker), new Path[16]);
+			cached = preview;
+		} else if (request.blocker.data != collisionCache.snapshot() || collisionCache.refreshing()) cached = request.provisional;
 		return cached.limited(target >>> 7, Math.max(0, Math.min(cap, HORIZON)), extension);
 	}
 	Path raw(int baseX, int baseY, WorldEntityConfig config, LocalPoint anchor, int from, int target, int cap, boolean extension) {return raw(anchor.getX(), anchor.getY(), from, target, cap, extension, sailing.forecast, new Blocker(baseX, baseY, collisionCache.snapshot(), config == null ? null : new ChartPlotterHull(config)), () -> false);}
@@ -269,7 +277,8 @@ public final class ChartPlotterProjection {
 		final Path empty;
 		Result provisional;
 		Request(WorldView view, int plane, int x, int y, int from, ChartPlotterSailing.Forecast motion, ChartPlotterSailing.Forecast preview, Blocker blocker) {this.view = view; this.plane = plane; this.x = x; this.y = y; this.from = from; this.motion = motion; this.preview = preview; this.blocker = blocker; empty = empty(x, y, from);}
-		boolean same(WorldView view, WorldEntityConfig config, LocalPoint anchor, int from) {return this.view == view && plane == view.getPlane() && blocker.baseX == view.getBaseX() && blocker.baseY == view.getBaseY() && x == anchor.getX() && y == anchor.getY() && this.from == from && (config == null ? blocker.footprint == null : blocker.footprint != null && blocker.footprint.matches(config));}
+		boolean same(WorldView view, WorldEntityConfig config, LocalPoint anchor, int from) {return x == anchor.getX() && y == anchor.getY() && this.from == from && same(view, config);}
+		boolean same(WorldView view, WorldEntityConfig config) {return this.view == view && plane == view.getPlane() && blocker.baseX == view.getBaseX() && blocker.baseY == view.getBaseY() && (config == null ? blocker.footprint == null : blocker.footprint != null && blocker.footprint.matches(config));}
 	}
 	static final class Result {
 		final Request request;

@@ -1,6 +1,10 @@
 package com.chartplotter.overlay;
 
-import com.chartplotter.*;
+import com.chartplotter.ChartPlotterCacheOverlay;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterEtaMode;
+import com.chartplotter.ChartPlotterLineMode;
+import com.chartplotter.ChartPlotterPlugin;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
@@ -9,8 +13,15 @@ import com.chartplotter.route.ChartPlotterRoutes;
 import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterScene;
-import net.runelite.api.*;
+import net.runelite.api.Client;
+import net.runelite.api.Constants;
+import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.Perspective;
 import net.runelite.api.Point;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldEntityConfig;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -18,7 +29,11 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.TextComponent;
 
 import javax.inject.Inject;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.Stroke;
 import java.awt.geom.Path2D;
 
 public class ChartPlotterOverlay extends Overlay {
@@ -47,8 +62,7 @@ public class ChartPlotterOverlay extends Overlay {
 	private final float[] ry = new float[4];
 	private double routeSpeed = Double.NaN;
 	private ChartPlotterRouteMoves.Model routeModel;
-	private final int[] headingLX = new int[16];
-	private final int[] headingLY = new int[16];
+	private final int[] headingSides = new int[16];
 	private final float[] headingX = {0, 0};
 	private final float[] headingY = {1000, -1000};
 	private final float[] headingZ = {0, 0};
@@ -446,7 +460,7 @@ public class ChartPlotterOverlay extends Overlay {
 		Point m = eligibleMouse(client, plugin);
 		if (m == null) return -1;
 		if (outsideViewport(client, m) || headingInactive(client, wv)) return -1;
-		return sceneHeading(client, wv, anchor, m, headingLX, headingLY, headingX, headingY, headingZ, headingCX, headingCY);
+		return sceneHeading(client, wv, anchor, m, headingSides, headingX, headingY, headingZ, headingCX, headingCY);
 	}
 	public static Point eligibleMouse(Client client, ChartPlotterPlugin plugin) {
 		Point m = client.getMouseCanvasPosition();
@@ -469,9 +483,9 @@ public class ChartPlotterOverlay extends Overlay {
 		return sceneHeading(client, wv, anchor, mouse);
 	}
 	private static int sceneHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse) {
-		return sceneHeading(client, wv, anchor, mouse, new int[16], new int[16], new float[]{0, 0}, new float[]{1000, -1000}, new float[]{0, 0}, new int[2], new int[2]);
+		return sceneHeading(client, wv, anchor, mouse, new int[16], new float[]{0, 0}, new float[]{1000, -1000}, new float[]{0, 0}, new int[2], new int[2]);
 	}
-	private static int sceneHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse, int[] lx, int[] ly, float[] x, float[] y, float[] z, int[] cx, int[] cy) {
+	private static int sceneHeading(Client client, WorldView wv, LocalPoint anchor, Point mouse, int[] sides, float[] x, float[] y, float[] z, int[] cx, int[] cy) {
 		Point center = Perspective.localToCanvas(client, anchor, 0);
 		if (center == null || mouse == null) return -1;
 		int n = 16;
@@ -481,16 +495,18 @@ public class ChartPlotterOverlay extends Overlay {
 			cy[0] = 0;
 			cy[1] = 0;
 			Perspective.modelToCanvas(client, wv, 2, anchor.getX(), anchor.getY(), 0, 64 + TURN * i, x, y, z, cx, cy);
-			if (cx[1] == Integer.MIN_VALUE) return -1;
-			lx[i] = cx[1];
-			ly[i] = cy[1];
+			sides[i] = headingSide(center, mouse, cx, cy);
+			if (sides[i] == Integer.MIN_VALUE) return -1;
 		}
 		for (int i = 0; i < n - 1; i++) {
-			int a = side(center.getX(), center.getY(), lx[i], ly[i], mouse.getX(), mouse.getY());
-			int b = side(center.getX(), center.getY(), lx[i + 1], ly[i + 1], mouse.getX(), mouse.getY());
-			if (a >= 0 && b < 0) return TURN + i * TURN;
+			if (sides[i] >= 0 && sides[i + 1] < 0) return TURN + i * TURN;
 		}
 		return 0;
 	}
-	private static int side(int x1, int y1, int x2, int y2, int x, int y) {return (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);}
+	static int headingSide(Point center, Point mouse, int[] x, int[] y) {
+		int i = x[1] == Integer.MIN_VALUE ? 0 : 1;
+		if (x[i] == Integer.MIN_VALUE) return Integer.MIN_VALUE;
+		int side = Long.signum(((long) x[i] - center.getX()) * (mouse.getY() - center.getY()) - ((long) y[i] - center.getY()) * (mouse.getX() - center.getX()));
+		return i == 0 ? -side : side;
+	}
 }
