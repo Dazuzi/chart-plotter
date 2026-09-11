@@ -90,8 +90,8 @@ public final class ChartPlotterRoute {
 		System.arraycopy(path, 0, connected, 1, path.length);
 		return connected;
 	}
-	public double departureX(int i) {return (int) (departure[i] >> 32) + (i + 1 == departure.length ? offsetX : 0.5);}
-	public double departureY(int i) {return (int) departure[i] + (i + 1 == departure.length ? offsetY : 0.5);}
+	public double departureX(int i) {return (int) (departure[i] >> 32) + (i + 1 == departure.length || i == 0 && heading >= 0 ? offsetX : 0.5);}
+	public double departureY(int i) {return (int) departure[i] + (i + 1 == departure.length || i == 0 && heading >= 0 ? offsetY : 0.5);}
 	public double connectionX(int i) {return (int) (connection[i] >> 32) + (i == 0 ? offsetX : 0.5);}
 	public double connectionY(int i) {return (int) connection[i] + (i == 0 ? offsetY : 0.5);}
 	public ChartPlotterRoute effort(ChartPlotterRouteEffort effort) {return new ChartPlotterRoute(status, sx, sy, tx, ty, x, y, n, source, target, departure, connection, motion, hull, heading, turnBias, weight, effort, time, updated, recalculating);}
@@ -132,6 +132,7 @@ public final class ChartPlotterRoute {
 		int step = steps == 0 ? 0 : Math.max(0, Math.min(steps, (int) Math.ceil(progress * steps + lead * steps / Math.hypot(dx, dy))));
 		int px = steps == 0 ? x[segment] : x[segment] + dx / steps * step;
 		int py = steps == 0 ? y[segment] : y[segment] + dy / steps * step;
+		if (Math.hypot(sx - px - offsetX, sy - py - offsetY) > follow) return this;
 		int skip = segment + (step == steps ? 2 : 1);
 		if (skip == 1 && px == x[0] && py == y[0]) return this;
 		int[] nx = new int[n - skip + 1];
@@ -147,10 +148,14 @@ public final class ChartPlotterRoute {
 	}
 	private boolean departureClear(ChartPlotterCollisionData data) {
 		if (status != OK || hull == null || motion == null || n == 0) return false;
-		int previous = heading < 0 ? -1 : ((((heading - 1024 + 64) & 2047) >>> 7) + (hull.reverse ? 8 : 0)) & 15;
-		if (hull.flag(data, x[0], y[0], previous) != ChartPlotterCollisionData.OPEN) return false;
+		if (heading < 0 || x[0] != sx || y[0] != sy) return hull.flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN;
+		return connected(data, x[0] + offsetX, y[0] + offsetY, heading);
+	}
+	boolean connected(ChartPlotterCollisionData data, double ax, double ay, int from) {
+		if (status != OK || hull == null || motion == null || n == 0) return false;
 		int d = n < 2 ? -1 : motion.dir(x[1] - x[0], y[1] - y[0]);
-		return previous < 0 || d < 0 || previous == d || hull.circle.flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN || hull.turn[previous * 16 + d].flag(data, x[0], y[0]) == ChartPlotterCollisionData.OPEN;
+		int to = d < 0 ? from : ChartPlotterRouteMoves.OR[d] + (hull.reverse ? 1024 : 0) & 2047;
+		return hull.geometry.sweep(data, ax, ay, from, ax, ay, to) == ChartPlotterCollisionData.OPEN && hull.geometry.sweep(data, ax, ay, to, x[0] + offsetX, y[0] + offsetY, to) == ChartPlotterCollisionData.OPEN;
 	}
 	boolean valid(ChartPlotterCollisionData data, BooleanSupplier cancel) {
 		if (cancel.getAsBoolean() || !departureClear(data) || target == null || !target.contains(x[n - 1], y[n - 1])) return false;

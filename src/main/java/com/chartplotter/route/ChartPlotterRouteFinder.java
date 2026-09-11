@@ -17,6 +17,8 @@ final class ChartPlotterRouteFinder {
 	final int ty;
 	final int bias;
 	final int weight;
+	final int heading;
+	int startBlocked;
 	final BooleanSupplier cancel;
 	ChartPlotterRouteTerrain terrain;
 	ChartPlotterRouteHull hull;
@@ -45,9 +47,16 @@ final class ChartPlotterRouteFinder {
 	private int costLimit = Integer.MAX_VALUE;
 	private boolean exact;
 	ChartPlotterRouteFinder(ChartPlotterCollisionData data, WorldEntityConfig config, int sx, int sy, int tx, int ty, int bias, double speed, int weight, BooleanSupplier cancel) {
+		this(data, config, sx, sy, tx, ty, bias, speed, weight, 0.5, 0.5, -1, cancel);
+	}
+	ChartPlotterRouteFinder(ChartPlotterCollisionData data, WorldEntityConfig config, int sx, int sy, int tx, int ty, int bias, double speed, int weight, double offsetX, double offsetY, int heading, BooleanSupplier cancel) {
 		this.data = data;
 		this.config = config;
-		motion = new ChartPlotterRouteMotion(speed, 0.5, 0.5);
+		ChartPlotterRouteMotion movement;
+		try {movement = new ChartPlotterRouteMotion(speed, offsetX, offsetY);}
+		catch (ArithmeticException limit) {movement = null;}
+		motion = movement;
+		this.heading = heading;
 		this.sx = sx;
 		this.sy = sy;
 		this.tx = tx;
@@ -58,8 +67,9 @@ final class ChartPlotterRouteFinder {
 		this.cancel = cancel;
 	}
 	ChartPlotterRoute find() {
+		if (motion == null) return result(ChartPlotterRoute.COMPLEX);
 		ChartPlotterRoute route = search();
-		if (route.status == ChartPlotterRoute.OK && (route.x[route.n - 1] != tx || route.y[route.n - 1] != ty) && hull.flag(data, tx, ty, -1) == ChartPlotterCollisionData.OPEN && !cancel.getAsBoolean()) {
+		if (route.status == ChartPlotterRoute.OK && (route.x[route.n - 1] != tx || route.y[route.n - 1] != ty) && hull.flag(data, tx, ty) == ChartPlotterCollisionData.OPEN && !cancel.getAsBoolean()) {
 			int fallbackCost = routeCost;
 			exact = true;
 			toGoal = null;
@@ -89,12 +99,13 @@ final class ChartPlotterRouteFinder {
 			}
 			routeCost = routeCost(route);
 		}
-		route = route.plan(motion, hull, -1);
+		route = route.plan(motion, hull, heading);
 		if (heap != null) peakOpen = Math.max(peakOpen, heap.peak);
 		return route.status == ChartPlotterRoute.OK ? route.connect(data, source, target) : route;
 	}
 	private ChartPlotterRoute search() {
 		if (cancel.getAsBoolean()) return result(ChartPlotterRoute.PENDING);
+		if (heading >= 0 && config == null) return result(ChartPlotterRoute.UNCHARTED);
 		int startFlag = data.flagAt(sx, sy);
 		int goalFlag = data.flagAt(tx, ty);
 		if (startFlag == ChartPlotterCollisionData.UNKNOWN || goalFlag == ChartPlotterCollisionData.UNKNOWN) return result(ChartPlotterRoute.UNCHARTED);
@@ -102,7 +113,19 @@ final class ChartPlotterRouteFinder {
 		if (target == null) target = ChartPlotterRouteTarget.create(data, tx, ty, cancel);
 		if (source == null) source = ChartPlotterRouteTarget.create(data, sx, sy, cancel);
 		if (target == null || source == null) return result(ChartPlotterRoute.PENDING);
-		if (hull == null) hull = new ChartPlotterRouteHull(config, motion, 0, false);
+		if (hull == null) {
+			try {hull = new ChartPlotterRouteHull(config, motion, 0, false);}
+			catch (ArithmeticException limit) {return result(ChartPlotterRoute.COMPLEX);}
+			if (heading >= 0) {
+				double x = sx + motion.offsetX;
+				double y = sy + motion.offsetY;
+				for (int d = 0; d < 16; d++) if (hull.geometry.sweep(data, x, y, heading, x, y, ChartPlotterRouteMoves.OR[d]) != ChartPlotterCollisionData.OPEN) startBlocked |= 1 << d;
+			}
+		}
+		if (heading >= 0) {
+			int flag = hull.geometry.pose(data, sx + motion.offsetX, sy + motion.offsetY, heading);
+			if (flag == ChartPlotterCollisionData.UNKNOWN) return result(ChartPlotterRoute.UNCHARTED);
+		}
 		int departureRadius = radius(sx, sy);
 		int bx = sx;
 		int by = sy;
@@ -112,9 +135,9 @@ final class ChartPlotterRouteFinder {
 			if (cancel.getAsBoolean()) return result(ChartPlotterRoute.PENDING);
 			for (int y = sy - r; y <= sy + r; y++) for (int x = sx - r; x <= sx + r; x++) {
 				if (Math.max(Math.abs(x - sx), Math.abs(y - sy)) != r || !source.contains(x, y)) continue;
-				int flag = hull.flag(data, x, y, -1);
+				int flag = hull.flag(data, x, y);
 				unknown |= flag == ChartPlotterCollisionData.UNKNOWN;
-				if (flag != ChartPlotterCollisionData.OPEN) continue;
+				if (flag != ChartPlotterCollisionData.OPEN || x == sx && y == sy && startBlocked == 65535) continue;
 				int d = (x - sx) * (x - sx) + (y - sy) * (y - sy);
 				if (d < distance || d == distance && Math.hypot(x - tx, y - ty) < Math.hypot(bx - tx, by - ty)) {bx = x; by = y; distance = d;}
 			}
@@ -139,7 +162,7 @@ final class ChartPlotterRouteFinder {
 		for (int r = 0; !exact && r <= radius; r++) {
 			int best = Integer.MAX_VALUE;
 			for (int y = ty - r; y <= ty + r; y++) for (int x = tx - r; x <= tx + r; x++) {
-				if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) != r || !target.contains(x, y) || hull.flag(data, x, y, -1) != ChartPlotterCollisionData.OPEN) continue;
+				if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) != r || !target.contains(x, y) || hull.flag(data, x, y) != ChartPlotterCollisionData.OPEN) continue;
 				arrival = true;
 				ChartPlotterRoute candidate = direct(bx, by, x, y, true);
 				if (candidate != null && routeCost < best) {direct = candidate; best = routeCost;}
@@ -177,7 +200,7 @@ final class ChartPlotterRouteFinder {
 				if (a < 0 || !source.contains(x, y)) continue;
 				int g = (int) (1000 * Math.hypot(x - sx, y - sy));
 				for (int d = 0; d < 16; d++) {
-					if (!hull.hull[d].clear(terrain, a)) continue;
+					if (x == sx && y == sy && (startBlocked & 1 << d) != 0 || !hull.hull[d].clear(terrain, a)) continue;
 					int h = toGoal.get(a);
 					if (h < 0) return result(ChartPlotterRoute.PENDING);
 					if (h > 0) add(a * 16 + d, g, 0, h);
@@ -285,6 +308,7 @@ final class ChartPlotterRouteFinder {
 		return -1;
 	}
 	private boolean departureBlocked(int d, int steps) {
+		if (directX == sx && directY == sy && (startBlocked & 1 << d) != 0) return true;
 		if (steps <= directClear[d]) return false;
 		if ((directBlocked & 1 << d) != 0) return true;
 		while (directClear[d] < steps) {

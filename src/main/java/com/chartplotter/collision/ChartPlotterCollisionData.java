@@ -3,6 +3,7 @@ package com.chartplotter.collision;
 import net.runelite.api.CollisionDataFlag;
 
 import java.util.Map;
+import java.util.Set;
 
 public final class ChartPlotterCollisionData {
 	public static final int UNKNOWN = -1;
@@ -15,10 +16,15 @@ public final class ChartPlotterCollisionData {
 	private final int mask;
 	private final int size;
 	public final long rev;
+	public final long scene;
+	private final Set<Long> pending;
 	public ChartPlotterCollisionData(Map<Long, Chunk> base) {
 		this(base, 0);
 	}
 	public ChartPlotterCollisionData(Map<Long, Chunk> base, long rev) {
+		this(base, rev, 0);
+	}
+	public ChartPlotterCollisionData(Map<Long, Chunk> base, long rev, long scene) {
 		int capacity = 1;
 		while (capacity < base.size() * 2) capacity <<= 1;
 		keys = new long[capacity];
@@ -32,9 +38,21 @@ public final class ChartPlotterCollisionData {
 		}
 		this.size = size;
 		this.rev = rev;
+		this.scene = scene;
+		pending = Set.of();
+	}
+	ChartPlotterCollisionData(ChartPlotterCollisionData base, Set<Long> pending, long rev, long scene) {
+		keys = base.keys;
+		chunks = base.chunks;
+		mask = base.mask;
+		size = base.size;
+		this.pending = Set.copyOf(pending);
+		this.rev = rev;
+		this.scene = scene;
 	}
 	public Chunk chunk(int x, int y) {
 		long key = key(x, y);
+		if (pending.contains(key)) return null;
 		int i = hash(key) & mask;
 		while (chunks[i] != null) {
 			if (keys[i] == key) return chunks[i];
@@ -80,9 +98,10 @@ public final class ChartPlotterCollisionData {
 		return c == null || c.empty();
 	}
 	public int size() {return size;}
+	public boolean pending() {return !pending.isEmpty();}
 	public int capacity() {return chunks.length;}
 	public long keyAt(int i) {return keys[i];}
-	public Chunk chunkAt(int i) {return chunks[i];}
+	public Chunk chunkAt(int i) {return pending.contains(keys[i]) ? null : chunks[i];}
 	public static long key(int x, int y) {return (long) x << 32 ^ y & 0xffffffffL;}
 	private void put(long key, Chunk chunk) {
 		int i = hash(key) & mask;

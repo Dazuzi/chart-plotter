@@ -4,7 +4,8 @@ final class ChartPlotterRouteSmoother {
 	private ChartPlotterRouteSmoother() {}
 	static ChartPlotterRoute smooth(ChartPlotterRouteFinder search, ChartPlotterRoute route) {
 		ChartPlotterRouteMotion motion = search.motion;
-		int direction = route.heading < 0 ? -1 : ((((route.heading - 1024 + 64) & 2047) >>> 7) + (search.hull.reverse ? 8 : 0)) & 15;
+		boolean anchored = route.x[0] == search.sx && route.y[0] == search.sy;
+		int direction = search.heading < 0 || !anchored ? -1 : ((((search.heading - 1024 + 64) & 2047) >>> 7) + (search.hull.reverse ? 8 : 0)) & 15;
 		while (route.n > 2 && !search.cancel.getAsBoolean()) {
 			int bestI = -1;
 			int bestJ = 0;
@@ -56,7 +57,7 @@ final class ChartPlotterRouteSmoother {
 						long mx = route.x[i] + a * motion.x[d];
 						long my = route.y[i] + a * motion.y[d];
 						if (mx < Integer.MIN_VALUE || mx > Integer.MAX_VALUE || my < Integer.MIN_VALUE || my > Integer.MAX_VALUE) continue;
-						if (before >= 0 && search.turnBlocked(route.x[i], route.y[i], before, d) || after >= 0 && search.turnBlocked(route.x[j], route.y[j], e, after)) continue;
+						if (i == 0 && anchored && (search.startBlocked & 1 << d) != 0 || before >= 0 && search.turnBlocked(route.x[i], route.y[i], before, d) || after >= 0 && search.turnBlocked(route.x[j], route.y[j], e, after)) continue;
 						if (search.lineBlocked(route.x[i], route.y[i], d, (int) a) || b > 0 && (search.turnBlocked((int) mx, (int) my, d, e) || search.lineBlocked((int) mx, (int) my, e, (int) b))) continue;
 						bestI = i;
 						bestJ = j;

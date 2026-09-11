@@ -23,7 +23,7 @@ public interface ChartPlotterConfig extends Config {
 	@ConfigItem(keyName = "chartColor", name = "Charted color", description = "Lines and markers for charted trips.", section = colorsSection, position = 2)
 	default Color chartColor() {return DEFAULT_CHART_COLOR;}
 	@Alpha
-	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Line section after the first blocked tile.", section = colorsSection, position = 3)
+	@ConfigItem(keyName = "blockedColor", name = "Blocked color", description = "Line section beyond predicted contact ahead.", section = colorsSection, position = 3)
 	default Color blockedColor() {return DEFAULT_BLOCKED_COLOR;}
 	@ConfigSection(name = "World", description = "World overlay settings.", position = 1)
 	String worldSection = "worldSection";
@@ -88,6 +88,4 @@ public interface ChartPlotterConfig extends Config {
 	String tweaksSection = "tweaksSection";
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision-cache coverage.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
-	@ConfigItem(keyName = "sailingSlide", name = "Slide model", description = "(Experimental) Course projection: turn gradually from heading and slide along walls.", section = tweaksSection, position = 7)
-	default boolean sailingSlide() {return false;}
 }

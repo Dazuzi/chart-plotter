@@ -128,8 +128,8 @@ public class ChartPlotterOverlay extends Overlay {
 				ChartPlotterProjection.Path cur = showCourse ? projection.path(top, wc, anchor, from, course, courseMode.blocked) : null;
 				ChartPlotterProjection.Path pot = mouse >= 0 ? projection.path(top, wc, anchor, from, mouse, projectedMode.blocked) : null;
 				int skip = cur != null && pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
-				if (cur != null) draw(g, top, cur, rx, ry, config.lineColor(), skip);
-				if (pot != null) draw(g, top, pot, rx, ry, config.potentialColor(), 0);
+				if (cur != null) draw(g, top, area, cur, rx, ry, config.lineColor(), skip);
+				if (pot != null) draw(g, top, area, pot, rx, ry, config.potentialColor(), 0);
 			}
 			g.setStroke(prev);
 		}
@@ -141,16 +141,17 @@ public class ChartPlotterOverlay extends Overlay {
 		cachedTurn = ChartPlotterRoutes.Turn.NONE;
 		resetEta();
 	}
-	private void draw(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color, int skip) {
-		if (p.n < 2 || skip >= p.n) {
-			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, rx, ry, color);
-			return;
-		}
+	private void draw(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color, int skip) {
+		int n = p.n;
+		if (area != null) for (int i = 0; i < n; i++) if (area.missing(p.x[i], p.y[i])) {n = i; break;}
+		if (skip >= n) return;
+		Stroke old = g.getStroke();
+		g.setStroke(routeStroke.solid(config.worldLineWidth()));
 		boolean have = false;
 		int sA = color.getAlpha();
 		Color blockedColor = config.blockedColor();
 		int sBA = blockedColor.getAlpha();
-		for (int i = Math.max(0, skip - 1); i < p.n; i++) {
+		for (int i = Math.max(0, skip - 1); i < n; i++) {
 			if (missing(wv, p, i, rx, ry, z, cx, cy)) {
 				have = false;
 				continue;
@@ -162,36 +163,17 @@ public class ChartPlotterOverlay extends Overlay {
 			}
 			boolean inBlock = i >= p.blockedAt;
 			Color base = inBlock ? blockedColor : color;
-			int a = alpha(inBlock ? sBA : sA, i, p.n);
-			boolean slide = p.slid(i);
+			int a = alpha(inBlock ? sBA : sA, i, n);
 			if (a > 0) {
 				g.setColor(alpha(base, a));
 				path.reset();
-				boolean d = false;
-				if (have && p.o[i] == p.prev(i)) {
-					rails(path, px, py, cx, cy, p.reverse);
-					d = true;
-				}
-				if (box(p, i) || slide || i == 0) {
-					box(path, cx, cy, open(p, i) && !slide, p.reverse);
-					d = true;
-				}
-				if (d) g.draw(path);
+				outline(path, px, py, cx, cy, have && p.o[i] == p.prev(i), i + 1 < n && p.o[i + 1] == p.o[i], p.reverse);
+				g.draw(path);
 			}
 			copy(cx, cy, px, py);
 			have = true;
 		}
-	}
-	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, float[] rx, float[] ry, Color color) {
-		if (missing(wv, p, 0, rx, ry, z, cx, cy)) return;
-		path.reset();
-		box(path, cx, cy, false, false);
-		path.moveTo(cx[0], cy[0]);
-		path.lineTo(cx[2], cy[2]);
-		path.moveTo(cx[1], cy[1]);
-		path.lineTo(cx[3], cy[3]);
-		g.setColor(color);
-		g.draw(path);
+		g.setStroke(old);
 	}
 	private void drawNextTurn(Graphics2D g, WorldView wv, ChartPlotterScene.Area area, LocalPoint center, ChartPlotterTrip trip, ChartPlotterEtaMode mode, boolean waypointVisible) {
 		if (area == null) return;
@@ -423,13 +405,15 @@ public class ChartPlotterOverlay extends Overlay {
 		Perspective.modelToCanvas(client, wv, 4, p.x[i], p.y[i], 0, p.o[i], rx, ry, z, cx, cy);
 		return cx[0] == Integer.MIN_VALUE || cx[1] == Integer.MIN_VALUE || cx[2] == Integer.MIN_VALUE || cx[3] == Integer.MIN_VALUE;
 	}
-	private static void rails(Path2D p, int[] px, int[] py, int[] cx, int[] cy, boolean reverse) {
+	static void outline(Path2D p, int[] px, int[] py, int[] cx, int[] cy, boolean join, boolean open, boolean reverse) {
+		if (!join) {box(p, cx, cy, open, reverse); return;}
 		int a = reverse ? 1 : 0;
 		int b = reverse ? 2 : 3;
 		p.moveTo(px[a], py[a]);
 		p.lineTo(cx[a], cy[a]);
-		p.moveTo(px[b], py[b]);
-		p.lineTo(cx[b], cy[b]);
+		if (open) p.moveTo(cx[b], cy[b]);
+		else p.lineTo(cx[b], cy[b]);
+		p.lineTo(px[b], py[b]);
 	}
 	private static void box(Path2D p, int[] x, int[] y, boolean open, boolean reverse) {
 		if (open && reverse) {
@@ -444,10 +428,8 @@ public class ChartPlotterOverlay extends Overlay {
 		p.lineTo(x[1], y[1]);
 		p.lineTo(x[2], y[2]);
 		p.lineTo(x[3], y[3]);
-		if (!open) p.lineTo(x[0], y[0]);
+		if (!open) p.closePath();
 	}
-	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != p.prev(i);}
-	private static boolean open(ChartPlotterProjection.Path p, int i) {return i + 1 < p.n && !p.slid(i + 1) && p.o[i + 1] == p.o[i];}
 	private static void copy(int[] sx, int[] sy, int[] dx, int[] dy) {
 		for (int i = 0; i < 4; i++) {
 			dx[i] = sx[i];

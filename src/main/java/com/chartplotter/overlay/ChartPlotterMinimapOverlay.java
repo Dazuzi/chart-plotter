@@ -134,14 +134,14 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		return client.getWidget(InterfaceID.Toplevel.MINIMAP);
 	}
 	private void draw(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color, int skip) {
-		if (p.n < 2 || skip >= p.n) {
-			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, wv, p, color);
-			return;
-		}
+		if (p.n < 2 || skip >= p.n) return;
 		int start = skip > 0 ? skip - 1 : 0;
 		int mid = Math.min(p.blockedAt, p.n);
+		Stroke old = g.getStroke();
+		g.setStroke(routeStroke.solid(config.minimapLineWidth()));
 		segment(g, wv, p, color, start, mid);
 		if (mid < p.n) segment(g, wv, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+		g.setStroke(old);
 	}
 	private void segment(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color, int from, int to) {
 		if (line == null) line = new Path2D.Double();
@@ -161,14 +161,6 @@ public class ChartPlotterMinimapOverlay extends Overlay {
 		}
 		g.setColor(color);
 		g.draw(line);
-	}
-	private void drawBlock(Graphics2D g, WorldView wv, ChartPlotterProjection.Path p, Color color) {
-		Point q = Perspective.localToMinimap(client, new LocalPoint(p.x[0], p.y[0], wv), DIST);
-		if (q == null) return;
-		int r = 5;
-		g.setColor(color);
-		g.drawLine(q.getX() - r, q.getY() - r, q.getX() + r, q.getY() + r);
-		g.drawLine(q.getX() + r, q.getY() - r, q.getX() - r, q.getY() + r);
 	}
 	private void drawRoute(Graphics2D g, WorldView wv, ChartPlotterRoute r, Color color, ChartPlotterRouteMoves.Model model) {
 		if (r == null || r.status != ChartPlotterRoute.OK || r.n == 0) return;

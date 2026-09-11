@@ -43,11 +43,11 @@ public final class ChartPlotterRuntime {
 	@Inject private ChartPlotterInfoOverlay infoOverlay;
 	@Inject private MouseManager mouseManager;
 	@Inject private ChartPlotterConfig config;
-	@Inject private ChartPlotterCollisionCache collisionCache;
+	@Inject ChartPlotterCollisionCache collisionCache;
 	@Inject ChartPlotterSailing sailing;
 	@Inject ChartPlotterRoutes routes;
 	@Inject private ChartPlotterScene scene;
-	@Inject private ChartPlotterProjection projection;
+	@Inject ChartPlotterProjection projection;
 	@Inject private Notifier notifier;
 	@Inject private KeyManager keyManager;
 	private boolean collisionActive;
@@ -68,8 +68,12 @@ public final class ChartPlotterRuntime {
 	private int draggedX;
 	private int draggedY;
 	private boolean stopPress;
-	private int captureTick = Integer.MIN_VALUE;
-	private WorldView captureView;
+	private int observedBoat = Integer.MIN_VALUE;
+	private WorldView pendingView;
+	private WorldEntity pendingBoat;
+	private LocalPoint pendingAnchor;
+	private int pendingTick;
+	private int pendingHeading;
 	volatile ChartPlotterFeatures features = ChartPlotterFeatures.off();
 	private final MouseAdapter mouse = new MouseAdapter() {
 		@Override
@@ -98,7 +102,10 @@ public final class ChartPlotterRuntime {
 					e.consume();
 				}
 			}
-			if (!mod && features.course && minimapOverlay.overMinimap(m)) clientThread.invoke(() -> sailing.setCourse(m));
+			if (!e.isConsumed() && !downBlock && !mod && features.course && minimapOverlay.overMinimap(m)) {
+				int version = sailing.commandVersion();
+				clientThread.invoke(() -> sailing.setCourse(m, version));
+			}
 			return e;
 		}
 		@Override
@@ -174,6 +181,7 @@ public final class ChartPlotterRuntime {
 	};
 	public void start() {apply();}
 	public void stop() {
+		pendingView = null;
 		overlayManager.remove(overlay);
 		overlayManager.remove(minimapOverlay);
 		overlayManager.remove(worldMapOverlay);
@@ -188,8 +196,8 @@ public final class ChartPlotterRuntime {
 		}
 		clearMods();
 		collisionActive = false;
-		resetCapture();
 		features = ChartPlotterFeatures.off();
+		observedBoat = Integer.MIN_VALUE;
 		scene.clear();
 		collisionCache.stop();
 		routes.stop();
@@ -206,6 +214,8 @@ public final class ChartPlotterRuntime {
 			return;
 		}
 		routes.pause();
+		observedBoat = Integer.MIN_VALUE;
+		pendingView = null;
 		collision(false, null);
 		sailing.clear();
 		scene.clear();
@@ -219,11 +229,16 @@ public final class ChartPlotterRuntime {
 			return;
 		}
 		if (e.getGameState() == GameState.LOADING) {
+			pendingView = null;
+			collisionCache.invalidateScene();
+			routes.scene();
 			scene.clear();
 			projection.clear();
 			return;
 		}
 		sailing.reset();
+		observedBoat = Integer.MIN_VALUE;
+		pendingView = null;
 		routes.clear();
 		collision(false, null);
 		scene.clear();
@@ -233,12 +248,13 @@ public final class ChartPlotterRuntime {
 		if (!features.tracking) return;
 		WorldView wv = e.getWorldView();
 		if (wv == null || !wv.isTopLevel()) return;
+		pendingView = null;
 		sailing.loaded(wv);
+		routes.scene();
 		if (features.scene && sailing.boarded()) scene.update(wv);
 		capture(wv);
 	}
-	@SuppressWarnings({"unused", "UnusedParameters"})
-	public void menu(MenuOpened e) {
+	public void menu(MenuOpened ignored) {
 		Point m = client.getMouseCanvasPosition();
 		if (!features.chart) return;
 		int stop = worldMapOverlay.stop(m);
@@ -260,11 +276,12 @@ public final class ChartPlotterRuntime {
 	}
 	public void menu(MenuOptionClicked e) {
 		if (!features.course) return;
-		Point m = client.getMouseCanvasPosition();
-		if (e.getMenuAction() != MenuAction.SET_HEADING && !minimapOverlay.overMinimap(m)) return;
-		sailing.setCourse(m);
+		WorldView top = sailing.top();
+		if (top == null) return;
+		sailing.command(ChartPlotterSailing.commandHeading(e.getMenuAction(), e.getId(), e.getMenuEntry().getWorldViewId(), e.isConsumed(), sailing.boarded(), top.getId(), top.getYellowClickAction()), client.getMouseCanvasPosition());
 	}
 	public void tick() {
+		pendingView = null;
 		if (!features.tracking || !sailing.boarded() || client.getGameState() != GameState.LOGGED_IN) return;
 		sailing.tick();
 		WorldEntity ship = sailing.ship();
@@ -280,7 +297,8 @@ public final class ChartPlotterRuntime {
 		if (loc == null) {
 			sailing.clear();
 			scene.clear();
-			projection.clear();
+			projection.refresh();
+			routes.pause();
 			collision(false, null);
 			return;
 		}
@@ -288,13 +306,50 @@ public final class ChartPlotterRuntime {
 		boolean sceneChanged = top != null && sailing.sceneChanged(top);
 		if (top != null && features.scene) scene.update(top);
 		if (sceneChanged) sailing.scene(ship, loc);
-		boolean normal = features.cache(sailing.boarded()) && top != null;
+		boolean normal = features.cache(sailing.boarded()) && top != null && top.getPlane() == 0 && !top.isInstance();
 		boolean started = collision(normal, top);
 		if (sceneChanged && normal && !started) capture(top);
+		if (normal) collisionCache.refresh(top);
+		int boatId = ship.getWorldView().getId();
+		if (observedBoat != boatId) {
+			observedBoat = boatId;
+			sailing.clear();
+			sailing.scene(ship, loc);
+			routes.scene();
+			projection.clear();
+			sceneChanged = true;
+		}
 		sailing.motion(ship, loc, sceneChanged);
-		if (features.chart && top != null) routes.tick(top, ship, loc);
+		courses(top, ship, loc, client.getTickCount());
 		alert(top, loc);
 	}
+	void courses(WorldView top, WorldEntity ship, LocalPoint loc, int tick) {
+		pendingView = top;
+		pendingBoat = ship;
+		pendingAnchor = loc;
+		pendingTick = tick;
+		pendingHeading = sailing.heading(ship);
+		courses();
+	}
+	public void clientTick() {
+		courses();
+		if (features.course) projection.refresh(pendingBoat);
+	}
+	private void courses() {
+		WorldView top = pendingView;
+		if (top == null) return;
+		if (collisionCache.refreshing()) {
+			if (features.course) projection.update(top, pendingBoat.getConfig(), pendingAnchor, pendingHeading);
+			return;
+		}
+		pendingView = null;
+		if (features.course) {
+			sailing.observe(pendingTick, collisionCache.snapshot(), pendingBoat.getConfig(), top.getBaseX() * 128 + pendingAnchor.getX(), top.getBaseY() * 128 + pendingAnchor.getY(), pendingHeading);
+			projection.update(top, pendingBoat.getConfig(), pendingAnchor, pendingHeading);
+		}
+		if (features.chart) routes.tick(top, pendingBoat, pendingAnchor);
+	}
+	public void object(TileObject object, boolean spawned) {if (collisionActive) collisionCache.changed(object, spawned);}
 	public void focus(boolean focused) {this.focused = focused;}
 	public void message(PluginMessage e) {
 		if (!"chartplotter".equals(e.getNamespace())) return;
@@ -327,6 +382,7 @@ public final class ChartPlotterRuntime {
 		alertY = turn.y;
 	}
 	private void apply() {
+		pendingView = null;
 		ChartPlotterFeatures prev = features;
 		ChartPlotterFeatures next = ChartPlotterFeatures.of(config);
 		features = next;
@@ -427,21 +483,11 @@ public final class ChartPlotterRuntime {
 			capture(top);
 			return true;
 		}
-		resetCapture();
 		collisionCache.stop();
 		return false;
 	}
 	private void capture(WorldView top) {
-		if (!collisionActive) return;
-		int tick = client.getTickCount();
-		if (captureTick == tick && captureView == top) return;
-		captureTick = tick;
-		captureView = top;
-		collisionCache.capture(top);
-	}
-	private void resetCapture() {
-		captureTick = Integer.MIN_VALUE;
-		captureView = null;
+		if (collisionActive) collisionCache.capture(top);
 	}
 	private void updateScene() {
 		if (!features.scene || !sailing.boarded()) return;

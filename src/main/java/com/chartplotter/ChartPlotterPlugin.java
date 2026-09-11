@@ -30,65 +30,52 @@ public class ChartPlotterPlugin extends Plugin {
 	@Inject private ChartPlotterRuntime runtime;
 	@Inject private ChartPlotterSailing sailing;
 	@Inject private ChartPlotterRoutes routes;
-	@Inject private ConfigManager configManager;
-	private boolean migrating;
 	@Override
-	protected void startUp() {
-		migrateConfig(configManager);
-		runtime.start();
-	}
+	protected void startUp() {runtime.start();}
 	@Override
 	protected void shutDown() {runtime.stop();}
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onConfigChanged(ConfigChanged e) {
-		if ("chartplotter".equals(e.getGroup()) && e.getProfile() == null && migrateConfig(configManager)) runtime.config(e);
+		if ("chartplotter".equals(e.getGroup()) && e.getProfile() == null) runtime.config(e);
 	}
-	@SuppressWarnings({"unused", "UnusedParameters"})
 	@Subscribe(priority = 1)
-	public void onProfileChanged(ProfileChanged e) {
-		if (migrateConfig(configManager)) runtime.start();
-	}
-	@SuppressWarnings("unused")
+	public void onProfileChanged(ProfileChanged ignored) {runtime.start();}
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged e) {runtime.varbit(e);}
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged e) {runtime.state(e);}
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onWorldViewLoaded(WorldViewLoaded e) {runtime.loaded(e);}
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onMenuOpened(MenuOpened e) {runtime.menu(e);}
-	@SuppressWarnings("unused")
-	@Subscribe
+	@Subscribe(priority = -1)
 	public void onMenuOptionClicked(MenuOptionClicked e) {runtime.menu(e);}
-	@SuppressWarnings({"unused", "UnusedParameters"})
 	@Subscribe
-	public void onGameTick(GameTick e) {runtime.tick();}
-	@SuppressWarnings("unused")
+	public void onGameTick(GameTick ignored) {runtime.tick();}
+	@Subscribe
+	public void onPostClientTick(PostClientTick ignored) {runtime.clientTick();}
+	@Subscribe
+	public void onGameObjectSpawned(GameObjectSpawned e) {runtime.object(e.getGameObject(), true);}
+	@Subscribe
+	public void onGameObjectDespawned(GameObjectDespawned e) {runtime.object(e.getGameObject(), false);}
+	@Subscribe
+	public void onWallObjectSpawned(WallObjectSpawned e) {runtime.object(e.getWallObject(), true);}
+	@Subscribe
+	public void onWallObjectDespawned(WallObjectDespawned e) {runtime.object(e.getWallObject(), false);}
+	@Subscribe
+	public void onGroundObjectSpawned(GroundObjectSpawned e) {runtime.object(e.getGroundObject(), true);}
+	@Subscribe
+	public void onGroundObjectDespawned(GroundObjectDespawned e) {runtime.object(e.getGroundObject(), false);}
+	@Subscribe
+	public void onDecorativeObjectSpawned(DecorativeObjectSpawned e) {runtime.object(e.getDecorativeObject(), true);}
+	@Subscribe
+	public void onDecorativeObjectDespawned(DecorativeObjectDespawned e) {runtime.object(e.getDecorativeObject(), false);}
 	@Subscribe
 	public void onFocusChanged(FocusChanged e) {runtime.focus(e.isFocused());}
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onPluginMessage(PluginMessage e) {runtime.message(e);}
-	@SuppressWarnings("unused")
 	@Provides
-	public ChartPlotterConfig provideConfig(ConfigManager cm) {
-		migrateConfig(cm);
-		return cm.getConfig(ChartPlotterConfig.class);
-	}
-	private synchronized boolean migrateConfig(ConfigManager cm) {
-		if (migrating) return false;
-		migrating = true;
-		try {
-			ChartPlotterMigration.config(cm);
-			return true;
-		} finally {
-			migrating = false;
-		}
-	}
+	public ChartPlotterConfig provideConfig(ConfigManager cm) {return cm.getConfig(ChartPlotterConfig.class);}
 	public WorldView top() {return sailing.top();}
 	public WorldEntity getShip() {return sailing.ship();}
 	public LocalPoint anchorLoc(WorldEntity ship) {return sailing.anchorLoc(ship);}

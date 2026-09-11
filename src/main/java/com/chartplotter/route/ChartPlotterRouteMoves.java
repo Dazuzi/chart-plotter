@@ -1,6 +1,5 @@
 package com.chartplotter.route;
 import com.chartplotter.util.ChartPlotterMath;
-import net.runelite.api.Perspective;
 public final class ChartPlotterRouteMoves {
 	static final int[] OR = {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 0, 128, 256, 384, 512, 640, 768, 896};
 	private ChartPlotterRouteMoves() {}
@@ -10,7 +9,7 @@ public final class ChartPlotterRouteMoves {
 			int vx = vectorX(speed, o);
 			int vy = vectorY(speed, o);
 			if (vx == 0 && vy == 0) continue;
-			if ((long) dx * vy == (long) dy * vx && dx * vx + dy * vy > 0) return true;
+			if ((long) dx * vy == (long) dy * vx && (long) dx * vx + (long) dy * vy > 0) return true;
 		}
 		return false;
 	}
@@ -18,8 +17,8 @@ public final class ChartPlotterRouteMoves {
 	public static boolean solid(double ax, double ay, double bx, double by, Model model) {return model == null || model.matches(bx - ax, by - ay);}
 	public static double speedBucket(double speed) {return Math.round(speed * 2) / 2.0;}
 	public static Model model(double speed) {return speed <= 0 ? null : new Model(speed);}
-	static int vectorX(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.SINE[o] * speed / 512.0));}
-	static int vectorY(double speed, int o) {return ChartPlotterMath.snap(ChartPlotterMath.round(-Perspective.COSINE[o] * speed / 512.0));}
+	static int vectorX(double speed, int o) {return ChartPlotterMath.velocityX(speed, o);}
+	static int vectorY(double speed, int o) {return ChartPlotterMath.velocityY(speed, o);}
 	public static final class Model {
 		private final int[] x = new int[OR.length];
 		private final int[] y = new int[OR.length];

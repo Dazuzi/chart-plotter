@@ -56,10 +56,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private volatile StopCache stopCache = StopCache.EMPTY;
 	private double routeSpeed = Double.NaN;
 	private ChartPlotterRouteMoves.Model routeModel;
-	private final float[] boxX = new float[4];
-	private final float[] boxY = new float[4];
 	private final Path2D.Double projectionLine = new Path2D.Double();
-	private final Path2D.Double boxPath = new Path2D.Double();
 	private final Ellipse2D.Double ellipse = new Ellipse2D.Double();
 	private final int[] colorKey = new int[8];
 	private final Color[][] colorCache = new Color[colorKey.length][];
@@ -144,8 +141,8 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			int skip = cur != null && pot != null ? ChartPlotterProjection.match(cur, pot) : 0;
 			int baseX = top.getBaseX();
 			int baseY = top.getBaseY();
-			if (cur != null) draw(g, s, baseX, baseY, cur, ship.getConfig(), config.lineColor(), skip);
-			if (pot != null) draw(g, s, baseX, baseY, pot, ship.getConfig(), config.potentialColor(), 0);
+			if (cur != null) draw(g, s, baseX, baseY, cur, config.lineColor(), skip);
+			if (pot != null) draw(g, s, baseX, baseY, pot, config.potentialColor(), 0);
 			return null;
 		} finally {
 			g.setStroke(oldStroke);
@@ -190,48 +187,15 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		draggedStop = -1;
 		draggedPoint = null;
 	}
-	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, int baseX, int baseY, ChartPlotterProjection.Path p, WorldEntityConfig wc, Color color, int skip) {
-		if (p.n < 2 || skip >= p.n) {
-			if (p.blocked && p.n == 1 && skip < p.n) drawBlock(g, s, baseX, baseY, p, color);
-			return;
-		}
+	private void draw(Graphics2D g, ChartPlotterWorldMap.State s, int baseX, int baseY, ChartPlotterProjection.Path p, Color color, int skip) {
+		if (p.n < 2 || skip >= p.n) return;
 		int start = skip > 0 ? skip - 1 : 0;
 		int mid = Math.min(p.blockedAt, p.n);
+		Stroke old = g.getStroke();
+		g.setStroke(routeStroke.solid(config.worldMapLineWidth()));
 		segment(g, s, baseX, baseY, p, color, start, mid);
-		boxes(g, s, baseX, baseY, p, wc, color, start, mid);
-		if (mid < p.n) {
-			segment(g, s, baseX, baseY, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
-			boxes(g, s, baseX, baseY, p, wc, config.blockedColor(), mid, p.n);
-		}
-	}
-	private void boxes(Graphics2D g, ChartPlotterWorldMap.State s, int baseX, int baseY, ChartPlotterProjection.Path p, WorldEntityConfig wc, Color color, int from, int to) {
-		if (!config.sailingSlide()) return;
-		ChartPlotterProjection.rect(wc, boxX, boxY);
-		double radius = 0;
-		for (int i = 0; i < boxX.length; i++) radius = Math.max(radius, Math.hypot(boxX[i], boxY[i]));
-		int pad = (int) Math.ceil(radius / TS) + 2;
-		g.setColor(color);
-		for (int i = from; i < to; i++) {
-			if (!box(p, i)) continue;
-			int sx = Math.floorDiv(p.x[i], TS);
-			int sy = Math.floorDiv(p.y[i], TS);
-			if (!pointVisible(s, baseX + sx, baseY + sy, pad)) continue;
-			if (!s.data.surfaceContainsPosition(baseX + sx, baseY + sy)) continue;
-			g.draw(box(s, baseX, baseY, p, boxX, boxY, i));
-		}
-	}
-	private Path2D.Double box(ChartPlotterWorldMap.State s, int baseX, int baseY, ChartPlotterProjection.Path p, float[] rx, float[] ry, int i) {
-		boxPath.reset();
-		for (int c = 0; c < 4; c++) {
-			int lx = ChartPlotterMath.rotateX(p.x[i], p.o[i], (int) rx[c], (int) ry[c]);
-			int ly = ChartPlotterMath.rotateY(p.y[i], p.o[i], (int) rx[c], (int) ry[c]);
-			int px = map.mapX(s, baseX, lx);
-			int py = map.mapY(s, baseY, ly);
-			if (c == 0) boxPath.moveTo(px, py);
-			else boxPath.lineTo(px, py);
-		}
-		boxPath.closePath();
-		return boxPath;
+		if (mid < p.n) segment(g, s, baseX, baseY, p, config.blockedColor(), Math.max(start, mid - 1), p.n);
+		g.setStroke(old);
 	}
 	private void segment(Graphics2D g, ChartPlotterWorldMap.State s, int baseX, int baseY, ChartPlotterProjection.Path p, Color color, int from, int to) {
 		projectionLine.reset();
@@ -275,19 +239,6 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		}
 		g.setColor(color);
 		g.draw(projectionLine);
-	}
-	private static boolean box(ChartPlotterProjection.Path p, int i) {return p.o[i] != p.prev(i) || p.slid(i);}
-	private void drawBlock(Graphics2D g, ChartPlotterWorldMap.State s, int baseX, int baseY, ChartPlotterProjection.Path p, Color color) {
-		int sx = Math.floorDiv(p.x[0], TS);
-		int sy = Math.floorDiv(p.y[0], TS);
-		if (!pointVisible(s, baseX + sx, baseY + sy, (int) Math.ceil(5 / s.z) + 1)) return;
-		if (!s.data.surfaceContainsPosition(baseX + sx, baseY + sy)) return;
-		int x = map.mapX(s, baseX, p.x[0]);
-		int y = map.mapY(s, baseY, p.y[0]);
-		int r = 5;
-		g.setColor(color);
-		g.drawLine(x - r, y - r, x + r, y + r);
-		g.drawLine(x + r, y - r, x - r, y + r);
 	}
 	private void drawTrip(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip, boolean tail) {
 		int first = config.infoStopProgress() ? trip.stopNumber() : 1;

@@ -3,8 +3,8 @@ package com.chartplotter.util;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.util.List;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -19,31 +19,16 @@ public final class ChartPlotterVersions {
 		Map<String, String> data = readAll(dir);
 		File tmp = new File(dir, FILE + ".tmp");
 		try {Files.createDirectories(dir.toPath());} catch (Exception ignored) {return;}
-		try (BufferedWriter out = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(tmp), StandardCharsets.UTF_8))) {
-			boolean done = false;
-			for (Map.Entry<String, String> e : data.entrySet()) {
-				if (key.equals(e.getKey())) {
-					out.write(key + " " + version + "\n");
-					done = true;
-				} else out.write(e.getKey() + " " + e.getValue() + "\n");
-			}
-			if (!done) out.write(key + " " + version + "\n");
-		} catch (Exception ignored) {
-			return;
-		}
-		ChartPlotterFiles.replace(tmp, file(dir));
-	}
-	public static synchronized void remove(File dir, String key) throws IOException {
-		List<String> data;
 		try {
-			data = Files.readAllLines(file(dir).toPath(), StandardCharsets.UTF_8);
-		} catch (NoSuchFileException e) {
-			return;
+			try (BufferedWriter out = Files.newBufferedWriter(tmp.toPath(), StandardCharsets.UTF_8)) {
+				data.put(key, version);
+				for (Map.Entry<String, String> e : data.entrySet()) out.write(e.getKey() + " " + e.getValue() + "\n");
+			}
+			ChartPlotterFiles.replace(tmp, file(dir));
+		} catch (Exception ignored) {
+		} finally {
+			try {Files.deleteIfExists(tmp.toPath());} catch (IOException ignored) {}
 		}
-		if (!data.removeIf(line -> key.equals(line.trim().split("\\s+", 2)[0]))) return;
-		File tmp = new File(dir, FILE + ".tmp");
-		Files.write(tmp.toPath(), data, StandardCharsets.UTF_8);
-		if (!ChartPlotterFiles.replace(tmp, file(dir))) throw new IOException("Unable to update dataset versions");
 	}
 	public static boolean newer(String src, String dst) {
 		return valid(src) && (!valid(dst) || src.compareTo(dst) > 0);
@@ -64,13 +49,7 @@ public final class ChartPlotterVersions {
 	}
 	private static boolean valid(String s) {
 		if (s == null || s.length() != 10) return false;
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-			if (i == 4 || i == 7) {
-				if (c != '-') return false;
-			} else if (c < '0' || c > '9') return false;
-		}
-		return true;
+		try {LocalDate.parse(s); return true;} catch (DateTimeParseException e) {return false;}
 	}
 	private static File file(File dir) {return new File(dir, FILE);}
 }

@@ -3,6 +3,7 @@
 .idea/
 .run/
 build/
+/dev/
 *.jfr
 AGENTS.md
 CLAUDE.md

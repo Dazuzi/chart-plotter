@@ -30,9 +30,11 @@ public final class ChartPlotterCollisionCodec {
 				int cy = in.readUnsignedShort();
 				long mask = in.readLong();
 				long blocked = in.readLong();
-				if (mask != 0) data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(mask, blocked & mask));
+				if (mask != 0 && data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(mask, blocked & mask)) != null) return new HashMap<>();
 			}
+			if (in.read() != -1) return new HashMap<>();
 		} catch (Exception ignored) {
+			return new HashMap<>();
 		}
 		return cancel.getAsBoolean() ? new HashMap<>() : data;
 	}
@@ -46,18 +48,20 @@ public final class ChartPlotterCollisionCodec {
 				if (cancel.getAsBoolean()) return null;
 				StringTokenizer p = new StringTokenizer(s);
 				int n = p.countTokens();
-				if (n == 2 && "data".equals(p.nextToken())) {
+				if (n == 0) continue;
+				if (version == null) {
+					if (n != 2 || !"data".equals(p.nextToken())) return null;
 					version = p.nextToken();
 					continue;
 				}
-				if (n != 3 && n != 4) continue;
+				if (n != 3 && n != 4) return null;
 				int cx = Integer.parseInt(p.nextToken());
 				int cy = Integer.parseInt(p.nextToken());
-				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) continue;
+				if (cx < 0 || cx > USHORT || cy < 0 || cy > USHORT) return null;
 				long known = n == 3 ? -1L : Long.parseUnsignedLong(p.nextToken(), 16);
 				long blocked = Long.parseUnsignedLong(p.nextToken(), 16);
 				if (known == 0L) continue;
-				data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(known, blocked & known));
+				if (data.put(ChartPlotterCollisionData.key(cx, cy), new Chunk(known, blocked & known)) != null) return null;
 			}
 		} catch (Exception ignored) {
 			return null;

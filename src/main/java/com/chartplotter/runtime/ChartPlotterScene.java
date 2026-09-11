@@ -23,24 +23,6 @@ public final class ChartPlotterScene {
 		Slot s = cache;
 		return s != null && s.same(wv, tiles) ? s.area : null;
 	}
-	static long key(Area a) {
-		if (a == null) return 0;
-		return a.key;
-	}
-	private static long key(int baseX, int baseY, int offX, int offY, int minX, int minY, int maxX, int maxY, int n, boolean[] chunks) {
-		long h = 1125899906842597L;
-		h = h * 31 + baseX;
-		h = h * 31 + baseY;
-		h = h * 31 + offX;
-		h = h * 31 + offY;
-		h = h * 31 + minX;
-		h = h * 31 + minY;
-		h = h * 31 + maxX;
-		h = h * 31 + maxY;
-		h = h * 31 + n;
-		for (boolean b : chunks) h = h * 31 + (b ? 1 : 0);
-		return h;
-	}
 	private static Area area(WorldView wv, Tile[][] tiles) {
 		if (tiles == null) return null;
 		int offX = wv.isTopLevel() ? (tiles.length - wv.getSizeX()) / 2 : 0;
@@ -135,7 +117,6 @@ public final class ChartPlotterScene {
 		public final int[] cx;
 		public final int[] cy;
 		public final int n;
-		public final long key;
 		private Area(Tile[][] tiles, int baseX, int baseY, int offX, int offY, int minX, int minY, int maxX, int maxY, int minCX, int minCY, int cw, int ch, boolean[] chunks, int n) {
 			this.tiles = tiles;
 			this.baseX = baseX;
@@ -152,7 +133,6 @@ public final class ChartPlotterScene {
 			this.ch = ch;
 			this.chunks = chunks;
 			this.n = n;
-			key = key(baseX, baseY, offX, offY, minX, minY, maxX, maxY, n, chunks);
 			cx = new int[n];
 			cy = new int[n];
 			int j = 0;

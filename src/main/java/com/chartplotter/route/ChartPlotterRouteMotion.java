@@ -13,7 +13,8 @@ final class ChartPlotterRouteMotion {
 	private final int diagonalY;
 	int radius;
 	ChartPlotterRouteMotion(double speed, double offsetX, double offsetY) {
-		if (!Double.isFinite(speed) || speed < 0.5 || speed > 16 || !(offsetX >= 0 && offsetX < 1 && offsetY >= 0 && offsetY < 1)) throw new IllegalArgumentException("Unsupported sailing speed");
+		if (!Double.isFinite(speed) || speed < 0.5 || !(offsetX >= 0 && offsetX < 1 && offsetY >= 0 && offsetY < 1)) throw new IllegalArgumentException("Unsupported sailing speed or anchor");
+		if (speed >= (Integer.MAX_VALUE - 15.5) / 128) throw new ArithmeticException("Sailing displacement exceeds local coordinate range");
 		this.speed = speed;
 		this.offsetX = offsetX;
 		this.offsetY = offsetY;
@@ -26,8 +27,11 @@ final class ChartPlotterRouteMotion {
 			if (a == 0) throw new IllegalArgumentException("Sailing speed has no movement");
 			x[d] = vx / a;
 			y[d] = vy / a;
-			cost[d] = (int) Math.floor(1000 * Math.hypot(x[d], y[d]));
 			radius = Math.max(radius, Math.max(Math.abs(x[d]), Math.abs(y[d])));
+		}
+		if ((2L * radius + 3) * (2L * radius + 3) > ChartPlotterRouteTerrain.MAX_AREA) throw new ArithmeticException("Route movement mask exceeds search area budget");
+		for (int d = 0; d < 16; d++) {
+			cost[d] = (int) Math.floor(1000 * Math.hypot(x[d], y[d]));
 			cells[d] = cells(x[d], y[d], offsetX, offsetY);
 		}
 		sideCost = (cost[3] - cost[4] * x[3]) / y[3];
@@ -35,8 +39,8 @@ final class ChartPlotterRouteMotion {
 		diagonalY = (cost[2] * x[3] - cost[3]) / (x[3] - y[3]);
 	}
 	int lowerBound(int dx, int dy) {
-		int a = Math.max(Math.abs(dx), Math.abs(dy));
-		int b = Math.min(Math.abs(dx), Math.abs(dy));
+		long a = Math.max(Math.abs((long) dx), Math.abs((long) dy));
+		long b = Math.min(Math.abs((long) dx), Math.abs((long) dy));
 		return (int) Math.min(ChartPlotterRouteTerrain.MAX_COST, Math.max((long) cost[4] * a + (long) sideCost * b, (long) diagonalX * a + (long) diagonalY * b));
 	}
 	int dir(int dx, int dy) {

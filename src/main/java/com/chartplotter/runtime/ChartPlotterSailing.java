@@ -1,5 +1,7 @@
 package com.chartplotter.runtime;
 
+import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.collision.ChartPlotterHull;
 import com.chartplotter.overlay.ChartPlotterOverlay;
 import com.chartplotter.util.ChartPlotterMath;
 import net.runelite.api.*;
@@ -9,6 +11,7 @@ import net.runelite.api.gameval.VarbitID;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Singleton
 public final class ChartPlotterSailing {
@@ -19,13 +22,23 @@ public final class ChartPlotterSailing {
 	volatile boolean boarded;
 	private double baseSpeed;
 	private double accel;
+	private int speedCap;
+	private int boost;
+	private int windCharges;
+	private int windEnabled;
+	private int windPaused;
+	private int startOnHeading;
+	private long inputs;
+	private Observation observation;
+	private ChartPlotterHull forecastHull;
+	private double estimate = Double.NaN;
+	volatile Forecast forecast = Forecast.UNKNOWN;
 	private int moveMode;
 	private int lastMoveMode = 2;
 	private double speed;
 	private double lastSpeed;
 	private volatile SpeedAverage speedAverage;
 	private int motionHold;
-	private int stillTicks;
 	private int courseTicks;
 	private int turnDir;
 	private int lastAngle;
@@ -33,6 +46,7 @@ public final class ChartPlotterSailing {
 	private int lastBaseY = Integer.MIN_VALUE;
 	private int lastPlane = Integer.MIN_VALUE;
 	private int course = -1;
+	private final AtomicInteger commandVersion = new AtomicInteger();
 	private int potentialX;
 	private int potentialY;
 	private LocalPoint lastLoc;
@@ -52,22 +66,37 @@ public final class ChartPlotterSailing {
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		boarded = client.getVarbitValue(VarbitID.SAILING_BOARDED_BOAT) == 1;
 		if (boarded) syncTop();
-		baseSpeed = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED) / 128.0;
-		accel = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION) / 128.0;
-		moveMode = client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE);
+		varbit(VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED, client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED));
+		varbit(VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION, client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION));
+		varbit(VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE, client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE));
+		varbit(VarbitID.SAILING_SIDEPANEL_BOAT_SPEEDCAP, client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_SPEEDCAP));
+		varbit(VarbitID.SAILING_BOAT_SPEEDBOOST_DURATION, client.getVarbitValue(VarbitID.SAILING_BOAT_SPEEDBOOST_DURATION));
+		varbit(VarbitID.SAILING_SIDEPANEL_BOAT_WIND_CHARGES, client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_WIND_CHARGES));
+		varbit(VarbitID.SAILING_SIDEPANEL_BOAT_WIND_CATCHER_ENABLED, client.getVarbitValue(VarbitID.SAILING_SIDEPANEL_BOAT_WIND_CATCHER_ENABLED));
+		varbit(VarbitID.SAILING_BOAT_WINDS_TIMER_PAUSED, client.getVarbitValue(VarbitID.SAILING_BOAT_WINDS_TIMER_PAUSED));
+		varbit(VarbitID.SAILING_START_BOAT_WHEN_SETTING_HEADING, client.getVarbitValue(VarbitID.SAILING_START_BOAT_WHEN_SETTING_HEADING));
 	}
 	public void varbit(VarbitChanged e) {
-		int id = e.getVarbitId();
+		varbit(e.getVarbitId(), e.getValue());
+	}
+	private void varbit(int id, int value) {
 		if (id == VarbitID.SAILING_BOARDED_BOAT) {
-			boarded = e.getValue() == 1;
+			boarded = value == 1;
 			if (boarded) syncTop();
+			return;
 		}
-		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED) baseSpeed = e.getValue() / 128.0;
-		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION) accel = e.getValue() / 128.0;
-		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE) {
-			lastMoveMode = moveMode;
-			moveMode = e.getValue();
-		}
+		if (id == VarbitID.SAILING_SIDEPANEL_BOAT_BASESPEED) {if (baseSpeed == value / 128.0) return; baseSpeed = value / 128.0;}
+		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_ACCELERATION) {if (accel == value / 128.0) return; accel = value / 128.0;}
+		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_MOVE_MODE) {if (moveMode == value) return; lastMoveMode = moveMode; moveMode = value;}
+		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_SPEEDCAP) {if (speedCap == value) return; speedCap = value;}
+		else if (id == VarbitID.SAILING_BOAT_SPEEDBOOST_DURATION) {if (boost == value) return; boost = value;}
+		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_WIND_CHARGES) {if (windCharges == value) return; windCharges = value;}
+		else if (id == VarbitID.SAILING_SIDEPANEL_BOAT_WIND_CATCHER_ENABLED) {if (windEnabled == value) return; windEnabled = value;}
+		else if (id == VarbitID.SAILING_BOAT_WINDS_TIMER_PAUSED) {if (windPaused == value) return; windPaused = value;}
+		else if (id == VarbitID.SAILING_START_BOAT_WHEN_SETTING_HEADING) {if (startOnHeading == value) return; startOnHeading = value;}
+		else return;
+		inputs++;
+		forecast = Forecast.UNKNOWN;
 	}
 	public void loaded(WorldView wv) {
 		if (wv != null && wv.isTopLevel()) {
@@ -76,6 +105,7 @@ public final class ChartPlotterSailing {
 		}
 	}
 	public void reset() {
+		commandVersion.incrementAndGet();
 		top = null;
 		boarded = false;
 		course = -1;
@@ -91,13 +121,15 @@ public final class ChartPlotterSailing {
 		resetMotion();
 	}
 	public void clear() {
+		commandVersion.incrementAndGet();
 		course = -1;
 		potentialBlocked = false;
 		resetMotion();
 	}
 	public void scene(WorldEntity ship, LocalPoint loc) {
+		observation = null;
+		estimate = Double.NaN;
 		resetShip();
-		course = -1;
 		motionHold = MOTION_HOLD;
 		lastLoc = loc;
 		lastAngle = targetHeading(ship);
@@ -117,8 +149,6 @@ public final class ChartPlotterSailing {
 			if (vx == 0 && vy == 0 && motionHold > 0 && lastSpeed > 0) motionHold--;
 			else {
 				motionHold = 0;
-				if (vx == 0 && vy == 0) stillTicks++;
-				else stillTicks = 0;
 				double s = ChartPlotterMath.speed(vx, vy);
 				double a = s - lastSpeed;
 				if (a < 10) sample(s);
@@ -135,8 +165,8 @@ public final class ChartPlotterSailing {
 		SpeedAverage average = speedAverage;
 		if (average != null) average.add(value);
 	}
-	public void setCourse(Point m) {
-		if (!boarded) return;
+	public void setCourse(Point m, int version) {
+		if (!boarded || version != commandVersion.get()) return;
 		WorldEntity ship = ship();
 		if (ship == null || top == null || top.getYellowClickAction() != Constants.CLICK_ACTION_SET_HEADING) return;
 		LocalPoint loc = ship.getLocalLocation();
@@ -144,6 +174,15 @@ public final class ChartPlotterSailing {
 		int h = ChartPlotterOverlay.mouseHeading(client, top, loc, m);
 		if (h < 0) return;
 		setCourse(h, m);
+	}
+	public int commandVersion() {return commandVersion.get();}
+	public void command(int heading, Point point) {
+		if (heading < 0) return;
+		commandVersion.incrementAndGet();
+		setCourse(heading, point);
+	}
+	public static int commandHeading(MenuAction action, int selector, int worldView, boolean consumed, boolean aboard, int topView, int clickAction) {
+		return action == MenuAction.SET_HEADING && selector >= 0 && selector < 16 && !consumed && aboard && worldView == topView && clickAction == Constants.CLICK_ACTION_SET_HEADING ? selector * 128 : -1;
 	}
 	public void tick() {resetShip();}
 	public boolean sceneChanged(WorldView wv) {
@@ -176,32 +215,38 @@ public final class ChartPlotterSailing {
 	public boolean suppress(Point m) {return potentialBlocked && (m == null || m.getX() == potentialX && m.getY() == potentialY);}
 	public boolean courseLine(WorldView wv) {return speed > 0 || wv != null && wv.getYellowClickAction() == Constants.CLICK_ACTION_SET_HEADING;}
 	public LocalPoint anchorLoc(WorldEntity ship) {
-		if (ship == null) return null;
-		LocalPoint loc = ship.getTargetLocation();
-		return loc != null ? loc : ship.getLocalLocation();
+		return ship == null ? null : ship.getTargetLocation();
 	}
-	public int heading(WorldEntity ship) {return stalled() ? actualHeading(ship) : targetHeading(ship);}
-	public int course(WorldEntity ship) {return stalled() ? actualHeading(ship) : course >= 0 ? course : targetHeading(ship);}
+	public int heading(WorldEntity ship) {return targetHeading(ship);}
+	public int course(WorldEntity ship) {return course >= 0 ? course : targetHeading(ship);}
 	public double speed() {return speed;}
 	public double averageSpeed() {
 		SpeedAverage average = speedAverage;
 		return average == null ? 0 : average.value;
 	}
 	public double accel() {return accel;}
-	public int moveMode() {return moveMode;}
-	public int turnDir() {return turnDir;}
-	public boolean movesOnHeading() {return speed > 0 || moveMode == 2 || moveMode == 3 || moveMode == 4;}
 	public boolean reversing() {return moveMode == 3;}
 	public double maxSpeed() {
 		if (reversing()) return 0.5;
 		double cap = 1.0;
-		if (moveMode == 2 || moveMode == 4 || moveMode == 0 && lastMoveMode == 4) cap = baseSpeed;
+		if (moveMode == 2 || moveMode == 4 || moveMode == 0 && lastMoveMode == 4) cap = speedCap > 0 ? speedCap / 128.0 : baseSpeed;
 		return cap;
 	}
+	public double routeSpeed() {
+		int mode = moveMode == 0 ? lastMoveMode : moveMode;
+		if (mode == 3) return 0.5;
+		if (mode == 2 || mode == 4) return baseSpeed > 0 ? baseSpeed : speedCap > 0 ? speedCap / 128.0 : 1;
+		return 1;
+	}
 	public long motionTime() {return motionTime;}
-	public int actualHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getOrientation());}
+	boolean unobserved(int x, int y, int heading) {return observation == null || observation.x != x || observation.y != y || observation.heading != heading;}
+	Forecast preview(boolean uncertain) {
+		Forecast motion = forecast;
+		if (motion.maximum > 0) return uncertain ? new Forecast(motion.speed, motion.acceleration, motion.maximum, motion.reverse, motion.turn, 0, motion.starts) : motion;
+		double maximum = Math.max(speed, maxSpeed());
+		return new Forecast(speed > 0 || moveMode == 0 || moveMode == 1 ? speed : maximum, speed > 0 ? accel : 0, maximum, reversing(), turnDir, 0, false);
+	}
 	private int targetHeading(WorldEntity ship) {return ChartPlotterMath.norm(ship.getTargetOrientation());}
-	private boolean stalled() {return speed == 0 && stillTicks >= COURSE_STALL;}
 	private void syncTop() {
 		if (top != null) return;
 		top = client.getTopLevelWorldView();
@@ -215,20 +260,19 @@ public final class ChartPlotterSailing {
 		shipCache = null;
 	}
 	private void resetMotion() {
+		resetForecast();
 		SpeedAverage average = speedAverage;
 		if (average != null) average.clear();
 		speed = 0;
 		lastSpeed = 0;
 		motionTime = 0;
 		motionHold = 0;
-		stillTicks = 0;
 		courseTicks = 0;
 		turnDir = 0;
 		lastLoc = null;
 	}
 	void setCourse(int heading, Point m) {
 		course = heading;
-		stillTicks = 0;
 		courseTicks = 0;
 		if (m == null) return;
 		potentialBlocked = true;
@@ -245,6 +289,92 @@ public final class ChartPlotterSailing {
 			if (wv != null && wv.getId() == pid) return we;
 		}
 		return null;
+	}
+	private void resetForecast() {
+		observation = null;
+		forecastHull = null;
+		estimate = Double.NaN;
+		forecast = Forecast.UNKNOWN;
+	}
+	public void observe(int tick, ChartPlotterCollisionData data, WorldEntityConfig config, int x, int y, int heading) {
+		Observation previous = observation;
+		observation = new Observation(tick, x, y, heading, inputs, data);
+		Forecast prior = forecast;
+		forecast = Forecast.UNKNOWN;
+		double old = estimate;
+		estimate = Double.NaN;
+		if (config == null) {forecastHull = null; return;}
+		if (forecastHull == null || !forecastHull.matches(config)) {forecastHull = new ChartPlotterHull(config); return;}
+		if (previous == null || data.scene != previous.data.scene) {
+			if (prior.horizon > 1 && prior.speed == prior.maximum && (prior.maximum == maxSpeed() || prior.maximum == baseSpeed) && boost == 0) forecast = prior;
+			return;
+		}
+		if (tick != previous.tick + 1) return;
+		if (forecastHull.sweep(previous.data, previous.x / 128.0, previous.y / 128.0, previous.heading, x / 128.0, y / 128.0, heading) != ChartPlotterCollisionData.OPEN || data != previous.data && forecastHull.sweep(data, previous.x / 128.0, previous.y / 128.0, previous.heading, x / 128.0, y / 128.0, heading) != ChartPlotterCollisionData.OPEN) return;
+		int dx = x - previous.x;
+		int dy = y - previous.y;
+		double value = ChartPlotterMath.speed(dx, dy);
+		double signed = reversing() ? -value : value;
+		if (ChartPlotterMath.velocityX(signed, heading) != dx || ChartPlotterMath.velocityY(signed, heading) != dy) return;
+		estimate = value;
+		if (inputs != previous.inputs || Math.abs((heading - previous.heading + 1024 & 2047) - 1024) > 128) return;
+		double maximum = maxSpeed();
+		if (!Double.isFinite(old)) {if (estimate != maximum && (prior.horizon < 2 || prior.speed != estimate)) return; old = estimate;}
+		if (moveMode < 0 || moveMode > 4 || accel < 0 || maximum < 0 || estimate == 0 && moveMode != 0 || moveMode == 0 && estimate != 0) return;
+		int horizon = boost > 0 || estimate > maximum || speedCap > 0 && estimate > speedCap / 128.0 ? 0 : 512;
+		double acceleration = 0;
+		if (estimate < maximum && estimate != 0) {
+			double target = moveMode == 2 && old < baseSpeed ? Math.min(maximum, baseSpeed) : maximum;
+			if (estimate > old && estimate == Math.min(target, old + accel)) acceleration = accel;
+			else if (estimate == old) {maximum = estimate; horizon = boost == 0 && estimate == baseSpeed ? 512 : 0;}
+			else return;
+		} else if (estimate != old && estimate != Math.min(maximum, old + accel)) return;
+		if (acceleration > 0 && moveMode == 2 && baseSpeed < maximum && estimate <= baseSpeed) horizon = Math.min(horizon, (int) ((baseSpeed - estimate) / acceleration));
+		if (moveMode == 0) maximum = 0;
+		forecast = new Forecast(estimate, acceleration, Math.max(estimate, maximum), reversing(), ChartPlotterMath.angleDir(previous.heading, heading, turnDir), horizon, startOnHeading != 0 && moveMode == 0);
+	}
+	static Step step(double speed, double acceleration, double maximum, int from, int target, int direction, boolean reverse) {
+		int dir = ChartPlotterMath.angleDir(from, target, direction);
+		int distance = dir > 0 ? ChartPlotterMath.norm(target - from) : ChartPlotterMath.norm(from - target);
+		int heading = distance <= 128 ? target : ChartPlotterMath.norm(from + 128 * dir);
+		double next = Math.max(0, Math.min(maximum, speed + acceleration));
+		return new Step(heading, ChartPlotterMath.velocityX(reverse ? -next : next, heading), ChartPlotterMath.velocityY(reverse ? -next : next, heading), next);
+	}
+	static final class Step {
+		final int heading;
+		final int x;
+		final int y;
+		final double speed;
+		Step(int heading, int x, int y, double speed) {this.heading = heading; this.x = x; this.y = y; this.speed = speed;}
+	}
+	static final class Forecast {
+		static final Forecast UNKNOWN = new Forecast(0, 0, 0, false, 0, 0, false);
+		final double speed;
+		final double acceleration;
+		final double maximum;
+		final boolean reverse;
+		final int turn;
+		final int horizon;
+		final boolean starts;
+		Forecast(double speed, double acceleration, double maximum, boolean reverse, int turn, int horizon, boolean starts) {
+			this.speed = speed;
+			this.acceleration = acceleration;
+			this.maximum = maximum;
+			this.reverse = reverse;
+			this.turn = turn;
+			this.horizon = horizon;
+			this.starts = starts;
+		}
+		boolean same(Forecast other) {return speed == other.speed && acceleration == other.acceleration && maximum == other.maximum && reverse == other.reverse && turn == other.turn && horizon == other.horizon && starts == other.starts;}
+	}
+	private static final class Observation {
+		final int tick;
+		final int x;
+		final int y;
+		final int heading;
+		final long inputs;
+		final ChartPlotterCollisionData data;
+		Observation(int tick, int x, int y, int heading, long inputs, ChartPlotterCollisionData data) {this.tick = tick; this.x = x; this.y = y; this.heading = heading; this.inputs = inputs; this.data = data;}
 	}
 	private static final class SpeedAverage {
 		private final double[] samples = new double[5];

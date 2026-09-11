@@ -18,6 +18,8 @@ public final class ChartPlotterMath {
 	public static int norm(int v) {return ((v % 2048) + 2048) % 2048;}
 	public static int round(double v) {return (int) (Math.round(Math.abs(v)) * Math.signum(v));}
 	public static int snap(int v) {return round(v / 32.0) * 32;}
+	public static int velocityX(double speed, int heading) {return snap(round(-Perspective.SINE[heading] * speed / 512.0));}
+	public static int velocityY(double speed, int heading) {return snap(round(-Perspective.COSINE[heading] * speed / 512.0));}
 	public static double speed(int vx, int vy) {
 		double x = vx / 128.0;
 		double y = vy / 128.0;

@@ -1,5 +1,6 @@
 package com.chartplotter.route;
 import com.chartplotter.collision.ChartPlotterCollisionData;
+import com.chartplotter.collision.ChartPlotterHull;
 import net.runelite.api.WorldEntityConfig;
 import java.util.BitSet;
 final class ChartPlotterRouteHull {
@@ -12,11 +13,7 @@ final class ChartPlotterRouteHull {
 	final double offsetX;
 	final double offsetY;
 	final boolean reverse;
-	private final double margin;
-	private final double ox;
-	private final double oy;
-	private final double hw;
-	private final double hh;
+	final ChartPlotterHull geometry;
 	private final int radius;
 	private final int side;
 	private final int stride;
@@ -25,22 +22,15 @@ final class ChartPlotterRouteHull {
 		offsetX = motion.offsetX;
 		offsetY = motion.offsetY;
 		this.reverse = reverse;
-		ox = config == null ? 0 : config.getBoundsX() / 128.0;
-		oy = config == null ? 0 : config.getBoundsY() / 128.0;
-		hw = config == null ? 0 : config.getBoundsWidth() / 256.0;
-		hh = config == null ? 0 : config.getBoundsHeight() / 256.0;
-		double reach = Math.hypot(Math.abs(ox) + hw, Math.abs(oy) + hh);
-		margin = config == null ? 1e-5 : 1 / 128.0 + reach / 65536;
-		if (hw < 0 || hh < 0 || reach > 64) throw new IllegalArgumentException("Unsupported boat footprint");
-		radius = (int) Math.ceil(reach) + motion.radius + 2;
+		geometry = new ChartPlotterHull(config);
+		radius = (int) Math.ceil(geometry.turnRadius) + motion.radius + 2;
+		if (radius > Short.MAX_VALUE || (2L * radius + 1) * (2L * radius + 1) > ChartPlotterRouteTerrain.MAX_AREA) throw new ArithmeticException("Route hull mask exceeds search area budget");
 		side = radius * 2 + 1;
 		BitSet cells = new BitSet(side * side);
-		for (int y = -radius; y <= radius; y++) for (int x = -radius; x <= radius; x++) {
-			if (Math.hypot(Math.max(0, Math.max(x - offsetX, offsetX - x - 1)), Math.max(0, Math.max(y - offsetY, offsetY - y - 1))) <= reach + Math.sqrt(2) * margin) cells.set(x + radius + (y + radius) * side);
-		}
+		geometry.circle(offsetX, offsetY, (x, y) -> {cells.set(x + radius + (y + radius) * side); return ChartPlotterCollisionData.OPEN;});
 		circle = mask(cells);
 		cells.clear();
-		double inner = Math.max(0, Math.min(hw - Math.abs(ox), hh - Math.abs(oy)));
+		double inner = Math.max(0, Math.min(geometry.hw - Math.abs(geometry.ox), geometry.hh - Math.abs(geometry.oy)));
 		for (int y = -radius; y <= radius; y++) for (int x = -radius; x <= radius; x++) {
 			if (Math.hypot(Math.max(0, Math.max(x - offsetX, offsetX - x - 1)), Math.max(0, Math.max(y - offsetY, offsetY - y - 1))) < inner - 1e-5) cells.set(x + radius + (y + radius) * side);
 		}
@@ -59,8 +49,7 @@ final class ChartPlotterRouteHull {
 			add(cells, o, motion.x[d], motion.y[d], 0);
 			move[d] = mask(cells);
 			arcs[d] = new BitSet(side * side);
-			double padding = 2 * reach * Math.sin(Math.PI / 256) + 1e-5;
-			for (int i = 0; i <= 128; i += 16) add(arcs[d], o + i, 0, 0, padding);
+			for (int i = 0; i <= 128; i += 16) add(arcs[d], o + i, 0, 0, geometry.rotationPadding);
 		}
 		for (int d = 0; d < 16; d++) for (int next = 0; next < 16; next++) {
 			cells.clear();
@@ -71,7 +60,7 @@ final class ChartPlotterRouteHull {
 			turn[d * 16 + next] = mask(cells);
 		}
 	}
-	boolean matches(WorldEntityConfig config) {return config == null ? hw == 0 && hh == 0 : ox == config.getBoundsX() / 128.0 && oy == config.getBoundsY() / 128.0 && hw == config.getBoundsWidth() / 256.0 && hh == config.getBoundsHeight() / 256.0;}
+	boolean matches(WorldEntityConfig config) {return geometry.matches(config);}
 	boolean moveBlocked(ChartPlotterRouteTerrain terrain, int[] moves, int a, int d) {
 		int known = 1 << (d + 16);
 		int valid = 1 << d;
@@ -81,8 +70,7 @@ final class ChartPlotterRouteHull {
 		moves[a] |= valid;
 		return false;
 	}
-	int flag(ChartPlotterCollisionData data, int x, int y, int d) {
-		if (d >= 0) return hull[d].flag(data, x, y);
+	int flag(ChartPlotterCollisionData data, int x, int y) {
 		boolean unknown = false;
 		for (Mask mask : hull) {
 			int f = mask.flag(data, x, y);
@@ -92,28 +80,10 @@ final class ChartPlotterRouteHull {
 		return unknown ? ChartPlotterCollisionData.UNKNOWN : ChartPlotterCollisionData.BLOCKED;
 	}
 	private void add(BitSet cells, int orientation, double dx, double dy, double padding) {
-		double angle = (orientation & 2047) * Math.PI / 1024;
-		double cos = Math.cos(angle);
-		double sin = Math.sin(angle);
-		double x = offsetX + cos * ox + sin * oy + dx / 2;
-		double y = offsetY + cos * oy - sin * ox + dy / 2;
-		double w = hw + padding + margin;
-		double h = hh + padding + margin;
-		double ex = Math.abs(cos) * w + Math.abs(sin) * h + Math.abs(dx) / 2;
-		double ey = Math.abs(sin) * w + Math.abs(cos) * h + Math.abs(dy) / 2;
-		double tileExtent = (Math.abs(cos) + Math.abs(sin)) / 2;
-		double eu = w + Math.abs(dx * cos - dy * sin) / 2 + tileExtent;
-		double ev = h + Math.abs(dx * sin + dy * cos) / 2 + tileExtent;
-		double en = w * Math.abs(-dy * cos - dx * sin) + h * Math.abs(-dy * sin + dx * cos) + (Math.abs(dx) + Math.abs(dy)) / 2;
-		for (int py = Math.max(-radius, (int) Math.floor(y - ey)); py <= Math.min(radius, (int) Math.floor(y + ey)); py++) {
-			for (int px = Math.max(-radius, (int) Math.floor(x - ex)); px <= Math.min(radius, (int) Math.floor(x + ex)); px++) {
-				double rx = px + 0.5 - x;
-				double ry = py + 0.5 - y;
-				if (Math.abs(rx) >= ex + 0.5 || Math.abs(ry) >= ey + 0.5 || Math.abs(rx * cos - ry * sin) >= eu || Math.abs(rx * sin + ry * cos) >= ev) continue;
-				if ((dx != 0 || dy != 0) && Math.abs(-rx * dy + ry * dx) >= en) continue;
-				cells.set(px + radius + (py + radius) * side);
-			}
-		}
+		geometry.tiles(orientation, offsetX, offsetY, dx, dy, padding, (x, y) -> {
+			cells.set(x + radius + (y + radius) * side);
+			return ChartPlotterCollisionData.OPEN;
+		});
 	}
 	private Mask mask(BitSet cells) {
 		int groups = 0;
