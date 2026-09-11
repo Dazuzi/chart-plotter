@@ -34,10 +34,10 @@ public final class ChartPlotterTrip {
 		ChartPlotterRoute route = active();
 		return route != null && route.status == ChartPlotterRoute.OK && !route.recalculating && route.target != null && route.target.contains(bx, by) && route.target.matches(data);
 	}
-	public double distance(double bx, double by, boolean total) {
-		if (empty()) return Double.NaN;
+	public double distance(double bx, double by, int stop) {
+		if (stop < 0 || stop >= routes.length) return Double.NaN;
 		double distance = 0;
-		for (int i = 0; i < (total ? routes.length : 1); i++) {
+		for (int i = 0; i <= stop; i++) {
 			ChartPlotterRoute route = routes[i];
 			if (route == null || route.status != ChartPlotterRoute.OK || route.n == 0) return Double.NaN;
 			if (i > 0) {

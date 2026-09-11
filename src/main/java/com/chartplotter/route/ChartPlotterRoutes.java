@@ -49,6 +49,7 @@ public class ChartPlotterRoutes {
 	private volatile long rev;
 	private volatile ChartPlotterRouteComponent component;
 	private boolean placing;
+	private boolean resolvingPreview;
 	private ArrayDeque<Runnable> placements;
 	ThreadPoolExecutor exec;
 	private final AtomicReference<Future<?>> work = new AtomicReference<>();
@@ -210,6 +211,7 @@ public class ChartPlotterRoutes {
 		ChartPlotterRouteComponent reachable = component;
 		long origin = target(data, s.x, s.y, s.x, s.y, 2, null);
 		if (reachable != null && (reachable.data != data || !reachable.contains((int) (origin >> 32), (int) origin))) reachable = null;
+		if (reachable == null && p.empty() && !placing && !resolvingPreview) resolve(s, data, null);
 		PreviewSlot cached = previewSlot;
 		if (cached != null && cached.same(tx, ty, append, sx, sy, p, data, reachable)) return cached.preview;
 		Preview result;
@@ -300,7 +302,7 @@ public class ChartPlotterRoutes {
 		idle();
 	}
 	public void pause() {
-		if (!placing && (paused || trip.get().empty())) return;
+		if (!placing && !resolvingPreview && (paused || trip.get().empty())) return;
 		int id = cancel();
 		trip.updateAndGet(p -> p.generation(id));
 		paused = !trip.get().empty();
@@ -318,7 +320,12 @@ public class ChartPlotterRoutes {
 	public ChartPlotterRoute route() {return trip.get().active();}
 	public ChartPlotterTrip trip() {return trip.get();}
 	public boolean canAppend() {return trip.get().size() < MAX_STOPS;}
-	public void clearPreview() {previewSlot = null;}
+	public void clearPreview() {
+		previewSlot = null;
+		if (!trip.get().empty() || placing) return;
+		if (resolvingPreview) cancel();
+		idle();
+	}
 	private LocalPoint routeLoc(WorldView top, WorldEntity ship, LocalPoint loc) {
 		WorldEntityConfig wc = ship.getConfig();
 		if (wc == null) return loc;
@@ -354,7 +361,8 @@ public class ChartPlotterRoutes {
 		if (data.flagAt(sx, sy) != ChartPlotterCollisionData.OPEN) return false;
 		int id = cancel();
 		trip.updateAndGet(p -> p.generation(id));
-		placing = true;
+		placing = action != null;
+		resolvingPreview = action == null;
 		start();
 		AtomicReference<Future<?>> nextRef = new AtomicReference<>();
 		FutureTask<Void> next = new FutureTask<>(() -> {
@@ -365,7 +373,9 @@ public class ChartPlotterRoutes {
 					if (id != seq.get()) return;
 					component = reachable;
 					placing = false;
-					clearPreview();
+					resolvingPreview = false;
+					previewSlot = null;
+					if (action == null) return;
 					ArrayDeque<Runnable> queued = placements;
 					placements = null;
 					action.run();
@@ -541,6 +551,7 @@ public class ChartPlotterRoutes {
 	private int cancel() {
 		int id = seq.incrementAndGet();
 		placing = false;
+		resolvingPreview = false;
 		placements = null;
 		Future<?> old = work.getAndSet(null);
 		if (old != null) {
@@ -566,7 +577,7 @@ public class ChartPlotterRoutes {
 			ex.shutdownNow();
 			exec = null;
 		}
-		clearPreview();
+		previewSlot = null;
 		component = null;
 	}
 	private static boolean[] pending(ChartPlotterTrip p) {

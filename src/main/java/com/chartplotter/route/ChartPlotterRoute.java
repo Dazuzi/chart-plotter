@@ -14,7 +14,7 @@ public final class ChartPlotterRoute {
 	public static final int FAILED = 6;
 	public static final int TIMED_OUT = 7;
 	public final int status;
-	final boolean recalculating;
+	public final boolean recalculating;
 	public final int sx;
 	public final int sy;
 	public final int tx;

@@ -286,6 +286,7 @@ public final class ChartPlotterRuntime {
 	}
 	public void tick() {
 		pendingView = null;
+		worldMapOverlay.tick();
 		if (!features.tracking || !sailing.boarded() || client.getGameState() != GameState.LOGGED_IN) return;
 		sailing.tick();
 		WorldEntity ship = sailing.ship();

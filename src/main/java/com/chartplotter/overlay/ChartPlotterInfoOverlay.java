@@ -69,7 +69,7 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 				if (showStop) panelComponent.getChildren().add(LineComponent.builder().left("Next stop").right(eta(trip, bx, by, false, stopMode)).build());
 				if (showTurn) {
 					ChartPlotterRoutes.Turn turn = ChartPlotterRoutes.turn(trip.active(), bx, by, sailing.reversing() ? -sailing.speed() : sailing.speed(), sailing.accel(), sailing.maxSpeed(), motion);
-					panelComponent.getChildren().add(LineComponent.builder().left("Next turn").right(!turn.valid || turn.end ? "-" : sailing.speed() == 0 ? "Stopped" : time(turn.ticks, turnMode)).build());
+					panelComponent.getChildren().add(LineComponent.builder().left("Next turn").right(!turn.valid || turn.end ? "-" : sailing.speed() == 0 ? "Stopped" : turnMode.format(turn.ticks)).build());
 				}
 			}
 			if (showSpeed) panelComponent.getChildren().add(LineComponent.builder().left("Speed").right(Double.toString(sailing.speed())).build());
@@ -90,12 +90,6 @@ public final class ChartPlotterInfoOverlay extends OverlayPanel {
 		if (sailing.speed() == 0) return "Stopped";
 		double speed = sailing.averageSpeed();
 		if (sailing.reversing() || speed <= 0) return "-";
-		return time(trip.distance(bx, by, total) / speed, mode);
-	}
-	private static String time(double ticks, ChartPlotterEtaMode mode) {
-		if (!Double.isFinite(ticks) || ticks < 0) return "-";
-		if (mode == ChartPlotterEtaMode.TICKS) return (long) Math.ceil(ticks) + "t";
-		long seconds = (long) Math.ceil(ticks * Constants.GAME_TICK_LENGTH / 1000);
-		return seconds / 60 + ":" + (seconds % 60 < 10 ? "0" : "") + seconds % 60;
+		return mode.format(trip.distance(bx, by, total ? trip.size() - 1 : 0) / speed);
 	}
 }

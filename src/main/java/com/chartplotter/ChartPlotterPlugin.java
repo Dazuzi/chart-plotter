@@ -90,6 +90,7 @@ public class ChartPlotterPlugin extends Plugin {
 	public int heading(WorldEntity ship) {return sailing.heading(ship);}
 	public int course(WorldEntity ship) {return sailing.course(ship);}
 	public double speed() {return sailing.speed();}
+	public double baseSpeed() {return sailing.baseSpeed();}
 	public double accel() {return sailing.accel();}
 	public double maxSpeed() {return sailing.maxSpeed();}
 	public boolean reversing() {return sailing.reversing();}

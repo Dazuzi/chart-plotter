@@ -65,6 +65,15 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	private final int[] tile = new int[2];
 	private int colorNext;
 	private boolean previewActive;
+	private ChartPlotterTrip tipTrip;
+	private int tipStop;
+	private int tipFirst;
+	private ChartPlotterMapTooltip tipMode;
+	private boolean tipSailing;
+	private double tipX;
+	private double tipY;
+	private double tipSpeed;
+	private String[] tipLines;
 	@Inject
 	ChartPlotterWorldMapOverlay(Client client, ChartPlotterPlugin plugin, ChartPlotterConfig config, ChartPlotterProjection projection, ChartPlotterCollisionCache collisionCache, ChartPlotterWorldMap map) {
 		this.client = client;
@@ -84,8 +93,13 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		boolean showChart = config.worldMapChartLine();
 		ChartPlotterTrip trip = plugin.trip();
 		boolean showRoute = showChart && !trip.empty();
-		if (!showRoute) stopCache = StopCache.EMPTY;
+		if (!showRoute) {
+			stopCache = StopCache.EMPTY;
+			tipTrip = null;
+			tipLines = null;
+		}
 		if (!sailing && !showRoute) {
+			if (previewActive) {previewActive = false; plugin.clearCoursePreview();}
 			map.clickBlocked();
 			return null;
 		}
@@ -110,6 +124,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		ChartPlotterWorldMap.State s = map.state();
 		if (s == null) {
 			stopCache = StopCache.EMPTY;
+			if (previewActive) {previewActive = false; plugin.clearCoursePreview();}
 			return null;
 		}
 		Shape clip = map.clip(s);
@@ -172,6 +187,11 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	public boolean clickBlocked() {return map.clickBlocked();}
 	public boolean cachedClickBlocked() {return map.cachedClickBlocked();}
+	public void tick() {
+		if (!previewActive || plugin.isSailing() && config.worldMapChartLine() && (ctrl || shift) && map.state() != null) return;
+		previewActive = false;
+		plugin.clearCoursePreview();
+	}
 	public void courseMods(boolean ctrl, boolean shift) {
 		if (this.ctrl == ctrl && this.shift == shift) return;
 		this.ctrl = ctrl;
@@ -277,32 +297,69 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 			Color c = i == moving ? moved == null ? PREVIEW_BAD : PREVIEW_SNAP : removing ? REMOVE : routeColor(r, i > 0);
 			marker(g, px, py, c);
 			if (trip.size() > 1 || first > 1) label(g, px, py, i, c);
-			if (r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, px, py, r.text());
+			if (i != remove && i != moving && r != null && r.text() != null && (r.status == ChartPlotterRoute.PENDING || now - r.time < TIP_MS)) tip(g, s.r, px, py, r.text());
 		}
-		if (moving >= 0 && movedPoint) tip(g, s.r, movedPX, movedPY, moved == null ? "Release to cancel" : "Release to move stop " + (moving + first));
+		if (moving >= 0 && movedPoint && config.worldMapTooltips().instructions) tip(g, s.r, movedPX, movedPY, moved == null ? "Release to cancel" : "Release to move stop " + (moving + first));
 		else if (remove >= 0) {
-			tripTip(g, s.r, map.pointX(s, trip.markerX(remove)), map.pointY(s, trip.markerY(remove)), trip, remove);
+			tip(g, s.r, map.pointX(s, trip.markerX(remove)), map.pointY(s, trip.markerY(remove)), tripTip(trip, remove));
 		}
 	}
-	private void tripTip(Graphics2D g, Rectangle bounds, int x, int y, ChartPlotterTrip trip, int stop) {
+	String[] tripTip(ChartPlotterTrip trip, int stop) {
+		ChartPlotterMapTooltip mode = config.worldMapTooltips();
+		if (mode == ChartPlotterMapTooltip.OFF) {tipTrip = null; return tipLines = null;}
+		boolean sailing = plugin.isSailing();
+		int first = config.infoStopProgress() ? trip.stopNumber() : 1;
+		double bx = Double.NaN;
+		double by = Double.NaN;
+		double speed = 0;
+		if (mode.info && sailing) {
+			WorldEntity ship = plugin.getShip();
+			WorldView top = plugin.top();
+			LocalPoint loc = ship == null ? null : ship.getLocalLocation();
+			if (top != null && loc != null) {
+				bx = top.getBaseX() + loc.getX() / (double) TS;
+				by = top.getBaseY() + loc.getY() / (double) TS;
+			}
+			speed = plugin.baseSpeed();
+		}
+		if (tipTrip == trip && tipStop == stop && tipFirst == first && tipMode == mode && tipSailing == sailing && Double.compare(tipX, bx) == 0 && Double.compare(tipY, by) == 0 && Double.compare(tipSpeed, speed) == 0) return tipLines;
+		tipTrip = trip;
+		tipStop = stop;
+		tipFirst = first;
+		tipMode = mode;
+		tipSailing = sailing;
+		tipX = bx;
+		tipY = by;
+		tipSpeed = speed;
 		ChartPlotterRoute route = trip.route(stop);
 		String status = route == null ? "Charting course" : route.text();
-		if (!config.worldMapTripHints()) {
-			if (status != null) tip(g, bounds, x, y, status);
-			return;
+		if (mode.info) for (int i = 0; i <= stop; i++) {
+			ChartPlotterRoute leg = trip.route(i);
+			if (leg != null && leg.status == ChartPlotterRoute.OK && !leg.recalculating) continue;
+			status = (i < stop ? "Stop " + (i + first) + ": " : "") + (leg == null || leg.recalculating ? "Charting course" : leg.text());
+			break;
 		}
-		int n = stop + stopLabelStart;
+		int n = stop + first;
 		boolean tail = stop + 1 < trip.size();
-		boolean sailing = plugin.isSailing();
 		boolean append = sailing && !tail && plugin.canAppend();
-		String[] lines = new String[(status == null ? 0 : 1) + 1 + (tail || append ? 1 : 0) + (sailing ? 1 : 0)];
+		int info = status != null ? 1 : mode.info ? 2 : 0;
+		String[] lines = new String[info + (mode.instructions ? 1 + (info > 0 ? 1 : 0) + (tail || append ? 1 : 0) + (sailing ? 1 : 0) : 0)];
 		int i = 0;
 		if (status != null) lines[i++] = status;
-		lines[i++] = trip.size() == 1 ? "Click: clear destination" : "Click: remove stop " + n;
-		if (tail) lines[i++] = "Shift+click: remove stop " + n + " and later";
-		else if (append) lines[i++] = "Shift+click elsewhere: add stop";
-		if (sailing) lines[i] = trip.size() == 1 ? "Drag: move destination" : "Drag: move stop " + n;
-		tip(g, bounds, x, y, lines);
+		else if (mode.info) {
+			double distance = trip.distance(bx, by, stop);
+			lines[i++] = "Distance: " + (Double.isFinite(distance) ? (long) Math.ceil(distance) + " tiles" : "-");
+			String time = ChartPlotterEtaMode.SECONDS.format(speed > 0 ? distance / speed : Double.NaN);
+			lines[i++] = "ETA: " + (time.equals("-") ? time : "~" + time);
+		}
+		if (mode.instructions) {
+			if (i > 0) lines[i++] = "";
+			lines[i++] = trip.size() == 1 ? "Click: clear destination" : "Click: remove stop " + n;
+			if (tail) lines[i++] = "Shift+click: remove stop " + n + " and later";
+			else if (append) lines[i++] = "Shift+click elsewhere: add stop";
+			if (sailing) lines[i] = trip.size() == 1 ? "Drag: move destination" : "Drag: move stop " + n;
+		}
+		return tipLines = lines;
 	}
 	private Color routeColor(ChartPlotterRoute r, boolean future) {
 		Color c = r == null ? STATUS_WARN : r.status == ChartPlotterRoute.OK ? config.chartColor() : r.status == ChartPlotterRoute.UNCHARTED ? STATUS_UNCHARTED : r.status == ChartPlotterRoute.BLOCKED ? STATUS_BLOCKED : STATUS_WARN;
@@ -414,6 +471,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		g.drawLine(map.pointX(s, ax + afx), map.pointY(s, ay + afy), map.pointX(s, bx + bfx), map.pointY(s, by + bfy));
 	}
 	private void tip(Graphics2D g, Rectangle r, int px, int py, String... lines) {
+		if (config.worldMapTooltips() == ChartPlotterMapTooltip.OFF || lines == null || lines.length == 0) return;
 		FontMetrics fm = g.getFontMetrics();
 		int w = 0;
 		for (String line : lines) w = Math.max(w, fm.stringWidth(line));
@@ -432,8 +490,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 	}
 	private void drawCoursePreview(Graphics2D g, ChartPlotterWorldMap.State s, Shape clip, boolean append) {
 		Point m = hover(clip);
-		if (m == null || cachedStopIndex(m) >= 0) return;
-		if (!map.tile(m, s, tile)) return;
+		if (m == null || cachedStopIndex(m) >= 0 || !map.tile(m, s, tile)) {plugin.clearCoursePreview(); return;}
 		int[] t = tile;
 		ChartPlotterRoutes.Preview pv = plugin.coursePreview(t[0], t[1], append);
 		if (pv.state == ChartPlotterRoutes.PV_NONE) return;

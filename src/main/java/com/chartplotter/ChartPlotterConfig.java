@@ -60,8 +60,6 @@ public interface ChartPlotterConfig extends Config {
 	default int worldMapLineWidth() {return 1;}
 	@ConfigItem(keyName = "worldMapCourseClick", name = "Destination click", description = "Use the selected click to replace a trip; hold Shift with it to append, click a stop to remove it, Shift-click one to remove its tail, or drag it to move it.", section = worldMapSection, position = 4)
 	default ChartPlotterWorldMapClick worldMapCourseClick() {return ChartPlotterWorldMapClick.CLICK;}
-	@ConfigItem(keyName = "worldMapTripHints", name = "Trip control hints", description = "Show trip controls while hovering a destination.", section = worldMapSection, position = 5)
-	default boolean worldMapTripHints() {return true;}
 	@ConfigSection(name = "Charting", description = "Trip route settings. Tight turns may require slowing or stopping.", position = 4)
 	String chartingSection = "chartingSection";
 	@ConfigItem(keyName = "routeShape", name = "Route shape", description = "Direct favors short routes. Balanced trades modest distance for fewer, gentler turns and longer legs. Smooth accepts more distance to simplify the route further.", section = chartingSection, position = 0)
@@ -86,6 +84,8 @@ public interface ChartPlotterConfig extends Config {
 	default boolean infoBoatSpeed() {return false;}
 	@ConfigSection(name = "Tweaks", description = "Experimental settings.", position = 6, closedByDefault = true)
 	String tweaksSection = "tweaksSection";
+	@ConfigItem(keyName = "worldMapTooltips", name = "Map tooltips", description = "Show trip controls and/or remaining distance and estimated time at boat base speed on hover. Estimates exclude boosts, acceleration, and time spent at stops. Off hides all map tooltips.", section = tweaksSection, position = 0)
+	default ChartPlotterMapTooltip worldMapTooltips() {return ChartPlotterMapTooltip.BOTH;}
 	@ConfigItem(keyName = "cacheOverlayMode", name = "Cache overlay", description = "Draw remembered collision-cache coverage.", section = tweaksSection, position = 3)
 	default ChartPlotterCacheOverlay cacheOverlay() {return ChartPlotterCacheOverlay.OFF;}
 }

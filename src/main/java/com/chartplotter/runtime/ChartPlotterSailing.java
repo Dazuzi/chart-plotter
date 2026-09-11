@@ -220,6 +220,7 @@ public final class ChartPlotterSailing {
 	public int heading(WorldEntity ship) {return targetHeading(ship);}
 	public int course(WorldEntity ship) {return course >= 0 ? course : targetHeading(ship);}
 	public double speed() {return speed;}
+	public double baseSpeed() {return baseSpeed;}
 	public double averageSpeed() {
 		SpeedAverage average = speedAverage;
 		return average == null ? 0 : average.value;
