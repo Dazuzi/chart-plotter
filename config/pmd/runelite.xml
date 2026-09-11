@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="RuneLite Plugin Hub" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 ruleset_2_0_0.xsd">
+	<description>Rules for Plugin Hub production sources.</description>
+	<rule name="RuneLiteNoNativeMethods" language="java" message="RuneLite Hub plugins must not declare native methods." class="net.sourceforge.pmd.lang.rule.xpath.XPathRule">
+		<description>Reject native method declarations.</description>
+		<priority>1</priority>
+		<properties>
+			<property name="xpath" value="//MethodDeclaration[pmd-java:modifiers() = 'native']"/>
+		</properties>
+	</rule>
+</ruleset>

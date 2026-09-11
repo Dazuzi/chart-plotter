@@ -1,0 +1,70 @@
+@defaultMessage Inject RuneLite's Gson; customize it with Gson.newBuilder().
+com.google.gson.Gson#<init>()
+com.google.gson.GsonBuilder#<init>()
+@defaultMessage Inject RuneLite's OkHttpClient; derive clients with OkHttpClient.newBuilder().
+okhttp3.OkHttpClient#<init>()
+okhttp3.OkHttpClient$Builder#<init>()
+@defaultMessage RuneLite Hub plugins must not sleep threads.
+java.lang.Thread#sleep(long)
+java.lang.Thread#sleep(long,int)
+java.util.concurrent.TimeUnit#sleep(long)
+@defaultMessage RuneLite Hub plugins must not use reflective member access.
+java.lang.Class#newInstance()
+java.lang.Class#getDeclaredField(java.lang.String)
+java.lang.Class#getDeclaredFields()
+java.lang.Class#getDeclaredMethod(java.lang.String,java.lang.Class[])
+java.lang.Class#getDeclaredMethods()
+java.lang.Class#getDeclaredConstructor(java.lang.Class[])
+java.lang.Class#getDeclaredConstructors()
+java.lang.Class#getField(java.lang.String)
+java.lang.Class#getFields()
+java.lang.Class#getMethod(java.lang.String,java.lang.Class[])
+java.lang.Class#getMethods()
+java.lang.Class#getConstructor(java.lang.Class[])
+java.lang.Class#getConstructors()
+java.lang.reflect.AccessibleObject
+java.lang.reflect.Method
+java.lang.reflect.Constructor
+java.lang.reflect.Field
+java.lang.invoke.MethodHandles#lookup()
+java.lang.invoke.MethodHandles#publicLookup()
+java.lang.invoke.MethodHandles#privateLookupIn(java.lang.Class,java.lang.invoke.MethodHandles$Lookup)
+@defaultMessage RuneLite Hub plugins must not execute external processes.
+java.lang.ProcessBuilder
+java.lang.Runtime#exec(java.lang.String)
+java.lang.Runtime#exec(java.lang.String[])
+java.lang.Runtime#exec(java.lang.String,java.lang.String[])
+java.lang.Runtime#exec(java.lang.String[],java.lang.String[])
+java.lang.Runtime#exec(java.lang.String,java.lang.String[],java.io.File)
+java.lang.Runtime#exec(java.lang.String[],java.lang.String[],java.io.File)
+@defaultMessage RuneLite Hub plugins must not load native code or access native memory directly.
+java.lang.System#load(java.lang.String)
+java.lang.System#loadLibrary(java.lang.String)
+java.lang.Runtime#load(java.lang.String)
+java.lang.Runtime#loadLibrary(java.lang.String)
+sun.misc.Unsafe
+jdk.internal.misc.Unsafe
+com.sun.jna.**
+org.lwjgl.**
+@defaultMessage RuneLite Hub plugins must not load or generate code dynamically.
+java.lang.Class#forName(java.lang.String)
+java.lang.Class#forName(java.lang.String,boolean,java.lang.ClassLoader)
+java.lang.Class#forName(java.lang.Module,java.lang.String)
+java.lang.ClassLoader#loadClass(java.lang.String)
+java.lang.ClassLoader#loadClass(java.lang.String,boolean)
+java.lang.ClassLoader#defineClass(**)
+java.lang.invoke.MethodHandles$Lookup#defineClass(byte[])
+java.net.URLClassLoader
+java.lang.reflect.Proxy
+javax.tools.ToolProvider#getSystemJavaCompiler()
+@defaultMessage RuneLite Hub plugins must not use Java object serialization; use injected Gson for JSON.
+java.io.ObjectInputStream
+java.io.ObjectOutputStream
+@defaultMessage Use RuneLite's injected OkHttpClient for HTTP requests.
+java.net.HttpURLConnection
+javax.net.ssl.HttpsURLConnection
+java.net.http.**
+org.apache.http.**
+org.apache.hc.**
+@defaultMessage Use RuneLite's LinkBrowser to open URLs.
+java.awt.Desktop

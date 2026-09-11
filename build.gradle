@@ -1,5 +1,8 @@
+import de.thetaphi.forbiddenapis.gradle.CheckForbiddenApis
 plugins {
 	id 'java'
+	id 'pmd'
+	id 'de.thetaphi.forbiddenapis' version '3.10'
 }
 repositories {
 	maven {
@@ -12,10 +15,32 @@ repositories {
 }
 dependencies {
 	compileOnly 'net.runelite:client:latest.release'
+	compileOnly 'org.jetbrains:annotations:23.0.0'
 }
 group = 'com.chartplotter'
+java {
+	toolchain.languageVersion = JavaLanguageVersion.of(11)
+}
+pmd {
+	toolVersion = '7.27.0'
+	ruleSets = []
+	ruleSetFiles = files('config/pmd/ruleset.xml')
+	consoleOutput = true
+}
+tasks.withType(Pmd).configureEach {
+	javaLauncher = javaToolchains.launcherFor(java.toolchain)
+	classpath += files(javaLauncher.map { it.metadata.installationPath.file('lib/jrt-fs.jar') })
+}
+tasks.named('pmdMain', Pmd) {
+	ruleSetFiles += files('config/pmd/runelite.xml')
+}
+tasks.withType(CheckForbiddenApis).configureEach {
+	enabled = name == 'forbiddenApisMain'
+	signaturesFiles = files('config/forbidden-apis/runelite.txt')
+	failOnUnsupportedJava = true
+}
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
 	options.release.set(11)
-	options.compilerArgs.addAll(['-Xlint:all,-classfile,-processing', '-Werror'])
+	options.compilerArgs.addAll(['-Xlint:all,-processing', '-Werror'])
 }

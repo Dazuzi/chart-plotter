@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<xs:schema
+	xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+	targetNamespace="http://pmd.sourceforge.net/ruleset/2.0.0"
+	elementFormDefault="qualified">
+	<xs:element name="ruleset">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="description" type="xs:string" />
+				<xs:element name="exclude-pattern" type="xs:string" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="include-pattern" type="xs:string" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="rule" type="rule" maxOccurs="unbounded" />
+			</xs:sequence>
+			<xs:attribute name="name" type="xs:string" use="required" />
+		</xs:complexType>
+	</xs:element>
+	<xs:complexType name="rule">
+		<xs:sequence>
+			<xs:element name="description" type="xs:string" minOccurs="0" />
+			<xs:element name="priority" type="xs:int" default="5" minOccurs="0"/>
+			<xs:element name="properties" type="properties" minOccurs="0" />
+			<xs:element name="exclude" type="exclude" minOccurs="0" maxOccurs="unbounded" />
+			<xs:element name="example" type="xs:string" minOccurs="0" maxOccurs="unbounded" />
+		</xs:sequence>
+		<xs:attribute name="language" type="xs:string" />
+		<xs:attribute name="minimumLanguageVersion" type="xs:string" />
+		<xs:attribute name="maximumLanguageVersion" type="xs:string" />
+		<xs:attribute name="name" type="xs:ID" />
+		<xs:attribute name="since" type="xs:string" />
+		<xs:attribute name="ref" type="xs:string" />
+		<xs:attribute name="message" type="xs:string" />
+		<xs:attribute name="externalInfoUrl" type="xs:string" />
+		<xs:attribute name="class" type="xs:NMTOKEN" />
+		<xs:attribute name="dfa" type="xs:boolean" />
+		<xs:attribute name="typeResolution" type="xs:boolean" default="false" />
+		<xs:attribute name="deprecated" type="xs:boolean" default="false" />
+	</xs:complexType>
+	<xs:complexType name="properties">
+		<xs:sequence>
+			<xs:element name="property" type="property" maxOccurs="unbounded" />
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="property">
+		<xs:sequence>
+			<xs:element name="value" type="xs:string" minOccurs="0" />
+		</xs:sequence>
+		<xs:attribute name="name" type="xs:NMTOKEN" use="required" />
+		<xs:attribute name="value" type="xs:string" />
+		<xs:attribute name="description" type="xs:string" />
+		<xs:attribute name="type" type="xs:string" />
+		<xs:attribute name="delimiter" type="xs:string" />
+		<xs:attribute name="min" type="xs:string" />
+		<xs:attribute name="max" type="xs:string" />
+	</xs:complexType>
+	<xs:complexType name="exclude">
+		<xs:attribute name="name" type="xs:NMTOKEN" use="required" />
+	</xs:complexType>
+</xs:schema>
