@@ -9,7 +9,23 @@ import net.runelite.api.Point;
 import net.runelite.api.WorldEntity;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.events.*;
+import net.runelite.api.events.DecorativeObjectDespawned;
+import net.runelite.api.events.DecorativeObjectSpawned;
+import net.runelite.api.events.FocusChanged;
+import net.runelite.api.events.GameObjectDespawned;
+import net.runelite.api.events.GameObjectSpawned;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GroundObjectDespawned;
+import net.runelite.api.events.GroundObjectSpawned;
+import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.PostClientTick;
+import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WallObjectDespawned;
+import net.runelite.api.events.WallObjectSpawned;
+import net.runelite.api.events.WidgetClosed;
+import net.runelite.api.events.WorldViewLoaded;
 import net.runelite.client.RuneLite;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -67,6 +83,8 @@ public class ChartPlotterPlugin extends Plugin {
 	public void onGameStateChanged(GameStateChanged e) {runtime.state(e);}
 	@Subscribe
 	public void onWorldViewLoaded(WorldViewLoaded e) {runtime.loaded(e);}
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed e) {runtime.closed(e);}
 	@Subscribe
 	public void onMenuOpened(MenuOpened e) {runtime.menu(e);}
 	@Subscribe(priority = -1)

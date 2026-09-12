@@ -1,6 +1,12 @@
 package com.chartplotter.overlay;
 
-import com.chartplotter.*;
+import com.chartplotter.ChartPlotterCacheOverlay;
+import com.chartplotter.ChartPlotterConfig;
+import com.chartplotter.ChartPlotterEtaMode;
+import com.chartplotter.ChartPlotterLineMode;
+import com.chartplotter.ChartPlotterMapTooltip;
+import com.chartplotter.ChartPlotterPlugin;
+import com.chartplotter.ChartPlotterWorldMapClick;
 import com.chartplotter.collision.ChartPlotterCollisionCache;
 import com.chartplotter.collision.ChartPlotterCollisionData;
 import com.chartplotter.route.ChartPlotterRoute;
@@ -10,8 +16,11 @@ import com.chartplotter.route.ChartPlotterTrip;
 import com.chartplotter.runtime.ChartPlotterProjection;
 import com.chartplotter.runtime.ChartPlotterWorldMap;
 import com.chartplotter.util.ChartPlotterMath;
-import net.runelite.api.*;
+import net.runelite.api.Client;
+import net.runelite.api.Perspective;
 import net.runelite.api.Point;
+import net.runelite.api.WorldEntity;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.ui.overlay.Overlay;
@@ -19,7 +28,14 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 import javax.inject.Inject;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
+import java.awt.Shape;
+import java.awt.Stroke;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.util.Arrays;
@@ -523,7 +539,7 @@ public class ChartPlotterWorldMapOverlay extends Overlay {
 		ellipse.setFrame(x - 7.5, y - 7.5, 15, 15);
 		g.draw(ellipse);
 	}
-	private void cacheStops(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {
+	void cacheStops(ChartPlotterWorldMap.State s, Shape clip, ChartPlotterTrip trip) {
 		StopCache old = stopCache;
 		if (old.same(s, clip, trip)) return;
 		int[] hits = new int[trip.size() * 5];
